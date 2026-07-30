@@ -1,0 +1,60 @@
+{
+  "schema": "dotnet-axi/fixture/v1",
+  "name": "catalog-rich-slnx",
+  "seed": 2003,
+  "sdk": {
+    "version": "10.0.302",
+    "rollForward": "latestPatch",
+    "allowPrerelease": false
+  },
+  "capabilities": [
+    "analyzer:diagnostic",
+    "framework:multi-targeting",
+    "generator:source",
+    "language:csharp",
+    "solution:slnx",
+    "source:conditional-compilation",
+    "source:generated",
+    "source:linked-file",
+    "workspace:multi-project"
+  ],
+  "build": {
+    "target": "Workspace.slnx",
+    "expectedOutcome": "success",
+    "requiredOutput": [
+      "DAXI001"
+    ]
+  },
+  "files": [
+    {
+      "path": "Workspace.slnx",
+      "template": "templates/Workspace.slnx",
+      "expandTokens": false
+    },
+    {
+      "path": "src/App/App.csproj",
+      "template": "templates/App.csproj",
+      "expandTokens": false
+    },
+    {
+      "path": "src/App/App.cs",
+      "template": "templates/App.cs",
+      "expandTokens": false
+    },
+    {
+      "path": "src/FixtureTooling/FixtureTooling.csproj",
+      "template": "templates/FixtureTooling.csproj",
+      "expandTokens": false
+    },
+    {
+      "path": "src/FixtureTooling/FixtureTooling.cs",
+      "template": "templates/FixtureTooling.cs",
+      "expandTokens": false
+    },
+    {
+      "path": "shared/LinkedMessage.cs",
+      "template": "templates/LinkedMessage.cs",
+      "expandTokens": false
+    }
+  ]
+}

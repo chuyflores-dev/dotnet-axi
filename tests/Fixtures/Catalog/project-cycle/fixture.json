@@ -1,0 +1,51 @@
+{
+  "schema": "dotnet-axi/fixture/v1",
+  "name": "catalog-project-cycle",
+  "seed": 2004,
+  "sdk": {
+    "version": "10.0.302",
+    "rollForward": "latestPatch",
+    "allowPrerelease": false
+  },
+  "capabilities": [
+    "framework:net10.0",
+    "language:csharp",
+    "project-reference:cycle",
+    "solution:slnx",
+    "workspace:multi-project"
+  ],
+  "build": {
+    "target": "Cycle.slnx",
+    "expectedOutcome": "failure",
+    "requiredOutput": [
+      "MSB4006"
+    ]
+  },
+  "files": [
+    {
+      "path": "Cycle.slnx",
+      "template": "templates/Cycle.slnx",
+      "expandTokens": false
+    },
+    {
+      "path": "src/A/A.csproj",
+      "template": "templates/A.csproj",
+      "expandTokens": false
+    },
+    {
+      "path": "src/A/A.cs",
+      "template": "templates/A.cs",
+      "expandTokens": false
+    },
+    {
+      "path": "src/B/B.csproj",
+      "template": "templates/B.csproj",
+      "expandTokens": false
+    },
+    {
+      "path": "src/B/B.cs",
+      "template": "templates/B.cs",
+      "expandTokens": false
+    }
+  ]
+}

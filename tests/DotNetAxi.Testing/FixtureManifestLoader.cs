@@ -68,6 +68,8 @@ internal static class FixtureManifestLoader
 
         var name = ValidateName(document.Name);
         var selectedSdk = ValidateSdk(document.Sdk);
+        var capabilities = ValidateCapabilities(document.Capabilities);
+        var testRunner = ValidateTestRunner(document.TestRunner);
         var identity = new RepositoryFixtureIdentity(
             name,
             document.Seed,
@@ -123,10 +125,17 @@ internal static class FixtureManifestLoader
         files.Add(
             new FixtureMaterializedFile(
                 globalJsonPath,
-                CreateGlobalJson(selectedSdk)));
+                CreateGlobalJson(selectedSdk, testRunner)));
+
+        var buildVerification = ValidateBuild(
+            document.Build,
+            destinations);
 
         return new FixtureMaterializationPlan(
             identity,
+            capabilities,
+            buildVerification,
+            testRunner,
             files
                 .OrderBy(static file => file.RelativePath, StringComparer.Ordinal)
                 .ToArray());
@@ -161,6 +170,109 @@ internal static class FixtureManifestLoader
             sdk.Version,
             sdk.RollForward,
             sdk.AllowPrerelease);
+    }
+
+    private static IReadOnlyList<string> ValidateCapabilities(
+        IReadOnlyList<string>? values)
+    {
+        if (values is null)
+        {
+            return Array.Empty<string>();
+        }
+
+        var capabilities = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var value in values)
+        {
+            if (string.IsNullOrWhiteSpace(value)
+                || value.Any(static character =>
+                    !(char.IsAsciiLetterOrDigit(character)
+                      || character is ':' or '.' or '-' or '_'))
+                || !string.Equals(
+                    value,
+                    value.ToLowerInvariant(),
+                    StringComparison.Ordinal))
+            {
+                throw new FixtureManifestException(
+                    "Fixture capabilities must be lowercase portable identifiers.");
+            }
+
+            if (!capabilities.Add(value))
+            {
+                throw new FixtureManifestException(
+                    $"Fixture capability '{value}' is duplicated.");
+            }
+        }
+
+        return Array.AsReadOnly(
+            capabilities.Order(StringComparer.Ordinal).ToArray());
+    }
+
+    private static string? ValidateTestRunner(string? value) =>
+        value switch
+        {
+            null => null,
+            "VSTest" => value,
+            "Microsoft.Testing.Platform" => value,
+            _ => throw new FixtureManifestException(
+                "Fixture testRunner must be 'VSTest' or 'Microsoft.Testing.Platform'."),
+        };
+
+    private static FixtureBuildVerification? ValidateBuild(
+        FixtureBuildDocument? build,
+        IReadOnlySet<string> destinations)
+    {
+        if (build is null)
+        {
+            return null;
+        }
+
+        var target = NormalizeRelativePath(
+            build.Target,
+            "Fixture build target");
+        if (!destinations.Any(
+                destination => string.Equals(
+                    destination,
+                    target,
+                    StringComparison.Ordinal)))
+        {
+            if (destinations.Contains(target))
+            {
+                throw new FixtureManifestException(
+                    $"Fixture build target '{target}' casing must exactly match its materialized path.");
+            }
+
+            throw new FixtureManifestException(
+                $"Fixture build target '{target}' is not a materialized file.");
+        }
+
+        var expectedOutcome = build.ExpectedOutcome switch
+        {
+            "success" => FixtureBuildOutcome.Success,
+            "failure" => FixtureBuildOutcome.Failure,
+            _ => throw new FixtureManifestException(
+                "Fixture build.expectedOutcome must be 'success' or 'failure'."),
+        };
+        var requiredOutput = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var value in build.RequiredOutput ?? [])
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                throw new FixtureManifestException(
+                    "Fixture build.requiredOutput cannot contain an empty value.");
+            }
+
+            if (!requiredOutput.Add(value))
+            {
+                throw new FixtureManifestException(
+                    $"Fixture required output '{value}' is duplicated.");
+            }
+        }
+
+        return new FixtureBuildVerification(
+            target,
+            expectedOutcome,
+            Array.AsReadOnly(
+                requiredOutput.Order(StringComparer.Ordinal).ToArray()));
     }
 
     private static string NormalizeRelativePath(
@@ -280,10 +392,12 @@ internal static class FixtureManifestLoader
                     StringComparison.Ordinal));
     }
 
-    private static byte[] CreateGlobalJson(FixtureSdkContext selectedSdk)
+    private static byte[] CreateGlobalJson(
+        FixtureSdkContext selectedSdk,
+        string? testRunner)
     {
-        var json = JsonSerializer.Serialize(
-            new
+        object document = testRunner is null
+            ? new
             {
                 sdk = new
                 {
@@ -291,7 +405,22 @@ internal static class FixtureManifestLoader
                     rollForward = selectedSdk.RollForward,
                     allowPrerelease = selectedSdk.AllowPrerelease,
                 },
-            },
+            }
+            : new
+            {
+                sdk = new
+                {
+                    version = selectedSdk.Version,
+                    rollForward = selectedSdk.RollForward,
+                    allowPrerelease = selectedSdk.AllowPrerelease,
+                },
+                test = new
+                {
+                    runner = testRunner,
+                },
+            };
+        var json = JsonSerializer.Serialize(
+            document,
             GeneratedJsonOptions);
         return StrictUtf8.GetBytes(
             json.ReplaceLineEndings("\n") + "\n");
@@ -306,6 +435,12 @@ internal static class FixtureManifestLoader
         public int Seed { get; init; }
 
         public FixtureSdkDocument? Sdk { get; init; }
+
+        public IReadOnlyList<string>? Capabilities { get; init; }
+
+        public string? TestRunner { get; init; }
+
+        public FixtureBuildDocument? Build { get; init; }
 
         public IReadOnlyList<FixtureFileDocument>? Files { get; init; }
     }
@@ -327,8 +462,20 @@ internal static class FixtureManifestLoader
 
         public bool ExpandTokens { get; init; }
     }
+
+    private sealed class FixtureBuildDocument
+    {
+        public string? Target { get; init; }
+
+        public string? ExpectedOutcome { get; init; }
+
+        public IReadOnlyList<string>? RequiredOutput { get; init; }
+    }
 }
 
 internal sealed record FixtureMaterializationPlan(
     RepositoryFixtureIdentity Identity,
+    IReadOnlyList<string> Capabilities,
+    FixtureBuildVerification? BuildVerification,
+    string? TestRunner,
     IReadOnlyList<FixtureMaterializedFile> Files);

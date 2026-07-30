@@ -9,11 +9,13 @@ public enum FixtureExecutionPermissions
     RepositoryCode = 4,
 }
 
+[Flags]
 public enum FixtureProcessKind
 {
-    Tooling,
-    Restore,
-    RepositoryCode,
+    None = 0,
+    Tooling = 1,
+    Restore = 2,
+    RepositoryCode = 4,
 }
 
 public sealed record RepositoryFixtureOptions(
