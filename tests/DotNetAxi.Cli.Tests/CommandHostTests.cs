@@ -34,11 +34,12 @@ public sealed class CommandHostTests
         {
             Arguments = { targetArgument },
         };
-        var rootCommand = new RootCommand
-        {
-            Subcommands = { inspectCommand },
-        };
+        var rootCommand = new RootCommand();
         var host = CreateHost(rootCommand);
+        host.RegisterCommand(
+            rootCommand,
+            inspectCommand,
+            OperationPolicy.Passive);
         var handler = new RecordingHandler<InspectRequest>();
         inspectCommand.BindHandler(
             parseResult => new InspectRequest(
@@ -59,11 +60,12 @@ public sealed class CommandHostTests
         params string[] args)
     {
         var inspectCommand = new Command("inspect");
-        var rootCommand = new RootCommand
-        {
-            Subcommands = { inspectCommand },
-        };
+        var rootCommand = new RootCommand();
         var host = CreateHost(rootCommand);
+        host.RegisterCommand(
+            rootCommand,
+            inspectCommand,
+            OperationPolicy.Passive);
         var handler = new RecordingHandler<InspectRequest>();
         var factoryCalls = 0;
         inspectCommand.BindHandler(
@@ -107,8 +109,76 @@ public sealed class CommandHostTests
         }
     }
 
+    [Fact]
+    public void Registered_operations_are_queryable_before_execution()
+    {
+        var rootCommand = new RootCommand();
+        var inspectCommand = new Command("inspect");
+        var host = CreateHost(rootCommand);
+
+        host.RegisterCommand(
+            rootCommand,
+            inspectCommand,
+            OperationPolicy.Passive);
+
+        Assert.Collection(
+            host.Operations,
+            operation =>
+            {
+                Assert.Equal("home", operation.Name);
+                Assert.Equal(
+                    OperationClassification.Passive,
+                    operation.Policy.Classification);
+            },
+            operation =>
+            {
+                Assert.Equal("inspect", operation.Name);
+                Assert.Same(OperationPolicy.Passive, operation.Policy);
+            });
+    }
+
+    [Fact]
+    public void Production_registry_classifies_every_implemented_command()
+    {
+        var host = CliApplication.Create(
+            new StringWriter(),
+            new StringWriter());
+
+        var operation = Assert.Single(host.Operations);
+        Assert.Equal("home", operation.Name);
+        Assert.Same(OperationPolicy.Passive, operation.Policy);
+        Assert.False(operation.Policy.MayAccessNetwork);
+        Assert.False(operation.Policy.MayExecuteRepositoryCode);
+        Assert.False(operation.Policy.MayWriteArtifacts);
+        Assert.False(operation.Policy.MayWriteMetadata);
+        Assert.False(operation.Policy.MayWriteUserState);
+        Assert.False(operation.Policy.MayWriteSource);
+
+        host.Parse([]);
+    }
+
+    [Fact]
+    public void Unclassified_command_cannot_enter_the_executable_tree()
+    {
+        var rootCommand = new RootCommand();
+        var host = CreateHost(rootCommand);
+        rootCommand.Subcommands.Add(new Command("inspect"));
+
+        var exception = Assert.Throws<InvalidOperationException>(
+            () => host.Parse(["inspect"]));
+
+        Assert.Contains(
+            "no operation classification",
+            exception.Message,
+            StringComparison.Ordinal);
+    }
+
     private static CommandHost CreateHost(RootCommand rootCommand) =>
-        new(rootCommand, new StringWriter(), new StringWriter());
+        new(
+            rootCommand,
+            OperationPolicy.Passive,
+            new StringWriter(),
+            new StringWriter());
 
     private sealed record RootRequest(string? Scope)
     {

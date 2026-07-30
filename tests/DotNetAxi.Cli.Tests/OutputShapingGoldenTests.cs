@@ -61,13 +61,20 @@ public sealed class OutputShapingGoldenTests
         var rootCommand = new RootCommand();
         var searchCommand = new Command("search");
         var symbolCommand = new Command("symbol");
-        searchCommand.Subcommands.Add(symbolCommand);
-        rootCommand.Subcommands.Add(searchCommand);
         var output = new StringWriter();
         var host = new CommandHost(
             rootCommand,
+            OperationPolicy.Passive,
             output,
             new StringWriter());
+        host.RegisterCommand(
+            rootCommand,
+            searchCommand,
+            OperationPolicy.Passive);
+        host.RegisterCommand(
+            searchCommand,
+            symbolCommand,
+            OperationPolicy.Passive);
         var factoryCalls = 0;
         symbolCommand.BindHandler(
             _ => CreateFields().Select(["owner"]),

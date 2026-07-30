@@ -138,6 +138,14 @@ Every command MUST be classified as:
   analyzer execution, source-generator execution, SDK mutations, or another
   operation capable of executing repository- or dependency-provided code.
 
+Classification is typed policy data registered before command parsing or
+validation planning. Each policy independently declares network access,
+repository-code execution, artifact writes, metadata writes, user-state
+writes, and source writes. Registries reject missing policies and contradictory
+combinations. In particular, passive operations cannot access the network,
+execute repository code, or write source, and validation checks cannot write
+source under either classification.
+
 Executing a command is explicit consent for the selected operation to run
 repository or dependency code with the caller's operating-system permissions.
 Help and final output MUST disclose the classification. Session-start

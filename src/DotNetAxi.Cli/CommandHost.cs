@@ -6,6 +6,7 @@ namespace DotNetAxi.Cli;
 public sealed class CommandHost
 {
     private readonly RootCommand _rootCommand;
+    private readonly CommandOperationRegistry _operations;
     private readonly TextWriter _output;
     private readonly TextWriter _error;
     private readonly ICommandResponseWriter _responseWriter;
@@ -17,11 +18,15 @@ public sealed class CommandHost
 
     public CommandHost(
         RootCommand rootCommand,
+        OperationPolicy rootPolicy,
         TextWriter output,
         TextWriter error)
     {
         _rootCommand = rootCommand
             ?? throw new ArgumentNullException(nameof(rootCommand));
+        _operations = new CommandOperationRegistry(
+            _rootCommand,
+            rootPolicy ?? throw new ArgumentNullException(nameof(rootPolicy)));
         _output = output
             ?? throw new ArgumentNullException(nameof(output));
         _error = error
@@ -34,9 +39,19 @@ public sealed class CommandHost
 
     public ICommandDiagnostics Diagnostics { get; }
 
+    public IReadOnlyList<CommandOperation> Operations =>
+        _operations.Operations;
+
+    public CommandOperation RegisterCommand(
+        Command parent,
+        Command command,
+        OperationPolicy policy) =>
+        _operations.Add(parent, command, policy);
+
     public ParseResult Parse(IReadOnlyList<string> args)
     {
         ArgumentNullException.ThrowIfNull(args);
+        _operations.EnsureComplete(_rootCommand);
         return _rootCommand.Parse(args, _parserConfiguration);
     }
 
