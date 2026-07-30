@@ -53,8 +53,19 @@ jobs:
         with:
           node-version: 24
 
-      - name: Strict-decode TOON v4.1 fixtures
+      - name: Strict-decode production TOON v4.1 documents
         run: |
-          for fixture in tests/DotNetAxi.Cli.Tests/Fixtures/*.toon; do
-            npx --yes @toon-format/cli@4.1.0 --decode --strict "$fixture" > /dev/null
-          done
+          set -euo pipefail
+          find \
+            tests/DotNetAxi.Cli.Tests/Fixtures \
+            artifacts/toon-conformance \
+            -type f \
+            -name '*.toon' \
+            -print0 |
+            sort -z |
+            while IFS= read -r -d '' document; do
+              timeout 2m npx --yes @toon-format/cli@4.1.0 \
+                --decode \
+                --strict \
+                "$document" > /dev/null
+            done

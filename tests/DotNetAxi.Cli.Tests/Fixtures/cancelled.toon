@@ -1,0 +1,7 @@
+schema: dotnet-axi/v1
+command: analyze
+status: cancelled
+error:
+  code: operation.cancelled
+  message: Analysis was cancelled.
+  correction: Run the command again when analysis can complete.
