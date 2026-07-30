@@ -40,6 +40,7 @@ persistent installation:
 ```bash
 dnx dotnet-axi@0.1.0-alpha.1 \
   --source ./artifacts/packages \
+  --verbosity quiet \
   -- --version
 ```
 

@@ -249,7 +249,7 @@ On .NET 10 or later, one-shot `dnx` execution is the non-persistent,
 `npx`-style path:
 
 ```bash
-dnx dotnet-axi@<version> -- --version
+dnx dotnet-axi@<version> --verbosity quiet -- --version
 ```
 
 Version milestones and external package publication follow the explicit
@@ -259,6 +259,21 @@ Direct global invocation (`dnaxi`), local-tool invocation
 (`dotnet tool run dnaxi`), and one-shot `dnx` execution expose the same CLI
 contract. Setup records an invocation valid for the selected installation and
 repairs it idempotently if the installation moves.
+
+The canonical command vectors are:
+
+| Installation | Command vector before operation arguments |
+|---|---|
+| Global tool | `dnaxi` |
+| Local manifest | `dotnet tool run dnaxi --` |
+| One-shot | `dnx dotnet-axi@<version> --verbosity quiet --` |
+
+Package verification gives global and local installs separate temporary CLI
+homes and package caches, compares representative structured output across all
+three vectors, updates persistent installs in place, and uninstalls them.
+One-shot execution never modifies either persistent installation.
+Quiet host verbosity is required for one-shot execution so cold NuGet
+acquisition messages cannot contaminate structured stdout.
 
 The framework-dependent package targets `net10.0` with platform-neutral tool
 assets, command name `dnaxi`, Apache-2.0 metadata, repository/readme metadata,
