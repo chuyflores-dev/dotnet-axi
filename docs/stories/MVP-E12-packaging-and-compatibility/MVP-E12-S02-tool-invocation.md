@@ -2,7 +2,8 @@
 
 ## Outcome
 
-Global-tool and local-manifest installation expose the same CLI behavior.
+Global-tool, local-manifest, and one-shot `dnx` invocation expose the same CLI
+behavior.
 
 ## Design
 
@@ -15,15 +16,15 @@ semantics or output schema.
 
 ## Acceptance
 
-- Direct global invocation and `dotnet tool run` execute the same packaged
-  version and representative commands.
+- Direct global invocation, `dotnet tool run`, and `dnx` execute the same
+  packaged version and representative commands.
 - Executable discovery and setup receive the correct invocation for each
   installation type.
 
 ## Verification
 
 - Isolated smoke tests install, invoke, update-in-place, uninstall, and compare
-  both installation modes.
+  persistent global/local modes plus non-persistent `dnx`.
 
 ## Dependencies
 

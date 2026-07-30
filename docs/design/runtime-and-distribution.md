@@ -245,13 +245,31 @@ Primary distribution SHOULD be a .NET global/local tool:
 dotnet tool install --global dotnet-axi
 ```
 
+On .NET 10 or later, one-shot `dnx` execution is the non-persistent,
+`npx`-style path:
+
+```bash
+dnx dotnet-axi@<version> -- --version
+```
+
 Version milestones and external package publication follow the explicit
 [release and versioning policy](releases.md).
 
-Both direct global invocation (`dnaxi`) and local-tool invocation
-(`dotnet tool run dnaxi`) expose the same CLI contract. Setup records an
-invocation valid for the selected installation and repairs it idempotently if
-the installation moves.
+Direct global invocation (`dnaxi`), local-tool invocation
+(`dotnet tool run dnaxi`), and one-shot `dnx` execution expose the same CLI
+contract. Setup records an invocation valid for the selected installation and
+repairs it idempotently if the installation moves.
+
+The framework-dependent package targets `net10.0` with platform-neutral tool
+assets, command name `dnaxi`, Apache-2.0 metadata, repository/readme metadata,
+and a portable `.snupkg`. Its application and pinned runtime dependencies are
+contained in the tool package; Git and optional search engines are not install
+prerequisites.
+
+Package verification may create an ignored local artifact, inspect both
+archives, and install or execute them from isolated temporary stores. This is
+continuous verification, not publication, and follows the release-policy
+credential boundary.
 
 Self-update behavior is not fixed by the MVP design; normal .NET tool update
 mechanisms remain sufficient.

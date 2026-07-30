@@ -21,6 +21,28 @@ dotnet build dotnet-axi.slnx --configuration Release --no-restore
 dotnet test dotnet-axi.slnx --configuration Release --no-build
 ```
 
+## Local package
+
+Create and verify a disposable local package without publishing it:
+
+```bash
+dotnet pack src/DotNetAxi.Cli/DotNetAxi.Cli.csproj \
+  --configuration Release \
+  --output artifacts/packages
+
+pwsh ./eng/verify-tool-package.ps1 \
+  -PackageDirectory artifacts/packages
+```
+
+With .NET 10 or later, the local package can be invoked once without a
+persistent installation:
+
+```bash
+dnx dotnet-axi@0.1.0-alpha.1 \
+  --source ./artifacts/packages \
+  -- --version
+```
+
 ## License
 
 Licensed under the [Apache License 2.0](LICENSE).
