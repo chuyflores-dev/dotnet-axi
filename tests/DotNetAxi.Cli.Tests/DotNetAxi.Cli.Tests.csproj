@@ -19,6 +19,9 @@
 
   <ItemGroup>
     <ProjectReference Include="../../src/DotNetAxi.Cli/DotNetAxi.Cli.csproj" />
+    <ProjectReference
+      Include="../DotNetAxi.Cli.TestApp/DotNetAxi.Cli.TestApp.csproj"
+      ReferenceOutputAssembly="false" />
   </ItemGroup>
 
   <ItemGroup>

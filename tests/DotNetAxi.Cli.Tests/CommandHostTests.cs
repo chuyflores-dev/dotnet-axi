@@ -1,4 +1,5 @@
 using System.CommandLine;
+using DotNetAxi.Contracts;
 
 namespace DotNetAxi.Cli.Tests;
 
@@ -12,11 +13,12 @@ public sealed class CommandHostTests
         {
             Options = { scopeOption },
         };
+        var host = CreateHost(rootCommand);
         var handler = new RecordingHandler<RootRequest>();
         rootCommand.BindHandler(
             parseResult => new RootRequest(parseResult.GetValue(scopeOption)),
-            () => handler);
-        var host = CreateHost(rootCommand);
+            () => handler,
+            host.ResponseWriter);
 
         var exitCode = await host.InvokeAsync(["--scope", "repository"]);
 
@@ -36,12 +38,13 @@ public sealed class CommandHostTests
         {
             Subcommands = { inspectCommand },
         };
+        var host = CreateHost(rootCommand);
         var handler = new RecordingHandler<InspectRequest>();
         inspectCommand.BindHandler(
             parseResult => new InspectRequest(
                 parseResult.GetRequiredValue(targetArgument)),
-            () => handler);
-        var host = CreateHost(rootCommand);
+            () => handler,
+            host.ResponseWriter);
 
         var exitCode = await host.InvokeAsync(["inspect", "Widget"]);
 
@@ -60,6 +63,7 @@ public sealed class CommandHostTests
         {
             Subcommands = { inspectCommand },
         };
+        var host = CreateHost(rootCommand);
         var handler = new RecordingHandler<InspectRequest>();
         var factoryCalls = 0;
         inspectCommand.BindHandler(
@@ -68,8 +72,8 @@ public sealed class CommandHostTests
             {
                 factoryCalls++;
                 return handler;
-            });
-        var host = CreateHost(rootCommand);
+            },
+            host.ResponseWriter);
 
         var exitCode = await host.InvokeAsync(args);
 
@@ -82,10 +86,11 @@ public sealed class CommandHostTests
     public async Task Invocation_does_not_read_standard_input()
     {
         var rootCommand = new RootCommand();
+        var host = CreateHost(rootCommand);
         rootCommand.BindHandler(
             static _ => RootRequest.Empty,
-            static () => new RecordingHandler<RootRequest>());
-        var host = CreateHost(rootCommand);
+            static () => new RecordingHandler<RootRequest>(),
+            host.ResponseWriter);
         var originalInput = Console.In;
 
         try
@@ -116,14 +121,22 @@ public sealed class CommandHostTests
     {
         public List<TRequest> Requests { get; } = [];
 
-        public ValueTask<int> HandleAsync(
+        public ValueTask<ICommandResult> HandleAsync(
             TRequest request,
             CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
             Requests.Add(request);
-            return ValueTask.FromResult(0);
+            return ValueTask.FromResult<ICommandResult>(
+                CommandResult<RecordingPayload>.Success(
+                    "test",
+                    RecordingPayload.Instance));
         }
+    }
+
+    private sealed record RecordingPayload
+    {
+        public static RecordingPayload Instance { get; } = new();
     }
 
     private sealed class ThrowingTextReader : TextReader

@@ -1,4 +1,5 @@
 using System.CommandLine;
+using DotNetAxi.Contracts;
 
 namespace DotNetAxi.Cli;
 
@@ -7,6 +8,7 @@ public sealed class CommandHost
     private readonly RootCommand _rootCommand;
     private readonly TextWriter _output;
     private readonly TextWriter _error;
+    private readonly ICommandResponseWriter _responseWriter;
     private readonly ParserConfiguration _parserConfiguration = new()
     {
         EnablePosixBundling = false,
@@ -24,7 +26,13 @@ public sealed class CommandHost
             ?? throw new ArgumentNullException(nameof(output));
         _error = error
             ?? throw new ArgumentNullException(nameof(error));
+        _responseWriter = new CommandResponseWriter(_output);
+        Diagnostics = new CommandDiagnostics(_error);
     }
+
+    public ICommandResponseWriter ResponseWriter => _responseWriter;
+
+    public ICommandDiagnostics Diagnostics { get; }
 
     public ParseResult Parse(IReadOnlyList<string> args)
     {
@@ -32,11 +40,21 @@ public sealed class CommandHost
         return _rootCommand.Parse(args, _parserConfiguration);
     }
 
-    public Task<int> InvokeAsync(
+    public async Task<int> InvokeAsync(
         IReadOnlyList<string> args,
         CancellationToken cancellationToken = default)
     {
         var parseResult = Parse(args);
+        var command = CommandName.From(parseResult);
+
+        if (parseResult.Errors.Count > 0)
+        {
+            var result = UsageErrorResult.Create(parseResult, command);
+            return await _responseWriter
+                .WriteAsync(result, CliExitCode.Usage, cancellationToken)
+                .ConfigureAwait(false);
+        }
+
         var invocationConfiguration = new InvocationConfiguration
         {
             EnableDefaultExceptionHandler = false,
@@ -44,6 +62,44 @@ public sealed class CommandHost
             Error = _error,
         };
 
-        return parseResult.InvokeAsync(invocationConfiguration, cancellationToken);
+        try
+        {
+            return await parseResult
+                .InvokeAsync(invocationConfiguration, cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            var result = CommandResult<NoPayload>.Cancelled(
+                command,
+                errors:
+                [
+                    new ResultError(
+                        "operation.cancelled",
+                        $"The `{command}` operation was cancelled.",
+                        "Run the command again when the operation can complete."),
+                ]);
+
+            return await _responseWriter
+                .WriteAsync(result, CliExitCode.Failure, CancellationToken.None)
+                .ConfigureAwait(false);
+        }
+        catch (Exception)
+        {
+            var result = CommandResult<NoPayload>.Failed(
+                command,
+                [
+                    new ResultError(
+                        "internal.unhandled",
+                        $"The `{command}` operation failed unexpectedly.",
+                        "Retry the command; report the command and inputs if the failure persists."),
+                ]);
+
+            return await _responseWriter
+                .WriteAsync(result, CliExitCode.Failure, CancellationToken.None)
+                .ConfigureAwait(false);
+        }
     }
+
+    private sealed record NoPayload;
 }

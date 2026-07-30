@@ -1,8 +1,10 @@
+using DotNetAxi.Contracts;
+
 namespace DotNetAxi.Cli;
 
 public interface ICommandHandler<in TRequest>
 {
-    ValueTask<int> HandleAsync(
+    ValueTask<ICommandResult> HandleAsync(
         TRequest request,
         CancellationToken cancellationToken);
 }
