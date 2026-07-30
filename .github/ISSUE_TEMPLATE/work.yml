@@ -1,0 +1,32 @@
+name: Tracked work
+description: Track a repository-defined epic or story.
+title: ""
+body:
+  - type: input
+    id: work_item
+    attributes:
+      label: Work item
+      description: Link the repository file that defines this epic or story.
+      placeholder: docs/stories/MVP-E01-cli-and-output/...
+    validations:
+      required: true
+
+  - type: dropdown
+    id: kind
+    attributes:
+      label: Kind
+      options:
+        - Epic
+        - Story
+    validations:
+      required: true
+
+  - type: textarea
+    id: coordination
+    attributes:
+      label: Execution notes
+      description: Add only live coordination that does not belong in the durable work item.
+      placeholder: |
+        Parent or child issue:
+        Current blocker:
+        Coordination note:
