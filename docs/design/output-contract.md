@@ -117,7 +117,7 @@ prompts interactively.
 
 ## Home, help, and suggestions
 
-Running `dotnet-axi` with no arguments shows live workspace state rather than a
+Running `dnaxi` with no arguments shows live workspace state rather than a
 general manual. It includes executable path using `~`, a one-sentence
 description, workspace path, selected solution/project, cheap project/source
 counts, changed-file count, cheap diagnostic status, and a few contextual
@@ -153,7 +153,7 @@ Unknown requested fields fail with exit `2`; they are not ignored.
 schema: dotnet-axi/v1
 command: home
 status: success
-bin: ~/.dotnet/tools/dotnet-axi
+bin: ~/.dotnet/tools/dnaxi
 description: "Search, analyze, validate, and safely change the current .NET workspace"
 workspace:
   root: ~/src/credit-platform
@@ -167,9 +167,9 @@ analysis:
   status: not_loaded
   compiler_errors: unknown
 suggestions[3]{command}:
-  Run `dotnet-axi search symbol '<name>'`
-  Run `dotnet-axi analyze changed`
-  Run `dotnet-axi validate --profile fast`
+  Run `dnaxi search symbol '<name>'`
+  Run `dnaxi analyze changed`
+  Run `dnaxi validate --profile fast`
 ```
 
 ### Structural search
@@ -190,8 +190,8 @@ matches[3]{id,file,line,construct}:
   ast_02,src/Payments/PaymentRepository.cs,112,invocation
   ast_03,tests/DbFixture.cs,39,invocation
 suggestions[2]{command}:
-  Run `dotnet-axi show document <path>`
-  Run `dotnet-axi search structural --pattern '<pattern>' --verify-as invocation`
+  Run `dnaxi show document <path>`
+  Run `dnaxi search structural --pattern '<pattern>' --verify-as invocation`
 ```
 
 ### Verified partial search
@@ -216,7 +216,7 @@ matches[2]{id,kind,name,location}:
   sym_8k2m,method,DbContext.SaveChangesAsync,"src/Orders/OrderRepository.cs:84"
   sym_5p7q,method,DbContext.SaveChangesAsync,"src/Payments/PaymentRepository.cs:112"
 suggestions[1]{command}:
-  Run `dotnet-axi restore` before repeating with `--complete`
+  Run `dnaxi restore` before repeating with `--complete`
 ```
 
 ### Explicit empty result
@@ -273,7 +273,7 @@ callers[2]{id,name,location,confidence}:
   sym_2m9c,CreditEndpoint.Handle,"src/Api/CreditEndpoint.cs:31",verified
   sym_4n1x,RenewalWorker.ExecuteAsync,"src/Workers/RenewalWorker.cs:48",verified
 suggestions[1]{command}:
-  Run `dotnet-axi search callers sym_8k2m --complete`
+  Run `dnaxi search callers sym_8k2m --complete`
 ```
 
 ### Validation

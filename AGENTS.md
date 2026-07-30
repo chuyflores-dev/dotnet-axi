@@ -3,7 +3,7 @@
 ## Purpose
 
 `dotnet-axi` is an agent-first CLI for deterministic .NET discovery, analysis,
-validation, and safe modification.
+validation, and safe modification. Its installed command is `dnaxi`.
 
 ## Context routing
 
@@ -17,11 +17,18 @@ live status and coordination. Design references define accepted product and
 technical behavior. Do not create ad hoc TODO, progress, memory, or backlog
 files elsewhere in the repository.
 
-## Current repository state
+## Canonical verification
 
-The repository is in pre-implementation design. There are no build, test, lint,
-or validation commands yet. Add canonical commands here in the same pull
-request that introduces the executable scaffold.
+Use the SDK selected by `global.json` and run:
+
+```bash
+dotnet restore dotnet-axi.slnx
+dotnet build dotnet-axi.slnx --configuration Release --no-restore
+dotnet test dotnet-axi.slnx --configuration Release --no-build
+```
+
+Add narrower or stronger checks as implementation introduces them. Do not add
+documentation-only validation workflows.
 
 ## Working agreements
 

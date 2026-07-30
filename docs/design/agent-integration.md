@@ -10,9 +10,9 @@ behavior.
 Integrations are installed only by user-invoked commands:
 
 ```bash
-dotnet-axi setup claude-code
-dotnet-axi setup codex
-dotnet-axi setup opencode
+dnaxi setup claude-code
+dnaxi setup codex
+dnaxi setup opencode
 ```
 
 Claude Code and Codex setup ship in the MVP. Until Phase 2,
@@ -95,7 +95,7 @@ Guidance SHOULD teach agents to:
 - Run standard validation before completion.
 
 Guidance MUST tell agents not to claim completion solely because files changed.
-Completion SHOULD use the strongest applicable `dotnet-axi validate` evidence
+Completion SHOULD use the strongest applicable `dnaxi validate` evidence
 available within the requested scope.
 
 ## Agent-facing composition
