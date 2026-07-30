@@ -71,9 +71,26 @@ belongs to `MVP-E13-S05`.
 Collection rows default to approximately three or four fields. Additional
 fields are opt-in through `--fields`.
 
+Each command declares its available fields in a canonical order and marks its
+compact default set. Requested fields augment those defaults; duplicate names
+collapse, and rows retain command-declared order rather than request order.
+Field names are ordinal and case-sensitive. An unknown requested field fails
+with exit `2`, reports `usage.unknown_field`, and lists the valid fields before
+the handler or an executing dependency is created.
+
+For a bounded collection, `count` is the number of rows actually included.
+`total_known` states whether `total` and `omitted` are authoritative;
+`truncated` is always explicit. Truncated results include a complete
+`retrieval_command` using `--full` or a sufficient larger limit. Collection
+helpers inspect at most one row beyond the limit when a backend does not
+provide a total.
+
 Large text includes a useful preview, total known size, truncation notice, and
 a `--full` or larger-budget escape hatch. Default previews SHOULD generally be
-500–1,500 characters.
+500–1,500 characters. Character budgets count Unicode scalar values so a
+preview never splits a UTF-16 surrogate pair. Text reports included, total,
+and omitted character counts, and requires a complete `retrieval_command`
+whenever it is truncated.
 
 Commands that can return unbounded collections or source support applicable
 controls such as `--limit`, `--fields`, `--max-chars`, `--max-depth`, and

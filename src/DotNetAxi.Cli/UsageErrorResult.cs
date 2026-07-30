@@ -35,6 +35,38 @@ internal static class UsageErrorResult
             new UsageErrorPayload(validFlags));
     }
 
+    public static ICommandResult Create(
+        UnknownOutputFieldsException exception,
+        string command)
+    {
+        ArgumentNullException.ThrowIfNull(exception);
+        ArgumentException.ThrowIfNullOrWhiteSpace(command);
+
+        var unknown = string.Join(
+            ", ",
+            exception.UnknownFields.Select(static field => $"`{field}`"));
+        var message = exception.UnknownFields.Count == 1
+            ? $"Unknown field {unknown} for `{command}`."
+            : $"Unknown fields {unknown} for `{command}`.";
+        var available = string.Join(
+            ", ",
+            exception.AvailableFields.Select(static field => $"`{field}`"));
+        var correction = $"Use `--fields` with one or more of: {available}.";
+        var validFields = exception.AvailableFields
+            .Select(static name => new UsageField(name))
+            .ToArray();
+
+        return CommandResult<UsageFieldErrorPayload>.Failed(
+            command,
+            [
+                new ResultError(
+                    "usage.unknown_field",
+                    message,
+                    correction),
+            ],
+            new UsageFieldErrorPayload(validFields));
+    }
+
     private static string CreateMessage(
         string command,
         IReadOnlyList<string> invalidInputs,
@@ -65,4 +97,9 @@ internal static class UsageErrorResult
         IReadOnlyList<UsageFlag> ValidFlags);
 
     private sealed record UsageFlag(string Name);
+
+    private sealed record UsageFieldErrorPayload(
+        IReadOnlyList<UsageField> ValidFields);
+
+    private sealed record UsageField(string Name);
 }
