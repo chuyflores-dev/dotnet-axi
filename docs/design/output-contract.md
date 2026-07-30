@@ -115,6 +115,13 @@ valid flags or concise help, and provide renamed-flag guidance when known.
 Every operation is fully expressible through flags and arguments; no operation
 prompts interactively.
 
+The CLI command host uses the pinned stable `System.CommandLine` 2.x parser
+behind a tool-owned boundary. Parsing produces CLI-owned typed request records;
+handler factories and their dependencies are created only after parsing
+succeeds. Response-file expansion and bundled short options are disabled so
+parsing does not read hidden input or infer undeclared aliases. Invocation
+receives explicit stdout and stderr writers and never reads stdin.
+
 ## Home, help, and suggestions
 
 Running `dnaxi` with no arguments shows live workspace state rather than a

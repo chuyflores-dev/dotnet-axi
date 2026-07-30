@@ -6,6 +6,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="System.CommandLine" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="../DotNetAxi.Analysis/DotNetAxi.Analysis.csproj" />
     <ProjectReference Include="../DotNetAxi.Axi/DotNetAxi.Axi.csproj" />
     <ProjectReference Include="../DotNetAxi.Changes/DotNetAxi.Changes.csproj" />

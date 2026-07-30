@@ -2,9 +2,11 @@ namespace DotNetAxi.Cli;
 
 public static class Program
 {
-    public static int Main(string[] args)
+    public static Task<int> Main(string[] args)
     {
         ArgumentNullException.ThrowIfNull(args);
-        return 0;
+        return CliApplication
+            .Create(Console.Out, Console.Error)
+            .InvokeAsync(args);
     }
 }
