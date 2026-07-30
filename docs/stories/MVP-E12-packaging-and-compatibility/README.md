@@ -42,6 +42,7 @@ accelerators are outside the MVP.
 - [MVP-E12-S06 — Verify the SDK matrix](MVP-E12-S06-sdk-matrix.md)
 - [MVP-E12-S07 — Isolate incompatible compiler hosts](MVP-E12-S07-host-isolation.md)
 - [MVP-E12-S08 — Publish compatibility evidence](MVP-E12-S08-compatibility-evidence.md)
+- [MVP-E12-S09 — Plan release versions and publishing](MVP-E12-S09-release-version-plan.md)
 
 ## Complete when
 

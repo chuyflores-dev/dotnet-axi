@@ -24,6 +24,7 @@ progress logs, or document-version metadata.
 | Claude Code, Codex, and future agent setup | [Agent integration](design/agent-integration.md) |
 | TOON output, errors, exit codes, budgets, examples, and schema evolution | [Output contract](design/output-contract.md) |
 | Cache freshness, configuration, security, packaging, and component boundaries | [Runtime and distribution](design/runtime-and-distribution.md) |
+| Product versions, release milestones, and package publishing | [Releases and versioning](design/releases.md) |
 | Performance targets, test strategy, and agent-task evaluation | [Quality](design/quality.md) |
 
 ## How to use these documents
