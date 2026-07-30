@@ -35,4 +35,5 @@ success by prose or partial evidence.
 - `MVP-E13-S06`
 - `MVP-E13-S07`
 - `MVP-E13-S09`
-- `MVP-E13-S11`
+- `MVP-E13-S13`
+- `MVP-E13-S14`

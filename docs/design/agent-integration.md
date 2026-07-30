@@ -79,12 +79,40 @@ cannot run.
 
 ## Generated Agent Skill
 
-The product ships an installable Agent Skill as a secondary discovery path.
-Skill and home-view guidance are generated from one source, with a CI check
-that detects stale generated content. Generated skills do not contain live
-workspace state.
+The repository ships a portable Agent Skill at
+`skills/dotnet-axi/SKILL.md`. Agent Skills tooling can install it for one
+repository or for the user:
 
-Guidance SHOULD teach agents to:
+```bash
+npx skills add chuyflores-dev/dotnet-axi --skill dotnet-axi
+npx skills add chuyflores-dev/dotnet-axi --skill dotnet-axi -g
+```
+
+The skill is an automatically discovered guide rather than a user-facing
+slash command. It uses portable `name` and `description` metadata and does not
+require one agent's private prompt or configuration format.
+Format portability does not expand the supported setup matrix: the MVP
+verifies Codex and Claude Code, while `setup opencode` remains explicitly
+unsupported.
+
+The skill teaches one-shot `dnx dotnet-axi -- <command>` invocation so an agent
+does not require a permanent global-tool installation. A verified local or
+global invocation MAY be used when available. Guidance treats the invoked
+tool's help, version, and capability output as authoritative and never assumes
+that a command exists merely because a newer skill mentions it.
+
+Skill, structured-help, and home-view guidance are generated from one
+canonical command-guidance source, with a CI check that detects stale generated
+content. The committed skill and the copy carried by the release package are
+byte-identical. Generated skills do not contain live workspace state.
+
+Guidance SHOULD say when `dnaxi` is useful and when a direct operation is
+smaller. Agents use it for supported .NET workspace discovery, source
+discovery, semantic evidence, impact, analysis, and validation. They skip it
+for non-.NET work or a simple read of an already-known file.
+
+When the invoked version exposes the relevant capability, guidance SHOULD
+teach agents to:
 
 - Use text search for literals.
 - Use structural search for syntax shape.

@@ -10,7 +10,8 @@ performance, and complete agent-task outcomes.
 - Shared unit, integration, oracle, golden-output, cross-platform, and security
   test infrastructure.
 - Deterministic large-repository fixture and cold P95 benchmark harness.
-- Repeatable agent-task baseline and candidate harness.
+- Agent-neutral task and runner contracts with Codex-first and later Claude
+  adapters.
 - Release evidence for the documented performance and agent-experience gates.
 
 ## Boundary
@@ -41,12 +42,15 @@ testing until the end.
 - [MVP-E13-S08 — Generate the large-repository fixture](MVP-E13-S08-large-repository-fixture.md)
 - [MVP-E13-S09 — Measure cold P95 performance](MVP-E13-S09-performance-harness.md)
 - [MVP-E13-S10 — Define the agent-task corpus](MVP-E13-S10-agent-task-corpus.md)
-- [MVP-E13-S11 — Run agent benchmark comparisons](MVP-E13-S11-agent-benchmark-runner.md)
+- [MVP-E13-S11 — Build the agent benchmark runner](MVP-E13-S11-agent-benchmark-runner.md)
+- [MVP-E13-S13 — Add the Codex benchmark adapter](MVP-E13-S13-codex-benchmark-adapter.md)
+- [MVP-E13-S14 — Add the Claude benchmark adapter](MVP-E13-S14-claude-benchmark-adapter.md)
 - [MVP-E13-S12 — Produce release-gate evidence](MVP-E13-S12-release-gates.md)
 
 ## Complete when
 
 - Required correctness, platform, security, and cold-performance gates pass on
   the published matrix and designated runner.
-- Agent-task runs demonstrate the MVP release-bar outcome against the
-  documented raw-tool baseline with reproducible evidence.
+- Codex and Claude agent-task runs independently demonstrate the MVP
+  release-bar outcome against the documented raw-tool baseline with
+  reproducible evidence.
