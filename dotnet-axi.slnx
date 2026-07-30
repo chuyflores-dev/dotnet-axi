@@ -15,5 +15,6 @@
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/DotNetAxi.Cli.Tests/DotNetAxi.Cli.Tests.csproj" />
+    <Project Path="tests/DotNetAxi.Contracts.Tests/DotNetAxi.Contracts.Tests.csproj" />
   </Folder>
 </Solution>
