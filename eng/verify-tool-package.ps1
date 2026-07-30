@@ -66,6 +66,51 @@ function Assert-PortablePdb {
     }
 }
 
+function Resolve-CommandPath {
+    param(
+        [Parameter(Mandatory)]
+        [string] $Command,
+
+        [hashtable] $Environment = @{}
+    )
+
+    if (-not [string]::IsNullOrEmpty(
+            [System.IO.Path]::GetDirectoryName($Command))) {
+        return $Command
+    }
+
+    $searchPath = if ($Environment.ContainsKey("PATH")) {
+        [string] $Environment["PATH"]
+    }
+    else {
+        [System.Environment]::GetEnvironmentVariable("PATH")
+    }
+    $extensions = @("")
+    if ([System.OperatingSystem]::IsWindows() -and
+        [string]::IsNullOrEmpty([System.IO.Path]::GetExtension($Command))) {
+        $pathExtensions = [System.Environment]::GetEnvironmentVariable(
+            "PATHEXT")
+        $extensions += $pathExtensions -split ";"
+    }
+
+    foreach ($directory in $searchPath -split [System.IO.Path]::PathSeparator) {
+        if ([string]::IsNullOrWhiteSpace($directory)) {
+            continue
+        }
+
+        foreach ($extension in $extensions) {
+            $candidate = [System.IO.Path]::Combine(
+                $directory,
+                $Command + $extension)
+            if (Test-Path -LiteralPath $candidate -PathType Leaf) {
+                return $candidate
+            }
+        }
+    }
+
+    throw "Command '$Command' was not found on the selected PATH."
+}
+
 function Invoke-Captured {
     param(
         [Parameter(Mandatory)]
@@ -74,17 +119,27 @@ function Invoke-Captured {
         [Parameter(Mandatory)]
         [string[]] $Arguments,
 
-        [hashtable] $Environment = @{}
+        [hashtable] $Environment = @{},
+
+        [string] $WorkingDirectory,
+
+        [TimeSpan] $Timeout = [TimeSpan]::FromMinutes(2)
     )
 
     $startInfo = [System.Diagnostics.ProcessStartInfo]::new()
-    $startInfo.FileName = $FileName
+    $startInfo.FileName = Resolve-CommandPath `
+        -Command $FileName `
+        -Environment $Environment
     $startInfo.UseShellExecute = $false
     $startInfo.CreateNoWindow = $true
     $startInfo.RedirectStandardOutput = $true
     $startInfo.RedirectStandardError = $true
     $startInfo.Environment["DOTNET_CLI_TELEMETRY_OPTOUT"] = "1"
+    $startInfo.Environment["DOTNET_NOLOGO"] = "1"
     $startInfo.Environment["DOTNET_SKIP_FIRST_TIME_EXPERIENCE"] = "1"
+    if (-not [string]::IsNullOrWhiteSpace($WorkingDirectory)) {
+        $startInfo.WorkingDirectory = $WorkingDirectory
+    }
     foreach ($name in $Environment.Keys) {
         $startInfo.Environment[$name] = [string] $Environment[$name]
     }
@@ -101,7 +156,12 @@ function Invoke-Captured {
 
         $standardOutput = $process.StandardOutput.ReadToEndAsync()
         $standardError = $process.StandardError.ReadToEndAsync()
-        $process.WaitForExit()
+        if (-not $process.WaitForExit([int] $Timeout.TotalMilliseconds)) {
+            $process.Kill($true)
+            $process.WaitForExit()
+            throw "'$FileName' timed out after $($Timeout.TotalSeconds) seconds."
+        }
+
         return [pscustomobject]@{
             ExitCode = $process.ExitCode
             StandardOutput = $standardOutput.GetAwaiter().GetResult()
@@ -110,6 +170,20 @@ function Invoke-Captured {
     }
     finally {
         $process.Dispose()
+    }
+}
+
+function Assert-Success {
+    param(
+        [Parameter(Mandatory)]
+        [pscustomobject] $Result,
+
+        [Parameter(Mandatory)]
+        [string] $Operation
+    )
+
+    if ($Result.ExitCode -ne 0) {
+        throw "$Operation exited $($Result.ExitCode). stderr: $($Result.StandardError)"
     }
 }
 
@@ -149,6 +223,66 @@ function Assert-VersionOutput {
         if ($lines -notcontains $line) {
             throw "Version output is missing '$line'. Output: $($Result.StandardOutput)"
         }
+    }
+}
+
+function Assert-HelpOutput {
+    param(
+        [Parameter(Mandatory)]
+        [pscustomobject] $Result,
+
+        [bool] $RequireEmptyStandardError = $true
+    )
+
+    Assert-Success -Result $Result -Operation "Help invocation"
+
+    if ($RequireEmptyStandardError -and $Result.StandardError.Length -ne 0) {
+        throw "Help invocation wrote unexpected stderr: $($Result.StandardError)"
+    }
+
+    if ($Result.StandardOutput.Contains("`r")) {
+        throw "Help output contains a carriage return instead of LF-only output."
+    }
+
+    $lines = $Result.StandardOutput -split "`n"
+    $requiredLines = @(
+        "schema: dotnet-axi/v1",
+        "command: help",
+        "status: success",
+        "topic: home",
+        "classification: passive",
+        "arguments: []"
+    )
+    foreach ($line in $requiredLines) {
+        if ($lines -notcontains $line) {
+            throw "Help output is missing '$line'. Output: $($Result.StandardOutput)"
+        }
+    }
+
+    if (-not $Result.StandardOutput.Contains("dnaxi --version")) {
+        throw "Help output does not contain the registered version example."
+    }
+}
+
+function Assert-SameOutput {
+    param(
+        [Parameter(Mandatory)]
+        [pscustomobject] $Expected,
+
+        [Parameter(Mandatory)]
+        [pscustomobject] $Actual,
+
+        [Parameter(Mandatory)]
+        [string] $Comparison
+    )
+
+    if ($Expected.StandardOutput -cne $Actual.StandardOutput) {
+        throw (
+            "$Comparison produced different stdout documents. " +
+            "Expected ($($Expected.StandardOutput.Length)): " +
+            "$($Expected.StandardOutput) Actual " +
+            "($($Actual.StandardOutput.Length)): $($Actual.StandardOutput)"
+        )
     }
 }
 
@@ -278,39 +412,40 @@ finally {
 }
 
 $dotnet = (Get-Command dotnet -ErrorAction Stop).Source
-$temporaryToolPath = [System.IO.Path]::Combine(
+$dnx = (Get-Command dnx -ErrorAction Stop).Source
+$temporaryRoot = [System.IO.Path]::Combine(
     [System.IO.Path]::GetTempPath(),
     "dnaxi-package-" + [System.Guid]::NewGuid().ToString("N"))
-[System.IO.Directory]::CreateDirectory($temporaryToolPath) | Out-Null
+[System.IO.Directory]::CreateDirectory($temporaryRoot) | Out-Null
 try {
-    $isolatedEnvironment = @{
-        DOTNET_CLI_HOME = [System.IO.Path]::Combine(
-            $temporaryToolPath,
-            "dotnet-home")
+    $globalCliHome = [System.IO.Path]::Combine(
+        $temporaryRoot,
+        "global-home")
+    $globalEnvironment = @{
+        DOTNET_CLI_HOME = $globalCliHome
         NUGET_PACKAGES = [System.IO.Path]::Combine(
-            $temporaryToolPath,
-            "install-packages")
+            $temporaryRoot,
+            "global-packages")
     }
-    $install = Invoke-Captured `
+    $globalInstall = Invoke-Captured `
         -FileName $dotnet `
         -Arguments @(
             "tool",
             "install",
+            "--global",
             "dotnet-axi",
-            "--tool-path",
-            $temporaryToolPath,
             "--version",
             $version,
             "--source",
             $resolvedPackageDirectory,
-            "--no-cache",
+            "--no-http-cache",
             "--verbosity",
             "quiet"
         ) `
-        -Environment $isolatedEnvironment
-    if ($install.ExitCode -ne 0) {
-        throw "Local tool installation failed. stderr: $($install.StandardError)"
-    }
+        -Environment $globalEnvironment
+    Assert-Success `
+        -Result $globalInstall `
+        -Operation "Global tool installation"
 
     $executableName = if ([System.OperatingSystem]::IsWindows()) {
         "dnaxi.exe"
@@ -318,46 +453,320 @@ try {
     else {
         "dnaxi"
     }
-    $executable = [System.IO.Path]::Combine(
-        $temporaryToolPath,
+    $globalToolDirectory = [System.IO.Path]::Combine(
+        $globalCliHome,
+        ".dotnet",
+        "tools")
+    $globalExecutable = [System.IO.Path]::Combine(
+        $globalToolDirectory,
         $executableName)
-    if (-not (Test-Path -LiteralPath $executable -PathType Leaf)) {
-        throw "Installed command '$executable' is missing."
+    if (-not (Test-Path -LiteralPath $globalExecutable -PathType Leaf)) {
+        throw "Installed global command '$globalExecutable' is missing."
     }
 
-    $installedVersion = Invoke-Captured `
-        -FileName $executable `
-        -Arguments @("--version")
+    $globalEnvironment["PATH"] = (
+        $globalToolDirectory +
+        [System.IO.Path]::PathSeparator +
+        [System.Environment]::GetEnvironmentVariable("PATH")
+    )
+    $globalVersion = Invoke-Captured `
+        -FileName "dnaxi" `
+        -Arguments @("--version") `
+        -Environment $globalEnvironment
     Assert-VersionOutput `
-        -Result $installedVersion `
+        -Result $globalVersion `
         -Version $version
 
-    $dnx = (Get-Command dnx -ErrorAction Stop).Source
+    $globalHelp = Invoke-Captured `
+        -FileName "dnaxi" `
+        -Arguments @("--help") `
+        -Environment $globalEnvironment
+    Assert-HelpOutput -Result $globalHelp
+
+    $globalUpdate = Invoke-Captured `
+        -FileName $dotnet `
+        -Arguments @(
+            "tool",
+            "update",
+            "--global",
+            "dotnet-axi",
+            "--version",
+            $version,
+            "--source",
+            $resolvedPackageDirectory,
+            "--no-http-cache",
+            "--verbosity",
+            "quiet"
+        ) `
+        -Environment $globalEnvironment
+    Assert-Success `
+        -Result $globalUpdate `
+        -Operation "Global tool update"
+
+    $updatedGlobalVersion = Invoke-Captured `
+        -FileName "dnaxi" `
+        -Arguments @("--version") `
+        -Environment $globalEnvironment
+    Assert-VersionOutput `
+        -Result $updatedGlobalVersion `
+        -Version $version
+    Assert-SameOutput `
+        -Expected $globalVersion `
+        -Actual $updatedGlobalVersion `
+        -Comparison "Global update"
+
+    $localWorkspace = [System.IO.Path]::Combine(
+        $temporaryRoot,
+        "local-workspace")
+    [System.IO.Directory]::CreateDirectory($localWorkspace) | Out-Null
+    $localEnvironment = @{
+        DOTNET_CLI_HOME = [System.IO.Path]::Combine(
+            $temporaryRoot,
+            "local-home")
+        NUGET_PACKAGES = [System.IO.Path]::Combine(
+            $temporaryRoot,
+            "local-packages")
+    }
+    $manifestCreation = Invoke-Captured `
+        -FileName $dotnet `
+        -Arguments @(
+            "new",
+            "tool-manifest",
+            "--no-update-check"
+        ) `
+        -Environment $localEnvironment `
+        -WorkingDirectory $localWorkspace
+    Assert-Success `
+        -Result $manifestCreation `
+        -Operation "Local tool manifest creation"
+
+    $manifests = @(
+        Get-ChildItem `
+            -LiteralPath $localWorkspace `
+            -Filter "dotnet-tools.json" `
+            -File `
+            -Recurse
+    )
+    if ($manifests.Count -ne 1) {
+        throw "Expected one local tool manifest; found $($manifests.Count)."
+    }
+    $manifestPath = $manifests[0].FullName
+
+    $localInstall = Invoke-Captured `
+        -FileName $dotnet `
+        -Arguments @(
+            "tool",
+            "install",
+            "--local",
+            "dotnet-axi",
+            "--tool-manifest",
+            $manifestPath,
+            "--version",
+            $version,
+            "--source",
+            $resolvedPackageDirectory,
+            "--no-http-cache",
+            "--verbosity",
+            "quiet"
+        ) `
+        -Environment $localEnvironment `
+        -WorkingDirectory $localWorkspace
+    Assert-Success `
+        -Result $localInstall `
+        -Operation "Local tool installation"
+
+    $localVersion = Invoke-Captured `
+        -FileName $dotnet `
+        -Arguments @(
+            "tool",
+            "run",
+            "dnaxi",
+            "--",
+            "--version"
+        ) `
+        -Environment $localEnvironment `
+        -WorkingDirectory $localWorkspace
+    Assert-VersionOutput `
+        -Result $localVersion `
+        -Version $version
+
+    $localHelp = Invoke-Captured `
+        -FileName $dotnet `
+        -Arguments @(
+            "tool",
+            "run",
+            "dnaxi",
+            "--",
+            "--help"
+        ) `
+        -Environment $localEnvironment `
+        -WorkingDirectory $localWorkspace
+    Assert-HelpOutput -Result $localHelp
+
+    $localUpdate = Invoke-Captured `
+        -FileName $dotnet `
+        -Arguments @(
+            "tool",
+            "update",
+            "--local",
+            "dotnet-axi",
+            "--tool-manifest",
+            $manifestPath,
+            "--version",
+            $version,
+            "--source",
+            $resolvedPackageDirectory,
+            "--no-http-cache",
+            "--verbosity",
+            "quiet"
+        ) `
+        -Environment $localEnvironment `
+        -WorkingDirectory $localWorkspace
+    Assert-Success `
+        -Result $localUpdate `
+        -Operation "Local tool update"
+
+    $updatedLocalVersion = Invoke-Captured `
+        -FileName $dotnet `
+        -Arguments @(
+            "tool",
+            "run",
+            "dnaxi",
+            "--",
+            "--version"
+        ) `
+        -Environment $localEnvironment `
+        -WorkingDirectory $localWorkspace
+    Assert-VersionOutput `
+        -Result $updatedLocalVersion `
+        -Version $version
+    Assert-SameOutput `
+        -Expected $localVersion `
+        -Actual $updatedLocalVersion `
+        -Comparison "Local update"
+
+    $dnxCliHome = [System.IO.Path]::Combine(
+        $temporaryRoot,
+        "dnx-home")
+    $dnxEnvironment = @{
+        DOTNET_CLI_HOME = $dnxCliHome
+        NUGET_PACKAGES = [System.IO.Path]::Combine(
+            $temporaryRoot,
+            "dnx-packages")
+    }
     $oneShotVersion = Invoke-Captured `
         -FileName $dnx `
         -Arguments @(
             "dotnet-axi@$version",
             "--source",
             $resolvedPackageDirectory,
-            "--no-cache",
+            "--no-http-cache",
+            "--verbosity",
+            "quiet",
             "--",
             "--version"
         ) `
-        -Environment @{
-            DOTNET_CLI_HOME = $isolatedEnvironment.DOTNET_CLI_HOME
-            NUGET_PACKAGES = [System.IO.Path]::Combine(
-                $temporaryToolPath,
-                "dnx-packages")
-        }
+        -Environment $dnxEnvironment
     Assert-VersionOutput `
         -Result $oneShotVersion `
         -Version $version `
         -RequireEmptyStandardError $false
+
+    $oneShotHelp = Invoke-Captured `
+        -FileName $dnx `
+        -Arguments @(
+            "dotnet-axi@$version",
+            "--source",
+            $resolvedPackageDirectory,
+            "--no-http-cache",
+            "--verbosity",
+            "quiet",
+            "--",
+            "--help"
+        ) `
+        -Environment $dnxEnvironment
+    Assert-HelpOutput `
+        -Result $oneShotHelp `
+        -RequireEmptyStandardError $false
+
+    Assert-SameOutput `
+        -Expected $globalVersion `
+        -Actual $localVersion `
+        -Comparison "Global and local version invocation"
+    Assert-SameOutput `
+        -Expected $globalVersion `
+        -Actual $oneShotVersion `
+        -Comparison "Global and dnx version invocation"
+    Assert-SameOutput `
+        -Expected $globalHelp `
+        -Actual $localHelp `
+        -Comparison "Global and local help invocation"
+    Assert-SameOutput `
+        -Expected $globalHelp `
+        -Actual $oneShotHelp `
+        -Comparison "Global and dnx help invocation"
+
+    $unexpectedDnxExecutable = [System.IO.Path]::Combine(
+        $dnxCliHome,
+        ".dotnet",
+        "tools",
+        $executableName)
+    if (Test-Path -LiteralPath $unexpectedDnxExecutable) {
+        throw "One-shot dnx invocation created a persistent global command."
+    }
+
+    $localUninstall = Invoke-Captured `
+        -FileName $dotnet `
+        -Arguments @(
+            "tool",
+            "uninstall",
+            "--local",
+            "dotnet-axi",
+            "--tool-manifest",
+            $manifestPath
+        ) `
+        -Environment $localEnvironment `
+        -WorkingDirectory $localWorkspace
+    Assert-Success `
+        -Result $localUninstall `
+        -Operation "Local tool uninstall"
+
+    $removedLocalInvocation = Invoke-Captured `
+        -FileName $dotnet `
+        -Arguments @(
+            "tool",
+            "run",
+            "dnaxi",
+            "--",
+            "--version"
+        ) `
+        -Environment $localEnvironment `
+        -WorkingDirectory $localWorkspace
+    if ($removedLocalInvocation.ExitCode -eq 0) {
+        throw "Local tool invocation succeeded after uninstall."
+    }
+
+    $globalUninstall = Invoke-Captured `
+        -FileName $dotnet `
+        -Arguments @(
+            "tool",
+            "uninstall",
+            "--global",
+            "dotnet-axi"
+        ) `
+        -Environment $globalEnvironment
+    Assert-Success `
+        -Result $globalUninstall `
+        -Operation "Global tool uninstall"
+
+    if (Test-Path -LiteralPath $globalExecutable) {
+        throw "Global command '$globalExecutable' remains after uninstall."
+    }
 }
 finally {
-    if (Test-Path -LiteralPath $temporaryToolPath) {
-        Remove-Item -LiteralPath $temporaryToolPath -Recurse -Force
+    if (Test-Path -LiteralPath $temporaryRoot) {
+        Remove-Item -LiteralPath $temporaryRoot -Recurse -Force
     }
 }
 
-Write-Host "Verified dotnet-axi $version package, symbols, isolated install, and dnx invocation."
+Write-Host "Verified dotnet-axi $version package, symbols, global/local lifecycle, and dnx parity."
