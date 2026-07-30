@@ -3,9 +3,30 @@
     <OutputType>Exe</OutputType>
     <AssemblyName>dnaxi</AssemblyName>
     <RootNamespace>DotNetAxi.Cli</RootNamespace>
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>dnaxi</ToolCommandName>
+    <PackageId>dotnet-axi</PackageId>
+    <Title>dotnet-axi</Title>
+    <Authors>chuyflores-dev</Authors>
+    <Description>Agent-first deterministic discovery, analysis, validation, and safe modification for .NET codebases.</Description>
+    <PackageTags>dotnet;cli;developer-tools;code-analysis;agents</PackageTags>
+    <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
+    <PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
+    <PackageProjectUrl>https://github.com/chuyflores-dev/dotnet-axi</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/chuyflores-dev/dotnet-axi.git</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    <DebugType>portable</DebugType>
   </PropertyGroup>
 
   <ItemGroup>
+    <None
+      Include="../../README.md"
+      Pack="true"
+      PackagePath="/"
+      Link="README.md" />
     <PackageReference Include="System.CommandLine" />
   </ItemGroup>
 

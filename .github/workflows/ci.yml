@@ -35,6 +35,19 @@ jobs:
       - name: Test
         run: dotnet test dotnet-axi.slnx --configuration Release --no-build
 
+      - name: Pack local .NET tool
+        run: >-
+          dotnet pack src/DotNetAxi.Cli/DotNetAxi.Cli.csproj
+          --configuration Release
+          --no-build
+          --output artifacts/packages
+
+      - name: Verify local .NET tool package
+        shell: pwsh
+        run: >-
+          ./eng/verify-tool-package.ps1
+          -PackageDirectory artifacts/packages
+
       - name: Install Node.js for TOON conformance
         uses: actions/setup-node@v6
         with:
