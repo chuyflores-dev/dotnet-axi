@@ -170,6 +170,12 @@ Discovery and mutation responses SHOULD include a few relevant complete
 commands or templates, preserve fixed scope, use placeholders for runtime
 values, and omit suggestions when the response is self-contained.
 
+Capabilities express suggestions as literal command tokens, observed runtime
+values, or named placeholders. The shared composer adds `dnaxi`, appends fixed
+workspace selectors in canonical order, removes duplicates, orders by explicit
+priority and command, and emits at most three suggestions. It does not infer
+runtime values from result content.
+
 Every subcommand supports concise `--help` with required arguments,
 flags/defaults, and two or three examples.
 

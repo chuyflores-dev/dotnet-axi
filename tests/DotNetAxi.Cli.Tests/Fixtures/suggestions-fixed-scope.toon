@@ -1,0 +1,6 @@
+schema: dotnet-axi/v1
+command: search symbol
+status: success
+case: fixed-scope
+suggestions[1]{command}:
+  Run `dnaxi show symbol sym_123 --solution Repository.slnx --project src/App/App.csproj --configuration Release --framework net10.0`

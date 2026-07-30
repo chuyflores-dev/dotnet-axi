@@ -1,0 +1,8 @@
+schema: dotnet-axi/v1
+command: home
+status: success
+case: home
+suggestions[3]{command}:
+  Run `dnaxi search symbol '<name>'`
+  Run `dnaxi analyze changed`
+  Run `dnaxi validate --profile fast`

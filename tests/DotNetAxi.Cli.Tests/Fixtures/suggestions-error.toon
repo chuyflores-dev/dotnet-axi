@@ -1,0 +1,10 @@
+schema: dotnet-axi/v1
+command: validate
+status: failed
+case: error
+error:
+  code: restore.required
+  message: Assets required for validation are missing.
+  correction: Restore the selected project.
+suggestions[1]{command}:
+  Run `dnaxi restore --project src/Core/Core.csproj`

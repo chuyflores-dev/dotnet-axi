@@ -1,0 +1,4 @@
+schema: dotnet-axi/v1
+command: show symbol
+status: success
+case: self-contained
