@@ -154,6 +154,41 @@ deletion and prove stale IDs never bind to another overload or declaration.
 The repository includes a repeatable harness where supported coding agents
 complete representative .NET tasks against controlled repositories.
 
+### Rollout and agent adapters
+
+The task corpus and result schema are agent-neutral. Each agent has a thin
+adapter for noninteractive execution, event and usage capture, permissions,
+timeouts, and exact model selection. Baseline and candidate results are
+compared only within the same agent, exact model, reasoning setting, and
+harness version; results from different agents or models are never pooled into
+one product-effect number.
+
+Benchmarking rolls out with usable product capability:
+
+| Version | Benchmark stage |
+|---|---|
+| `0.2.0` | Ship the installable skill and perform only development smoke runs; make no measured agent-experience claim |
+| `0.3.0` | Build the agent-neutral corpus and runner, add the Codex adapter, and run the first measured discovery-task comparison |
+| `0.4.0`–`0.7.0` | Add applicable semantic, impact, analysis, execution, and validation tasks and manually run the affected Codex subset before each release |
+| `0.8.0` | Add the Claude adapter and run the same conditions as an initially advisory second-agent series |
+| `0.9.0` | Produce full Codex and Claude release evidence; keep every claim scoped to its agent, exact model, and harness |
+
+Real-agent benchmarks are explicit, manually dispatched runs and never execute
+on every pull request. CI uses deterministic fake-agent self-tests for the
+harness. Credentials are supplied only to the selected adapter process and are
+never included in prompts, fixtures, trajectories, or published artifacts.
+
+The initial Codex adapter uses supported noninteractive JSONL output and
+records the CLI version, exact model, reasoning setting, sandbox, instructions,
+event stream, and reported usage. Runs are ephemeral and isolate user-level
+configuration from the controlled benchmark condition.
+
+The later Claude adapter uses supported noninteractive streaming JSON and
+records the equivalent model, permission, turn-limit, event, usage, cost, and
+version evidence. Adding Claude does not redefine or invalidate the Codex
+series; it tests whether the product benefit generalizes to another agent
+harness.
+
 Every run captures:
 
 - Task success and correctness.
@@ -176,7 +211,15 @@ order.
 The minimum baseline uses ordinary file reads, `rg` or equivalent search, and
 raw `dotnet` commands. It receives no hidden `dotnet-axi` guidance or
 artifacts. Additional comparisons MAY include Roslyn-oriented MCP servers or
-other code-intelligence tools.
+other code-intelligence tools. The primary candidate installs the released
+`dotnet-axi` skill and gives the agent access to the matching `dnaxi` package.
+An optional direct-CLI/no-skill condition MAY isolate the skill's contribution.
+
+Deterministic repository, compiler, and test oracles decide success whenever
+possible. A model judge is used only for qualities that cannot be reduced to a
+deterministic oracle; it receives blinded condition output, uses one pinned
+judge configuration across compared conditions, and is recorded in the run
+manifest.
 
 Scenarios SHOULD cover declaration lookup, exact references, conceptual
 discovery, caller/impact analysis, diagnostic investigation, targeted change,

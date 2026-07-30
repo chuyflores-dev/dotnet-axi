@@ -1,9 +1,9 @@
-# MVP-E13-S11 — Run Agent Benchmark Comparisons
+# MVP-E13-S11 — Build the Agent Benchmark Runner
 
 ## Outcome
 
-The same agent and model can run interleaved raw-tool baseline and
-`dotnet-axi` candidate conditions with complete trajectory metrics.
+Agent adapters can run interleaved raw-tool baseline and `dotnet-axi`
+candidate conditions through one normalized benchmark protocol.
 
 ## Design
 
@@ -12,7 +12,9 @@ The same agent and model can run interleaved raw-tool baseline and
 ## Boundary
 
 The harness records tool-owned benchmark data and does not make product
-telemetry or transcript capture part of normal CLI operation.
+telemetry or transcript capture part of normal CLI operation. This story builds
+the runner and fake adapter; real Codex and Claude execution belong to their
+adapter stories.
 
 ## Acceptance
 
@@ -21,6 +23,10 @@ telemetry or transcript capture part of normal CLI operation.
 - Results capture success, safety, tokens, turns, calls, duration, inspected
   scope, validation, versions, hashes, order, timeout, and raw trajectory
   evidence.
+- Adapter inputs and normalized results are agent-neutral, while raw
+  provider-specific events remain available as immutable evidence.
+- Real-agent runs are manually dispatched; CI exercises the runner only with a
+  deterministic fake adapter.
 
 ## Verification
 
@@ -31,5 +37,3 @@ telemetry or transcript capture part of normal CLI operation.
 
 - `MVP-E13-S10`
 - `MVP-E09-S07`
-- `MVP-E07-S04`
-- `MVP-E07-S06`

@@ -18,8 +18,12 @@ the corresponding supported mutation feature.
 
 - Each task has fixed repository state, success and safety oracles, permitted
   tools, timeout, required validation, and baseline/candidate applicability.
-- The corpus covers every MVP scenario category without embedding
+- The initial corpus covers source-discovery tasks and expands only when the
+  corresponding product capability ships.
+- The complete corpus covers every MVP scenario category without embedding
   condition-specific hidden guidance.
+- Deterministic oracles are used where possible; any model-judged criterion is
+  explicit, blinded to the condition, and independently versioned.
 
 ## Verification
 

@@ -10,7 +10,7 @@ same deterministic CLI contracts safely.
 - Repository and user setup for Claude Code and Codex.
 - Bounded passive session-start context.
 - Structural configuration merge, repair, backup, and removal.
-- Generated Agent Skill guidance from one source.
+- A portable Agent Skill generated from the same guidance as the CLI.
 - Trust, policy, executable-path, and unsupported-format reporting.
 
 ## Boundary
@@ -38,7 +38,7 @@ do not read or retain agent transcripts.
 - [MVP-E09-S04 — Set up Claude Code](MVP-E09-S04-claude-code-setup.md)
 - [MVP-E09-S05 — Set up Codex](MVP-E09-S05-codex-setup.md)
 - [MVP-E09-S06 — Emit session-start context](MVP-E09-S06-session-start-context.md)
-- [MVP-E09-S07 — Generate Agent Skill guidance](MVP-E09-S07-agent-skill.md)
+- [MVP-E09-S07 — Ship the Agent Skill](MVP-E09-S07-agent-skill.md)
 - [MVP-E09-S08 — Repair integrations](MVP-E09-S08-repair.md)
 - [MVP-E09-S09 — Remove integrations](MVP-E09-S09-removal.md)
 - [MVP-E09-S10 — Report OpenCode as unsupported](MVP-E09-S10-opencode-capability.md)
@@ -47,5 +47,7 @@ do not read or retain agent transcripts.
 
 - Install, repair, and removal are idempotent and preserve unrelated agent
   configuration.
+- The portable skill can invoke the packaged tool on demand without requiring
+  agent-specific configuration.
 - Generated guidance directs agents to applicable validation evidence before
   claiming completion.
