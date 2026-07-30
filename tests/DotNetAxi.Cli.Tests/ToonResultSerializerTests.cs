@@ -72,6 +72,35 @@ public sealed class ToonResultSerializerTests
     }
 
     [Fact]
+    public void Query_plan_reports_level_scope_project_loads_and_selectors()
+    {
+        var plan = new QueryPlan(
+            "roslyn-semantic",
+            QueryEngineClass.Semantic,
+            new QueryPlanCandidate(
+                QueryAnalysisLevel.Complete,
+                EvidenceResolution.Semantic,
+                CoverageLevel.Complete,
+                "Selected solution and all target frameworks",
+                [
+                    "src/Core/Core.csproj",
+                    "src/App/App.csproj",
+                ]),
+            new WorkspaceSelectors(
+                solution: "Repository.slnx",
+                project: "src/App/App.csproj",
+                configuration: "Release",
+                framework: "net10.0"));
+        var result = CommandResult<QueryPlan>.Success(
+            "search callers",
+            plan);
+
+        var document = _serializer.Serialize(result);
+
+        Assert.Equal(ReadFixture("query-plan.toon"), document);
+    }
+
+    [Fact]
     public void Empty_collections_remain_explicit_empty_arrays()
     {
         var result = CommandResult<SearchPayload>.Success(
