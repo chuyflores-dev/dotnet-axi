@@ -2,5 +2,6 @@ schema: dotnet-axi/v1
 command: search callers
 status: partial
 case: partial
-suggestions[1]{command}:
-  Run `dnaxi search callers sym_8k2m --complete --project src/Core/Core.csproj`
+suggestions[1]:
+  - command: dnaxi
+    arguments[6]: search,callers,sym_8k2m,"--complete","--project",src/Core/Core.csproj

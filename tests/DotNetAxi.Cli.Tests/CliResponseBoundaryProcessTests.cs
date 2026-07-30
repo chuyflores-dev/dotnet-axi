@@ -50,6 +50,40 @@ public sealed class CliResponseBoundaryProcessTests
         Assert.Equal(string.Empty, result.StandardError);
     }
 
+    [Theory]
+    [InlineData("--bogus", "--help", "--bogus")]
+    [InlineData("--bogus", "success", "--help", "--bogus")]
+    [InlineData("--bogus", "--version", "--bogus")]
+    [InlineData("does-not-exist", "does-not-exist", "--help")]
+    [InlineData("does-not-exist", "does-not-exist", "--version")]
+    public async Task Terminating_options_do_not_suppress_invalid_input(
+        string invalidInput,
+        params string[] args)
+    {
+        var result = await RunAsync(args);
+
+        Assert.Equal(2, result.ExitCode);
+        Assert.StartsWith("schema: dotnet-axi/v1\n", result.StandardOutput);
+        Assert.Contains("status: failed\n", result.StandardOutput);
+        Assert.Contains("usage.", result.StandardOutput);
+        Assert.Contains(invalidInput, result.StandardOutput);
+        Assert.Equal(string.Empty, result.StandardError);
+    }
+
+    [Theory]
+    [InlineData("--help", "--version")]
+    [InlineData("--version", "--help")]
+    public async Task Terminating_options_cannot_be_combined(
+        params string[] args)
+    {
+        var result = await RunAsync(args);
+
+        Assert.Equal(2, result.ExitCode);
+        Assert.Contains("status: failed\n", result.StandardOutput);
+        Assert.Contains("usage.", result.StandardOutput);
+        Assert.Equal(string.Empty, result.StandardError);
+    }
+
     [Fact]
     public async Task Diagnostics_are_written_only_to_standard_error()
     {
@@ -74,6 +108,20 @@ public sealed class CliResponseBoundaryProcessTests
         Assert.DoesNotContain("System.InvalidOperationException", result.StandardError);
     }
 
+    [Fact]
+    public async Task Process_timeout_terminates_a_hanging_process()
+    {
+        var exception = await Assert.ThrowsAsync<TimeoutException>(
+            () => RunApplicationAsync(
+                TestApplicationPath(),
+                TimeSpan.FromMilliseconds(250),
+                "hang"));
+
+        Assert.Contains("hang", exception.Message);
+        Assert.Contains("250", exception.Message);
+        Assert.Contains("process tree", exception.Message);
+    }
+
     [Theory]
     [InlineData("-v")]
     [InlineData("--version")]
@@ -89,6 +137,22 @@ public sealed class CliResponseBoundaryProcessTests
         Assert.Contains("tool: dotnet-axi\n", result.StandardOutput);
         Assert.Contains("tool_version: 9.8.7-test\n", result.StandardOutput);
         Assert.Contains("output_schema: dotnet-axi/v1", result.StandardOutput);
+        Assert.Equal(string.Empty, result.StandardError);
+    }
+
+    [Theory]
+    [InlineData("--version", "success")]
+    [InlineData("success", "--version")]
+    [InlineData("-v", "success")]
+    [InlineData("success", "-v")]
+    public async Task Version_option_must_be_a_standalone_invocation(
+        params string[] args)
+    {
+        var result = await RunAsync(args);
+
+        Assert.Equal(2, result.ExitCode);
+        Assert.Contains("status: failed\n", result.StandardOutput);
+        Assert.Contains("usage.", result.StandardOutput);
         Assert.Equal(string.Empty, result.StandardError);
     }
 
@@ -138,7 +202,6 @@ public sealed class CliResponseBoundaryProcessTests
             "--verbosity",
             "detailed");
         var shortAlias = await RunAsync("success", "-v");
-        var combinedVersion = await RunAsync("-v", "success");
 
         Assert.Equal(0, verbosity.ExitCode);
         Assert.Contains("command: success\n", verbosity.StandardOutput);
@@ -147,9 +210,6 @@ public sealed class CliResponseBoundaryProcessTests
         Assert.Equal(2, shortAlias.ExitCode);
         Assert.Contains("command: success\n", shortAlias.StandardOutput);
         Assert.Contains("status: failed\n", shortAlias.StandardOutput);
-
-        Assert.Equal(2, combinedVersion.ExitCode);
-        Assert.Contains("status: failed\n", combinedVersion.StandardOutput);
     }
 
     private static async Task<ProcessResult> RunAsync(params string[] args)
@@ -159,6 +219,17 @@ public sealed class CliResponseBoundaryProcessTests
 
     private static async Task<ProcessResult> RunApplicationAsync(
         string application,
+        params string[] args)
+    {
+        return await RunApplicationAsync(
+            application,
+            TimeSpan.FromSeconds(15),
+            args);
+    }
+
+    private static async Task<ProcessResult> RunApplicationAsync(
+        string application,
+        TimeSpan timeoutDuration,
         params string[] args)
     {
         var startInfo = new ProcessStartInfo
@@ -185,13 +256,66 @@ public sealed class CliResponseBoundaryProcessTests
 
         var standardOutput = process.StandardOutput.ReadToEndAsync();
         var standardError = process.StandardError.ReadToEndAsync();
-        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
-        await process.WaitForExitAsync(timeout.Token);
+        using var timeout = new CancellationTokenSource(timeoutDuration);
+        try
+        {
+            await process.WaitForExitAsync(timeout.Token);
+        }
+        catch (OperationCanceledException exception)
+            when (timeout.IsCancellationRequested)
+        {
+            var termination = TryTerminateProcessTree(process);
+            using var terminationTimeout =
+                new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            try
+            {
+                await process.WaitForExitAsync(terminationTimeout.Token);
+                termination = $"{termination}; process exited";
+            }
+            catch (OperationCanceledException)
+                when (terminationTimeout.IsCancellationRequested)
+            {
+                termination = $"{termination}; process did not exit within 5 seconds";
+            }
+
+            var invocation = string.Join(
+                " ",
+                startInfo.ArgumentList.Select(static argument =>
+                    argument.Contains(' ', StringComparison.Ordinal)
+                        ? $"\"{argument}\""
+                        : argument));
+            throw new TimeoutException(
+                $"Process `{startInfo.FileName} {invocation}` (PID {process.Id}) " +
+                $"did not exit within {timeoutDuration.TotalMilliseconds:0} ms; " +
+                $"process tree termination: {termination}.",
+                exception);
+        }
 
         return new ProcessResult(
             process.ExitCode,
             await standardOutput,
             await standardError);
+    }
+
+    private static string TryTerminateProcessTree(Process process)
+    {
+        try
+        {
+            process.Kill(entireProcessTree: true);
+            return "kill requested";
+        }
+        catch (InvalidOperationException exception)
+        {
+            return $"kill failed ({exception.GetType().Name}: {exception.Message})";
+        }
+        catch (System.ComponentModel.Win32Exception exception)
+        {
+            return $"kill failed ({exception.GetType().Name}: {exception.Message})";
+        }
+        catch (NotSupportedException exception)
+        {
+            return $"kill failed ({exception.GetType().Name}: {exception.Message})";
+        }
     }
 
     private static string TestApplicationPath()

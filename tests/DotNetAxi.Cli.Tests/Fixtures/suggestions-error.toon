@@ -6,5 +6,6 @@ error:
   code: restore.required
   message: Assets required for validation are missing.
   correction: Restore the selected project.
-suggestions[1]{command}:
-  Run `dnaxi restore --project src/Core/Core.csproj`
+suggestions[1]:
+  - command: dnaxi
+    arguments[3]: restore,"--project",src/Core/Core.csproj

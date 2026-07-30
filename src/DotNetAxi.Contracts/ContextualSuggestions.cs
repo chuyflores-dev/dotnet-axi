@@ -45,6 +45,14 @@ public sealed record SuggestionToken
 
 public sealed record SuggestionTemplate
 {
+    private static readonly string[] ManagedSelectorFlags =
+    [
+        "--solution",
+        "--project",
+        "--configuration",
+        "--framework",
+    ];
+
     public SuggestionTemplate(
         int priority,
         IEnumerable<SuggestionToken> tokens)
@@ -72,11 +80,23 @@ public sealed record SuggestionTemplate
                 "A suggestion command must begin with a literal token.",
                 nameof(tokens));
         }
+
+        if (Tokens.Any(static token => IsManagedSelector(token.Value)))
+        {
+            throw new ArgumentException(
+                "Suggestion templates cannot contain workspace selector flags; the composer owns fixed scope.",
+                nameof(tokens));
+        }
     }
 
     public int Priority { get; }
 
     public IReadOnlyList<SuggestionToken> Tokens { get; }
+
+    private static bool IsManagedSelector(string value) =>
+        ManagedSelectorFlags.Any(flag =>
+            value.Equals(flag, StringComparison.Ordinal) ||
+            value.StartsWith($"{flag}=", StringComparison.Ordinal));
 }
 
 public static class ContextualSuggestions
@@ -100,48 +120,46 @@ public static class ContextualSuggestions
             .Select(template =>
             {
                 ArgumentNullException.ThrowIfNull(template);
-                return new RankedCommand(
+                return new RankedInvocation(
                     template.Priority,
-                    Render(template, selectors));
+                    ComposeArguments(template, selectors));
             })
             .OrderBy(static suggestion => suggestion.Priority)
             .ThenBy(
-                static suggestion => suggestion.Command,
-                StringComparer.Ordinal)
+                static suggestion => suggestion.Arguments,
+                SuggestionArgumentsComparer.Instance)
             .DistinctBy(
-                static suggestion => suggestion.Command,
-                StringComparer.Ordinal)
+                static suggestion => suggestion.Arguments,
+                SuggestionArgumentsComparer.Instance)
             .Take(MaximumCount)
             .Select(static suggestion => new ResultSuggestion(
-                $"Run `{suggestion.Command}`"))
+                "dnaxi",
+                suggestion.Arguments))
             .ToArray();
 
         return Array.AsReadOnly(suggestions);
     }
 
-    private static string Render(
+    private static IReadOnlyList<string> ComposeArguments(
         SuggestionTemplate template,
         WorkspaceSelectors selectors)
     {
-        var tokens = new List<string>(template.Tokens.Count + 9)
-        {
-            "dnaxi",
-        };
-        tokens.AddRange(template.Tokens.Select(Render));
+        var tokens = new List<string>(template.Tokens.Count + 8);
+        tokens.AddRange(template.Tokens.Select(RenderToken));
         AddSelector(tokens, "--solution", selectors.Solution);
         AddSelector(tokens, "--project", selectors.Project);
         AddSelector(tokens, "--configuration", selectors.Configuration);
         AddSelector(tokens, "--framework", selectors.Framework);
-        return string.Join(' ', tokens);
+        return Array.AsReadOnly(tokens.ToArray());
     }
 
-    private static string Render(SuggestionToken token) =>
+    private static string RenderToken(SuggestionToken token) =>
         token.Kind switch
         {
-            SuggestionTokenKind.Literal => QuoteWhenNeeded(token.Value),
-            SuggestionTokenKind.RuntimeValue => QuoteWhenNeeded(token.Value),
+            SuggestionTokenKind.Literal => token.Value,
+            SuggestionTokenKind.RuntimeValue => token.Value,
             SuggestionTokenKind.Placeholder =>
-                Quote($"<{token.Value}>"),
+                $"<{token.Value}>",
             _ => throw new ArgumentOutOfRangeException(
                 nameof(token),
                 token.Kind,
@@ -159,20 +177,69 @@ public static class ContextualSuggestions
         }
 
         tokens.Add(flag);
-        tokens.Add(QuoteWhenNeeded(value));
+        tokens.Add(value);
     }
 
-    private static string QuoteWhenNeeded(string value) =>
-        value.All(IsSafeCharacter)
-            ? value
-            : Quote(value);
+    private sealed record RankedInvocation(
+        int Priority,
+        IReadOnlyList<string> Arguments);
 
-    private static bool IsSafeCharacter(char character) =>
-        char.IsAsciiLetterOrDigit(character) ||
-        character is '-' or '_' or '.' or '/' or ':' or '@' or '+' or '=' or ',';
+    private sealed class SuggestionArgumentsComparer :
+        IComparer<IReadOnlyList<string>>,
+        IEqualityComparer<IReadOnlyList<string>>
+    {
+        public static SuggestionArgumentsComparer Instance { get; } = new();
 
-    private static string Quote(string value) =>
-        $"'{value.Replace("'", "'\\''", StringComparison.Ordinal)}'";
+        public int Compare(
+            IReadOnlyList<string>? left,
+            IReadOnlyList<string>? right)
+        {
+            if (ReferenceEquals(left, right))
+            {
+                return 0;
+            }
 
-    private sealed record RankedCommand(int Priority, string Command);
+            if (left is null)
+            {
+                return -1;
+            }
+
+            if (right is null)
+            {
+                return 1;
+            }
+
+            for (var index = 0;
+                 index < Math.Min(left.Count, right.Count);
+                 index++)
+            {
+                var tokenComparison = string.Compare(
+                    left[index],
+                    right[index],
+                    StringComparison.Ordinal);
+                if (tokenComparison != 0)
+                {
+                    return tokenComparison;
+                }
+            }
+
+            return left.Count.CompareTo(right.Count);
+        }
+
+        public bool Equals(
+            IReadOnlyList<string>? left,
+            IReadOnlyList<string>? right) =>
+            Compare(left, right) == 0;
+
+        public int GetHashCode(IReadOnlyList<string> value)
+        {
+            var hash = new HashCode();
+            foreach (var token in value)
+            {
+                hash.Add(token, StringComparer.Ordinal);
+            }
+
+            return hash.ToHashCode();
+        }
+    }
 }

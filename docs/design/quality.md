@@ -91,7 +91,8 @@ explicit template files. The manifest fixes its logical name, random seed,
 selected SDK context, destination paths, and whether well-known fixture tokens
 are expanded. Template and destination paths are repository-relative,
 validated before materialization, and cannot escape the manifest or workspace
-root.
+root. Every path segment is NFC-normalized; Windows device names and segments
+with trailing spaces or periods are rejected on every host.
 
 Catalog manifests also declare sorted capability identifiers, an optional
 VSTest or Microsoft Testing Platform selection, and one build target with an
@@ -103,7 +104,11 @@ The fixture factory materializes each instance under a unique owned directory.
 The workspace is separate from isolated home, Git configuration, NuGet
 packages and HTTP cache, .NET CLI home, general cache, temporary, and artifact
 directories. It returns child-process environment overrides without mutating
-the test host environment.
+the test host environment. Child processes inherit only an explicit
+cross-platform allowlist plus fixture-owned overrides. `dotnet` invocations use
+one resolved absolute host and an owned NuGet configuration with explicit
+package sources, so ambient .NET, MSBuild, NuGet plugin, and user configuration
+cannot alter fixture execution.
 
 Factory creation is passive: it does not start Git, `dotnet`, restore,
 repository code, or any other process. Tests must opt into tooling, restore, or
@@ -113,9 +118,12 @@ repository-code process classifications before the factory creates a
 Fixture identity includes a SHA-256 hash over normalized relative paths and
 exact materialized bytes. Instance metadata records that hash, the fixed seed,
 the selected SDK context, and runtime/OS identity without timestamps or
-machine-specific workspace paths. Owned-directory markers constrain cleanup;
-transient cleanup is retried, and a remaining failure preserves the path in a
-structured exception so cleanup can be retried.
+machine-specific workspace paths. Committed fixture inputs are pinned to LF
+checkout bytes, and catalog tests pin their expected content hashes.
+Owned-directory markers constrain cleanup; root and marker link substitution
+is rejected and ownership is revalidated before destructive phases. Transient
+cleanup is retried, and a remaining failure preserves the path in a structured
+exception so cleanup can be retried.
 
 Catalog verification materializes every manifest and invokes its declared
 build target with combined restore and repository-code permission, isolated

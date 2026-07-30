@@ -19,11 +19,14 @@ public sealed class ContextualSuggestionsTests
 
         Assert.Equal(
             [
-                "Run `dnaxi search symbol`",
-                "Run `dnaxi analyze changed`",
-                "Run `dnaxi validate`",
+                ["search", "symbol"],
+                ["analyze", "changed"],
+                ["validate"],
             ],
-            suggestions.Select(static suggestion => suggestion.Command));
+            suggestions.Select(static suggestion => suggestion.Arguments));
+        Assert.All(
+            suggestions,
+            static suggestion => Assert.Equal("dnaxi", suggestion.Command));
     }
 
     [Fact]
@@ -46,9 +49,22 @@ public sealed class ContextualSuggestionsTests
                 framework: "net10.0"));
 
         var suggestion = Assert.Single(suggestions);
+        Assert.Equal("dnaxi", suggestion.Command);
         Assert.Equal(
-            "Run `dnaxi show symbol sym_123 --solution 'Repository Suite.slnx' --project src/App/App.csproj --configuration 'Release Candidate' --framework net10.0`",
-            suggestion.Command);
+            [
+                "show",
+                "symbol",
+                "sym_123",
+                "--solution",
+                "Repository Suite.slnx",
+                "--project",
+                "src/App/App.csproj",
+                "--configuration",
+                "Release Candidate",
+                "--framework",
+                "net10.0",
+            ],
+            suggestion.Arguments);
     }
 
     [Fact]
@@ -69,9 +85,75 @@ public sealed class ContextualSuggestionsTests
             WorkspaceSelectors.Empty);
 
         var suggestion = Assert.Single(suggestions);
+        Assert.Equal("dnaxi", suggestion.Command);
         Assert.Equal(
-            "Run `dnaxi search symbol '<name>' --kind extension-method`",
-            suggestion.Command);
+            ["search", "symbol", "<name>", "--kind", "extension-method"],
+            suggestion.Arguments);
+    }
+
+    [Fact]
+    public void Runtime_values_are_preserved_without_shell_specific_quoting()
+    {
+        var suggestions = ContextualSuggestions.Compose(
+            [
+                new SuggestionTemplate(
+                    priority: 0,
+                    [
+                        SuggestionToken.Literal("show"),
+                        SuggestionToken.Literal("document"),
+                        SuggestionToken.RuntimeValue(
+                            "src/It's $100 `% ready.cs"),
+                    ]),
+            ],
+            WorkspaceSelectors.Empty);
+
+        var suggestion = Assert.Single(suggestions);
+        Assert.Equal(
+            ["show", "document", "src/It's $100 `% ready.cs"],
+            suggestion.Arguments);
+    }
+
+    [Fact]
+    public void Distinct_invocations_cannot_collide_through_token_content()
+    {
+        var suggestions = ContextualSuggestions.Compose(
+            [
+                new SuggestionTemplate(
+                    priority: 0,
+                    [
+                        SuggestionToken.Literal("show"),
+                        SuggestionToken.RuntimeValue("a\u001fb"),
+                    ]),
+                new SuggestionTemplate(
+                    priority: 0,
+                    [
+                        SuggestionToken.Literal("show"),
+                        SuggestionToken.RuntimeValue("a"),
+                        SuggestionToken.RuntimeValue("b"),
+                    ]),
+            ],
+            WorkspaceSelectors.Empty);
+
+        Assert.Equal(2, suggestions.Count);
+    }
+
+    [Theory]
+    [InlineData("--project")]
+    [InlineData("--solution=Other.slnx")]
+    [InlineData("--configuration")]
+    [InlineData("--framework=net9.0")]
+    public void Templates_cannot_override_composer_owned_selectors(
+        string selector)
+    {
+        var exception = Assert.Throws<ArgumentException>(
+            () => new SuggestionTemplate(
+                priority: 0,
+                [
+                    SuggestionToken.Literal("search"),
+                    SuggestionToken.Literal(selector),
+                ]));
+
+        Assert.Equal("tokens", exception.ParamName);
     }
 
     [Fact]

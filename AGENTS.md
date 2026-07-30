@@ -55,3 +55,15 @@ Before claiming a task is complete:
 - Run every applicable canonical verification command.
 - Review the final diff for scope, safety, and documentation consistency.
 - Report checks that could not run and why.
+
+Implementation pull requests also use a bounded independent-review gate:
+
+- Establish one baseline round with one to three clean-context reviewers and
+  freeze its confirmed findings.
+- Fix or reject every finding with evidence, then run one fresh-context
+  regression review.
+- Use no more than three review rounds total. Later rounds may add only
+  regressions caused by the fixes.
+- Merge only with no confirmed P0-P2 findings and with canonical checks and CI
+  passing. If that threshold is not reached after round three, stop and report
+  the unresolved findings instead of continuing indefinitely.

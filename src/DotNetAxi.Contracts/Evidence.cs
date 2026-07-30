@@ -31,6 +31,22 @@ public sealed record Evidence
         EvidenceConfidence confidence,
         EvidenceScope scope)
     {
+        if (!Enum.IsDefined(resolution))
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(resolution),
+                resolution,
+                "The evidence resolution is not defined.");
+        }
+
+        if (!Enum.IsDefined(confidence))
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(confidence),
+                confidence,
+                "The evidence confidence is not defined.");
+        }
+
         Snapshot = ContractGuards.RequiredText(snapshot, nameof(snapshot));
         Resolution = resolution;
         Coverage = coverage
@@ -101,6 +117,14 @@ public sealed record EvidenceCoverage
         int? failed = null,
         string? partialReason = null)
     {
+        if (!Enum.IsDefined(level))
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(level),
+                level,
+                "The coverage level is not defined.");
+        }
+
         Level = level;
         Considered = NonNegative(considered, nameof(considered));
         Analyzed = NonNegative(analyzed, nameof(analyzed));
@@ -143,6 +167,35 @@ public sealed record EvidenceCoverage
             throw new ArgumentException(
                 "Not-applicable coverage cannot include target counts.",
                 nameof(level));
+        }
+
+        if (Considered is not null)
+        {
+            var partition = new[]
+            {
+                Analyzed,
+                Remaining,
+                Excluded,
+                Failed,
+            };
+            var knownPartitionTotal = partition
+                .Where(static value => value is not null)
+                .Sum(static value => (long)value!.Value);
+
+            if (knownPartitionTotal > Considered.Value)
+            {
+                throw new ArgumentException(
+                    "Known coverage partitions cannot exceed the considered target count.",
+                    nameof(considered));
+            }
+
+            if (partition.All(static value => value is not null) &&
+                knownPartitionTotal != Considered.Value)
+            {
+                throw new ArgumentException(
+                    "Fully specified coverage counts must partition the considered targets.",
+                    nameof(considered));
+            }
         }
     }
 

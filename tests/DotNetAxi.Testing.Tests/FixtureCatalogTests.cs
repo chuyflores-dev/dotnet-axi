@@ -80,7 +80,7 @@ public sealed class FixtureCatalogTests
         var startInfo = fixture.CreateProcessStartInfo(
             FixtureProcessKind.Restore
             | FixtureProcessKind.RepositoryCode,
-            "dotnet",
+            fixture.DotNetHostPath,
             "build",
             verification.Target,
             "--configuration",
