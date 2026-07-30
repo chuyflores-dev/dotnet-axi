@@ -8,12 +8,12 @@ project/code graph.
 The CLI MUST support:
 
 ```bash
-dotnet-axi search references <symbol>
-dotnet-axi search implementations <symbol>
-dotnet-axi search overrides <symbol>
-dotnet-axi search derived <symbol>
-dotnet-axi search callers <symbol>
-dotnet-axi search callees <symbol>
+dnaxi search references <symbol>
+dnaxi search implementations <symbol>
+dnaxi search overrides <symbol>
+dnaxi search derived <symbol>
+dnaxi search callers <symbol>
+dnaxi search callees <symbol>
 ```
 
 These are the canonical member-relation commands. Graph commands compose them
@@ -51,11 +51,11 @@ runtime code generation, or other behavior outside the declared scope.
 The CLI MUST support:
 
 ```bash
-dotnet-axi graph projects
-dotnet-axi graph dependencies <project>
-dotnet-axi graph cycles
-dotnet-axi graph path --from <entity> --to <entity>
-dotnet-axi graph impact <entity>
+dnaxi graph projects
+dnaxi graph dependencies <project>
+dnaxi graph cycles
+dnaxi graph path --from <entity> --to <entity>
+dnaxi graph impact <entity>
 ```
 
 The internal graph model SHOULD support nodes for solution, project, document,

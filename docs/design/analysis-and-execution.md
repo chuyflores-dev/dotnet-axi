@@ -8,11 +8,11 @@ execution of official .NET SDK commands.
 The MVP exposes these canonical commands:
 
 ```bash
-dotnet-axi analyze compiler
-dotnet-axi analyze analyzers
-dotnet-axi analyze structural
-dotnet-axi analyze architecture
-dotnet-axi analyze changed
+dnaxi analyze compiler
+dnaxi analyze analyzers
+dnaxi analyze structural
+dnaxi analyze architecture
+dnaxi analyze changed
 ```
 
 Each command supports the common workspace scope flags applicable to its
@@ -65,7 +65,7 @@ scope that can provide the requested evidence.
 ## Validation
 
 ```bash
-dotnet-axi validate --profile <fast|standard|full>
+dnaxi validate --profile <fast|standard|full>
 ```
 
 ### Fast profile
@@ -124,11 +124,11 @@ terminated checks remain distinguishable.
 The MVP provides:
 
 ```bash
-dotnet-axi restore [<target>]
-dotnet-axi build [<target>]
-dotnet-axi test [<target>]
-dotnet-axi format [<target>] --check
-dotnet-axi format [<target>] --apply
+dnaxi restore [<target>]
+dnaxi build [<target>]
+dnaxi test [<target>]
+dnaxi format [<target>] --check
+dnaxi format [<target>] --apply
 ```
 
 Later first-class adapters SHOULD cover run, publish, new, project, solution,
@@ -137,7 +137,7 @@ package, tool, and workload operations without changing MVP semantics.
 ### Escape hatch
 
 ```bash
-dotnet-axi exec -- dotnet <arguments>
+dnaxi exec -- dotnet <arguments>
 ```
 
 The first token after `--` is the selected official `dotnet` executable;

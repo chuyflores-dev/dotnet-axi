@@ -7,8 +7,8 @@ modify source.
 ## Plan then apply
 
 ```bash
-dotnet-axi refactor rename --symbol <symbol> --to <name>
-dotnet-axi apply <plan-id>
+dnaxi refactor rename --symbol <symbol> --to <name>
+dnaxi apply <plan-id>
 ```
 
 The refactor command creates a plan without writing source. A plan contains:

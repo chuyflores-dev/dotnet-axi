@@ -1,0 +1,19 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/DotNetAxi.Analysis/DotNetAxi.Analysis.csproj" />
+    <Project Path="src/DotNetAxi.Axi/DotNetAxi.Axi.csproj" />
+    <Project Path="src/DotNetAxi.Changes/DotNetAxi.Changes.csproj" />
+    <Project Path="src/DotNetAxi.Cli/DotNetAxi.Cli.csproj" />
+    <Project Path="src/DotNetAxi.Contracts/DotNetAxi.Contracts.csproj" />
+    <Project Path="src/DotNetAxi.DotNet/DotNetAxi.DotNet.csproj" />
+    <Project Path="src/DotNetAxi.Graph/DotNetAxi.Graph.csproj" />
+    <Project Path="src/DotNetAxi.Roslyn/DotNetAxi.Roslyn.csproj" />
+    <Project Path="src/DotNetAxi.Search/DotNetAxi.Search.csproj" />
+    <Project Path="src/DotNetAxi.Structural/DotNetAxi.Structural.csproj" />
+    <Project Path="src/DotNetAxi.Validation/DotNetAxi.Validation.csproj" />
+    <Project Path="src/DotNetAxi.Workspaces/DotNetAxi.Workspaces.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/DotNetAxi.Cli.Tests/DotNetAxi.Cli.Tests.csproj" />
+  </Folder>
+</Solution>

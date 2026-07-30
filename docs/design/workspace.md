@@ -128,7 +128,7 @@ scope and be identified as external.
 Passive discovery and semantic commands MUST NOT perform implicit restore or
 other network operations. Missing assets, SDKs, workloads, references, and
 broken projects MUST produce partial or failed coverage with an actionable
-`dotnet-axi restore` or scope correction.
+`dnaxi restore` or scope correction.
 
 Projects that fail to load MUST remain in coverage counts with a stable reason;
 they MUST NOT disappear from the denominator.

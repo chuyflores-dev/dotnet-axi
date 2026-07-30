@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>dnaxi</AssemblyName>
+    <RootNamespace>DotNetAxi.Cli</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../DotNetAxi.Analysis/DotNetAxi.Analysis.csproj" />
+    <ProjectReference Include="../DotNetAxi.Axi/DotNetAxi.Axi.csproj" />
+    <ProjectReference Include="../DotNetAxi.Changes/DotNetAxi.Changes.csproj" />
+    <ProjectReference Include="../DotNetAxi.Contracts/DotNetAxi.Contracts.csproj" />
+    <ProjectReference Include="../DotNetAxi.DotNet/DotNetAxi.DotNet.csproj" />
+    <ProjectReference Include="../DotNetAxi.Graph/DotNetAxi.Graph.csproj" />
+    <ProjectReference Include="../DotNetAxi.Roslyn/DotNetAxi.Roslyn.csproj" />
+    <ProjectReference Include="../DotNetAxi.Search/DotNetAxi.Search.csproj" />
+    <ProjectReference Include="../DotNetAxi.Structural/DotNetAxi.Structural.csproj" />
+    <ProjectReference Include="../DotNetAxi.Validation/DotNetAxi.Validation.csproj" />
+    <ProjectReference Include="../DotNetAxi.Workspaces/DotNetAxi.Workspaces.csproj" />
+  </ItemGroup>
+</Project>

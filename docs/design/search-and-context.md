@@ -22,7 +22,7 @@ contract instead of inheriting their own traversal defaults.
 ## File search
 
 ```bash
-dotnet-axi search file <query>
+dnaxi search file <query>
 ```
 
 File search MUST perform invariant ordinal case-insensitive substring matching
@@ -39,7 +39,7 @@ No matching files produce `count: 0`, an empty `files` array, and exit `0`.
 ## Text search
 
 ```bash
-dotnet-axi search text <query>
+dnaxi search text <query>
 ```
 
 Literal search is the default. The command MUST support `--regex`,
@@ -77,8 +77,8 @@ on host locale.
 ## Structural search
 
 ```bash
-dotnet-axi search structural --pattern '<pattern>'
-dotnet-axi search structural --rule <rule-id-or-path>
+dnaxi search structural --pattern '<pattern>'
+dnaxi search structural --rule <rule-id-or-path>
 ```
 
 AST-grep SHOULD be the preferred initial adapter. The adapter MUST:
@@ -96,7 +96,7 @@ actionable structured error, while unrelated commands remain functional.
 ### Semantic verification
 
 ```bash
-dotnet-axi search structural --pattern '<pattern>' \
+dnaxi search structural --pattern '<pattern>' \
   --verify-as <invocation|object-creation|type-reference|attribute|declaration>
 ```
 
@@ -126,10 +126,10 @@ schemas MUST NOT escape the adapter boundary.
 The product SHOULD expose tool-owned queries independent of AST-grep syntax:
 
 ```bash
-dotnet-axi search syntax invocation --name SaveChangesAsync
-dotnet-axi search syntax class --attribute Authorize
-dotnet-axi search syntax object-creation --type HttpClient
-dotnet-axi search syntax catch --type Exception --empty
+dnaxi search syntax invocation --name SaveChangesAsync
+dnaxi search syntax class --attribute Authorize
+dnaxi search syntax object-creation --type HttpClient
+dnaxi search syntax catch --type Exception --empty
 ```
 
 The implementation MAY use AST-grep, Roslyn syntax, or both, but user-facing
@@ -138,7 +138,7 @@ semantics remain stable.
 ## Symbol declarations
 
 ```bash
-dotnet-axi search symbol <query>
+dnaxi search symbol <query>
 ```
 
 Matching SHOULD rank exact fully qualified names, exact identifiers,
@@ -176,9 +176,9 @@ identity and stale-resolution guarantees hold.
 ## Show and outline
 
 ```bash
-dotnet-axi show symbol <symbol>
-dotnet-axi show document <path>
-dotnet-axi outline <path-or-symbol>
+dnaxi show symbol <symbol>
+dnaxi show document <path>
+dnaxi outline <path-or-symbol>
 ```
 
 `show symbol` returns declaration identity, signature, containing
@@ -195,7 +195,7 @@ as a fallback.
 ## Bounded context
 
 ```bash
-dotnet-axi context symbol <symbol> \
+dnaxi context symbol <symbol> \
   --include declaration,callers,callees,tests \
   --max-chars 12000
 ```

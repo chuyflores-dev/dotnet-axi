@@ -216,6 +216,23 @@ Agent integration is explicit, idempotently removable, and atomic. Setup and
 removal report exact scope and target paths, preserve unrelated configuration,
 and do not alter trust databases, bypass hook review, or weaken managed policy.
 
+## Public names
+
+The public names intentionally separate project identity from invocation:
+
+| Surface | Name |
+|---|---|
+| Repository and product | `dotnet-axi` |
+| .NET tool package | `dotnet-axi` |
+| Installed command | `dnaxi` |
+| Output schema | `dotnet-axi/v1` |
+| Configuration file | `dotnet-axi.yml` |
+| Disposable state directory | `.dotnet-axi/` |
+
+Documentation uses `dnaxi` for executable examples. Package installation still
+uses `dotnet-axi`, and schema, configuration, and state names do not follow the
+short command name.
+
 ## Platform and packaging
 
 The implementation SHOULD target .NET 10 and C#. The MVP supports current
@@ -228,8 +245,8 @@ Primary distribution SHOULD be a .NET global/local tool:
 dotnet tool install --global dotnet-axi
 ```
 
-Both direct global invocation (`dotnet-axi`) and local-tool invocation
-(`dotnet tool run dotnet-axi`) expose the same CLI contract. Setup records an
+Both direct global invocation (`dnaxi`) and local-tool invocation
+(`dotnet tool run dnaxi`) expose the same CLI contract. Setup records an
 invocation valid for the selected installation and repairs it idempotently if
 the installation moves.
 
@@ -298,6 +315,12 @@ src/
   DotNetAxi.Changes/
   DotNetAxi.Contracts/
 ```
+
+`DotNetAxi.Contracts` has no implementation-project references. Each other
+non-CLI component depends only on `DotNetAxi.Contracts`; dependencies on
+capabilities are expressed through those stable contracts. `DotNetAxi.Cli` is
+the composition root and may reference every component. Test projects may
+reference only the production projects they exercise.
 
 Adapters return stable internal contracts rather than raw dependency schemas.
 Replaceable boundaries SHOULD include:
