@@ -8,13 +8,15 @@ public sealed record CommandOperation
     internal CommandOperation(
         Command command,
         string name,
-        OperationPolicy policy)
+        OperationPolicy policy,
+        IEnumerable<string> examples)
     {
         Command = command
             ?? throw new ArgumentNullException(nameof(command));
         Name = RequiredText(name, nameof(name));
         Policy = policy
             ?? throw new ArgumentNullException(nameof(policy));
+        Examples = CopyExamples(examples);
     }
 
     internal Command Command { get; }
@@ -22,6 +24,42 @@ public sealed record CommandOperation
     public string Name { get; }
 
     public OperationPolicy Policy { get; }
+
+    public IReadOnlyList<string> Examples { get; }
+
+    private static IReadOnlyList<string> CopyExamples(
+        IEnumerable<string> examples)
+    {
+        ArgumentNullException.ThrowIfNull(examples);
+
+        var copy = examples
+            .Select(example => RequiredText(example, nameof(examples)))
+            .ToArray();
+        if (copy.Length is < 2 or > 3)
+        {
+            throw new ArgumentException(
+                "Commands require two or three representative examples.",
+                nameof(examples));
+        }
+
+        if (copy.Distinct(StringComparer.Ordinal).Count() != copy.Length)
+        {
+            throw new ArgumentException(
+                "Command examples must be distinct.",
+                nameof(examples));
+        }
+
+        if (copy.Any(static example =>
+                example is not "dnaxi" &&
+                !example.StartsWith("dnaxi ", StringComparison.Ordinal)))
+        {
+            throw new ArgumentException(
+                "Command examples must be complete `dnaxi` invocations.",
+                nameof(examples));
+        }
+
+        return Array.AsReadOnly(copy);
+    }
 
     private static string RequiredText(string value, string parameterName)
     {
@@ -46,9 +84,10 @@ internal sealed class CommandOperationRegistry
 
     public CommandOperationRegistry(
         RootCommand rootCommand,
-        OperationPolicy rootPolicy)
+        OperationPolicy rootPolicy,
+        IEnumerable<string> rootExamples)
     {
-        Register(rootCommand, "home", rootPolicy);
+        Register(rootCommand, "home", rootPolicy, rootExamples);
     }
 
     public IReadOnlyList<CommandOperation> Operations => _operations.AsReadOnly();
@@ -56,7 +95,8 @@ internal sealed class CommandOperationRegistry
     public CommandOperation Add(
         Command parent,
         Command command,
-        OperationPolicy policy)
+        OperationPolicy policy,
+        IEnumerable<string> examples)
     {
         ArgumentNullException.ThrowIfNull(parent);
         ArgumentNullException.ThrowIfNull(command);
@@ -71,7 +111,7 @@ internal sealed class CommandOperationRegistry
         var name = parentOperation.Name is "home"
             ? command.Name
             : $"{parentOperation.Name} {command.Name}";
-        var operation = Register(command, name, policy);
+        var operation = Register(command, name, policy, examples);
         parent.Subcommands.Add(command);
         return operation;
     }
@@ -107,12 +147,17 @@ internal sealed class CommandOperationRegistry
     private CommandOperation Register(
         Command command,
         string name,
-        OperationPolicy policy)
+        OperationPolicy policy,
+        IEnumerable<string> examples)
     {
         ArgumentNullException.ThrowIfNull(command);
         ArgumentNullException.ThrowIfNull(policy);
 
-        var operation = new CommandOperation(command, name, policy);
+        var operation = new CommandOperation(
+            command,
+            name,
+            policy,
+            examples);
         if (!_byCommand.TryAdd(command, operation))
         {
             throw new InvalidOperationException(

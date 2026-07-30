@@ -6,6 +6,10 @@ var rootCommand = new RootCommand();
 var host = new CommandHost(
     rootCommand,
     OperationPolicy.Passive,
+    [
+        "dnaxi",
+        "dnaxi --help",
+    ],
     Console.Out,
     Console.Error);
 rootCommand.BindVersionOutput(
@@ -39,7 +43,14 @@ void AddScenario(
         _ => new ScenarioRequest(scenario),
         () => new ScenarioHandler(host.Diagnostics),
         host.ResponseWriter);
-    host.RegisterCommand(rootCommand, command, OperationPolicy.Passive);
+    host.RegisterCommand(
+        rootCommand,
+        command,
+        OperationPolicy.Passive,
+        [
+            $"dnaxi {name}",
+            $"dnaxi {name} --help",
+        ]);
 }
 
 internal enum Scenario

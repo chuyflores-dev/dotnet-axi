@@ -107,6 +107,30 @@ public sealed class CliResponseBoundaryProcessTests
     }
 
     [Fact]
+    public async Task Built_cli_reports_structured_passive_help()
+    {
+        var result = await RunApplicationAsync(
+            ProductionApplicationPath(),
+            "--help");
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.StartsWith(
+            "schema: dotnet-axi/v1\n",
+            result.StandardOutput);
+        Assert.Contains("command: help\n", result.StandardOutput);
+        Assert.Contains("topic: home\n", result.StandardOutput);
+        Assert.Contains(
+            "classification: passive\n",
+            result.StandardOutput);
+        Assert.Contains("arguments: []\n", result.StandardOutput);
+        Assert.Contains("subcommands: []\n", result.StandardOutput);
+        Assert.Contains(
+            "dnaxi --version",
+            result.StandardOutput);
+        Assert.Equal(string.Empty, result.StandardError);
+    }
+
+    [Fact]
     public async Task Short_version_alias_does_not_replace_subcommand_verbosity()
     {
         var verbosity = await RunAsync(

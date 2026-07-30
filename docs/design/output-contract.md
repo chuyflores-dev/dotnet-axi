@@ -166,6 +166,14 @@ values, and omit suggestions when the response is self-contained.
 Every subcommand supports concise `--help` with required arguments,
 flags/defaults, and two or three examples.
 
+Help is a successful structured `help` result. Its `topic` identifies `home`
+or the canonical subcommand path; the payload contains usage, description,
+operation classification, arguments, flags, registered subcommands, and two
+or three complete `dnaxi` examples. Argument and flag arity, required state,
+defaults, and inherited state are generated from the active parser
+registration. Only registered, non-hidden commands are listed. Help does not
+create a command handler or probe workspace capabilities.
+
 The CLI supports `--help`, `-v`, and `--version` and SHOULD reserve `update`.
 Global `-v` means version only before subcommand dispatch; command verbosity
 uses `--verbosity`.
