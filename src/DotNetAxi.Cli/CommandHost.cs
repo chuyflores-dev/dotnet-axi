@@ -84,6 +84,13 @@ public sealed class CommandHost
                 .WriteAsync(result, CliExitCode.Failure, CancellationToken.None)
                 .ConfigureAwait(false);
         }
+        catch (UnknownOutputFieldsException exception)
+        {
+            var result = UsageErrorResult.Create(exception, command);
+            return await _responseWriter
+                .WriteAsync(result, CliExitCode.Usage, CancellationToken.None)
+                .ConfigureAwait(false);
+        }
         catch (Exception)
         {
             var result = CommandResult<NoPayload>.Failed(

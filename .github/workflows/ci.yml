@@ -55,5 +55,6 @@ jobs:
 
       - name: Strict-decode TOON v4.1 fixtures
         run: |
-          npx --yes @toon-format/cli@4.1.0 --decode --strict tests/DotNetAxi.Cli.Tests/Fixtures/success.toon > /dev/null
-          npx --yes @toon-format/cli@4.1.0 --decode --strict tests/DotNetAxi.Cli.Tests/Fixtures/evidence.toon > /dev/null
+          for fixture in tests/DotNetAxi.Cli.Tests/Fixtures/*.toon; do
+            npx --yes @toon-format/cli@4.1.0 --decode --strict "$fixture" > /dev/null
+          done

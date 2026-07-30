@@ -1,0 +1,12 @@
+schema: dotnet-axi/v1
+command: search symbol
+status: failed
+valid_fields[4]{name}:
+  id
+  file
+  line
+  detail
+error:
+  code: usage.unknown_field
+  message: Unknown field `owner` for `search symbol`.
+  correction: "Use `--fields` with one or more of: `id`, `file`, `line`, `detail`."

@@ -1,0 +1,19 @@
+schema: dotnet-axi/v1
+command: search symbol
+status: success
+count: 2
+total_known: true
+total: 3
+omitted: 1
+truncated: true
+retrieval_command: Run `dnaxi search symbol Widget --limit 3`
+matches[2]{id,file,line,detail}:
+  sym_1,src/A.cs,10,First
+  sym_2,src/B.cs,20,Second
+text:
+  preview: A😀B
+  included_characters: 3
+  total_characters: 5
+  omitted_characters: 2
+  truncated: true
+  retrieval_command: Run `dnaxi show document src/A.cs --full`
