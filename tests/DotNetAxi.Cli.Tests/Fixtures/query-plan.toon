@@ -1,0 +1,16 @@
+schema: dotnet-axi/v1
+command: search callers
+status: success
+engine: roslyn-semantic
+engine_class: semantic
+analysis_level: complete
+planned_resolution: semantic
+planned_coverage: complete
+candidate_scope: Selected solution and all target frameworks
+expected_project_loads[2]: src/App/App.csproj,src/Core/Core.csproj
+complete_analysis_required: true
+selectors:
+  solution: Repository.slnx
+  project: src/App/App.csproj
+  configuration: Release
+  framework: net10.0

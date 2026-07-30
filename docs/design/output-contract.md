@@ -13,6 +13,13 @@ Commands that support partial discovery SHOULD accept `--complete`.
 `--explain-plan` SHOULD report the selected engine class, candidate scope,
 projects expected to load, and whether full-solution analysis is required.
 
+Capabilities provide typed plan candidates. The shared planner discards
+candidates that cannot meet the requested resolution or complete-coverage
+requirement, then orders the remainder by progressive-analysis level, expected
+project loads, planned resolution, engine class, and stable engine identifier.
+A plan reports that selection together with planned coverage and the fixed
+workspace selectors.
+
 Contextual suggestions preserve fixed scope flags such as `--solution`,
 `--project`, `--configuration`, and `--framework`.
 

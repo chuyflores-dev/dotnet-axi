@@ -194,6 +194,9 @@ Claude Code / Codex / OpenCode / Developer / CI
 Business logic MUST operate on typed result objects. Only the CLI/output layer
 SHOULD depend on TOON serialization. Engine contracts MUST allow text,
 structural, syntax, semantic, graph, and SDK adapters to evolve independently.
+Capability components provide typed query-plan candidates through
+`DotNetAxi.Contracts`; `DotNetAxi.Analysis` selects a plan, and the CLI only
+renders it.
 
 ## Progressive analysis
 
