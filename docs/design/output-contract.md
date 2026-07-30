@@ -69,9 +69,12 @@ this design.
 The CLI currently normalizes typed result payloads to the JSON data model
 behind a tool-owned serializer boundary, then encodes that model with its
 internal TOON v4.1 writer. Core contracts do not reference the writer.
-Representative golden documents are produced from typed results and
-strict-decoded by the pinned reference CLI in CI; full corpus conformance
-belongs to `MVP-E13-S05`.
+Conformance pins the official v4.1 encoder corpus, executes every case matching
+the fixed comma-delimited, two-space output profile, and accounts for
+option-specific cases the serializer does not expose. Representative golden
+documents and a deterministic untrusted-string fuzz corpus are produced
+through the production boundary and strict-decoded by the pinned reference CLI
+in CI.
 
 ## Schema design
 

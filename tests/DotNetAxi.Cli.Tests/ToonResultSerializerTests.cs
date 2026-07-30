@@ -72,6 +72,24 @@ public sealed class ToonResultSerializerTests
     }
 
     [Fact]
+    public void Cancelled_result_matches_the_golden_contract()
+    {
+        var result = CommandResult<MessagePayload>.Cancelled(
+            "analyze",
+            errors:
+            [
+                new ResultError(
+                    "operation.cancelled",
+                    "Analysis was cancelled.",
+                    "Run the command again when analysis can complete."),
+            ]);
+
+        var document = _serializer.Serialize(result);
+
+        Assert.Equal(ReadFixture("cancelled.toon"), document);
+    }
+
+    [Fact]
     public void Query_plan_reports_level_scope_project_loads_and_selectors()
     {
         var plan = new QueryPlan(

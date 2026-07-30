@@ -126,8 +126,12 @@ Cross-platform tests cover paths, LF-only TOON, executable discovery, hook
 merge/removal, supported file permissions, and child-process-tree cancellation
 on the published platform matrix.
 
-TOON conformance tests run the pinned encoder corpus, fuzz untrusted strings
-and control characters, and verify declared array lengths and row widths.
+TOON conformance tests provenance-pin the official encoder corpus, run every
+case applicable to the fixed output profile, inventory option-only cases, fuzz
+untrusted strings and control characters through the production serializer,
+and verify UTF-8, LF-only output, declared array lengths, and row widths. CI
+strict-decodes golden and generated fuzz documents with the pinned reference
+CLI.
 
 SDK adapter tests run under at least one non-English host locale and cover both
 VSTest and Microsoft Testing Platform translation.

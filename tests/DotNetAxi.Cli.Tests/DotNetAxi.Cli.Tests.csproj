@@ -25,6 +25,9 @@
   </ItemGroup>
 
   <ItemGroup>
+    <None
+      Update="Conformance/**/*"
+      CopyToOutputDirectory="PreserveNewest" />
     <None Update="Fixtures/*.toon" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>
