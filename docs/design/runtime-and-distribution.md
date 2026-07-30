@@ -245,6 +245,9 @@ Primary distribution SHOULD be a .NET global/local tool:
 dotnet tool install --global dotnet-axi
 ```
 
+Version milestones and external package publication follow the explicit
+[release and versioning policy](releases.md).
+
 Both direct global invocation (`dnaxi`) and local-tool invocation
 (`dotnet tool run dnaxi`) expose the same CLI contract. Setup records an
 invocation valid for the selected installation and repairs it idempotently if
