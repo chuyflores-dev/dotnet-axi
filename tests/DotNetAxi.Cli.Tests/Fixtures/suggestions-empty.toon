@@ -1,0 +1,4 @@
+schema: dotnet-axi/v1
+command: search symbol
+status: success
+case: empty

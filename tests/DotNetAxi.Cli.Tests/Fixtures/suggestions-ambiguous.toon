@@ -1,0 +1,10 @@
+schema: dotnet-axi/v1
+command: home
+status: failed
+case: ambiguous
+error:
+  code: workspace.ambiguous
+  message: More than one solution was found.
+  correction: Select one of the reported solution paths.
+suggestions[1]{command}:
+  Run `dnaxi search symbol '<name>' --solution 'Credit Platform.slnx'`
