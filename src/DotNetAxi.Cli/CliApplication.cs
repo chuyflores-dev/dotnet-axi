@@ -9,7 +9,11 @@ internal static class CliApplication
     {
         var rootCommand = new RootCommand(
             "Deterministic .NET discovery, analysis, validation, and safe modification.");
-        var host = new CommandHost(rootCommand, output, error);
+        var host = new CommandHost(
+            rootCommand,
+            OperationPolicy.Passive,
+            output,
+            error);
         rootCommand.BindVersionOutput(
             static () => VersionResult.Create(ToolVersion.Current),
             host.ResponseWriter);

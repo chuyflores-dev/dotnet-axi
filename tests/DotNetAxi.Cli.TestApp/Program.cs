@@ -3,7 +3,11 @@ using DotNetAxi.Cli;
 using DotNetAxi.Contracts;
 
 var rootCommand = new RootCommand();
-var host = new CommandHost(rootCommand, Console.Out, Console.Error);
+var host = new CommandHost(
+    rootCommand,
+    OperationPolicy.Passive,
+    Console.Out,
+    Console.Error);
 rootCommand.BindVersionOutput(
     static () => VersionResult.Create(
         ToolVersion.FromAssembly(typeof(ScenarioHandler).Assembly)),
@@ -35,7 +39,7 @@ void AddScenario(
         _ => new ScenarioRequest(scenario),
         () => new ScenarioHandler(host.Diagnostics),
         host.ResponseWriter);
-    rootCommand.Subcommands.Add(command);
+    host.RegisterCommand(rootCommand, command, OperationPolicy.Passive);
 }
 
 internal enum Scenario
