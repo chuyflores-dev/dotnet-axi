@@ -12,6 +12,11 @@ internal static class CliApplication
         var host = new CommandHost(
             rootCommand,
             OperationPolicy.Passive,
+            [
+                "dnaxi",
+                "dnaxi --help",
+                "dnaxi --version",
+            ],
             output,
             error);
         rootCommand.BindVersionOutput(

@@ -19,6 +19,7 @@ public sealed class CommandHost
     public CommandHost(
         RootCommand rootCommand,
         OperationPolicy rootPolicy,
+        IEnumerable<string> rootExamples,
         TextWriter output,
         TextWriter error)
     {
@@ -26,13 +27,17 @@ public sealed class CommandHost
             ?? throw new ArgumentNullException(nameof(rootCommand));
         _operations = new CommandOperationRegistry(
             _rootCommand,
-            rootPolicy ?? throw new ArgumentNullException(nameof(rootPolicy)));
+            rootPolicy ?? throw new ArgumentNullException(nameof(rootPolicy)),
+            rootExamples);
         _output = output
             ?? throw new ArgumentNullException(nameof(output));
         _error = error
             ?? throw new ArgumentNullException(nameof(error));
         _responseWriter = new CommandResponseWriter(_output);
         Diagnostics = new CommandDiagnostics(_error);
+        _rootCommand.BindHelpOutput(
+            CreateHelpResult,
+            _responseWriter);
     }
 
     public ICommandResponseWriter ResponseWriter => _responseWriter;
@@ -45,8 +50,9 @@ public sealed class CommandHost
     public CommandOperation RegisterCommand(
         Command parent,
         Command command,
-        OperationPolicy policy) =>
-        _operations.Add(parent, command, policy);
+        OperationPolicy policy,
+        IEnumerable<string> examples) =>
+        _operations.Add(parent, command, policy, examples);
 
     public ParseResult Parse(IReadOnlyList<string> args)
     {
@@ -121,6 +127,14 @@ public sealed class CommandHost
                 .WriteAsync(result, CliExitCode.Failure, CancellationToken.None)
                 .ConfigureAwait(false);
         }
+    }
+
+    private ICommandResult CreateHelpResult(ParseResult parseResult)
+    {
+        ArgumentNullException.ThrowIfNull(parseResult);
+        var operation = _operations.Get(
+            parseResult.CommandResult.Command);
+        return CommandHelpResult.Create(operation, _operations.Get);
     }
 
     private sealed record NoPayload;

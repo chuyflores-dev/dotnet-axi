@@ -39,7 +39,11 @@ public sealed class CommandHostTests
         host.RegisterCommand(
             rootCommand,
             inspectCommand,
-            OperationPolicy.Passive);
+            OperationPolicy.Passive,
+            [
+                "dnaxi inspect Widget",
+                "dnaxi inspect --help",
+            ]);
         var handler = new RecordingHandler<InspectRequest>();
         inspectCommand.BindHandler(
             parseResult => new InspectRequest(
@@ -65,7 +69,11 @@ public sealed class CommandHostTests
         host.RegisterCommand(
             rootCommand,
             inspectCommand,
-            OperationPolicy.Passive);
+            OperationPolicy.Passive,
+            [
+                "dnaxi inspect",
+                "dnaxi inspect --help",
+            ]);
         var handler = new RecordingHandler<InspectRequest>();
         var factoryCalls = 0;
         inspectCommand.BindHandler(
@@ -119,7 +127,11 @@ public sealed class CommandHostTests
         host.RegisterCommand(
             rootCommand,
             inspectCommand,
-            OperationPolicy.Passive);
+            OperationPolicy.Passive,
+            [
+                "dnaxi inspect",
+                "dnaxi inspect --help",
+            ]);
 
         Assert.Collection(
             host.Operations,
@@ -147,6 +159,7 @@ public sealed class CommandHostTests
         var operation = Assert.Single(host.Operations);
         Assert.Equal("home", operation.Name);
         Assert.Same(OperationPolicy.Passive, operation.Policy);
+        Assert.InRange(operation.Examples.Count, 2, 3);
         Assert.False(operation.Policy.MayAccessNetwork);
         Assert.False(operation.Policy.MayExecuteRepositoryCode);
         Assert.False(operation.Policy.MayWriteArtifacts);
@@ -173,10 +186,53 @@ public sealed class CommandHostTests
             StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void Command_registration_requires_two_or_three_examples()
+    {
+        var rootCommand = new RootCommand();
+        var host = CreateHost(rootCommand);
+
+        var exception = Assert.Throws<ArgumentException>(
+            () => host.RegisterCommand(
+                rootCommand,
+                new Command("inspect"),
+                OperationPolicy.Passive,
+                ["dnaxi inspect"]));
+
+        Assert.Equal("examples", exception.ParamName);
+        Assert.Single(host.Operations);
+        Assert.Empty(rootCommand.Subcommands);
+    }
+
+    [Fact]
+    public void Command_registration_rejects_incomplete_examples()
+    {
+        var rootCommand = new RootCommand();
+        var host = CreateHost(rootCommand);
+
+        var exception = Assert.Throws<ArgumentException>(
+            () => host.RegisterCommand(
+                rootCommand,
+                new Command("inspect"),
+                OperationPolicy.Passive,
+                [
+                    "inspect Widget",
+                    "dnaxi inspect --help",
+                ]));
+
+        Assert.Equal("examples", exception.ParamName);
+        Assert.Single(host.Operations);
+        Assert.Empty(rootCommand.Subcommands);
+    }
+
     private static CommandHost CreateHost(RootCommand rootCommand) =>
         new(
             rootCommand,
             OperationPolicy.Passive,
+            [
+                "dnaxi",
+                "dnaxi --help",
+            ],
             new StringWriter(),
             new StringWriter());
 

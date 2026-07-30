@@ -65,16 +65,28 @@ public sealed class OutputShapingGoldenTests
         var host = new CommandHost(
             rootCommand,
             OperationPolicy.Passive,
+            [
+                "dnaxi",
+                "dnaxi --help",
+            ],
             output,
             new StringWriter());
         host.RegisterCommand(
             rootCommand,
             searchCommand,
-            OperationPolicy.Passive);
+            OperationPolicy.Passive,
+            [
+                "dnaxi search",
+                "dnaxi search --help",
+            ]);
         host.RegisterCommand(
             searchCommand,
             symbolCommand,
-            OperationPolicy.Passive);
+            OperationPolicy.Passive,
+            [
+                "dnaxi search symbol Widget",
+                "dnaxi search symbol --help",
+            ]);
         var factoryCalls = 0;
         symbolCommand.BindHandler(
             _ => CreateFields().Select(["owner"]),

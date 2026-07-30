@@ -1,0 +1,36 @@
+schema: dotnet-axi/v1
+command: help
+status: success
+topic: home
+usage: "dnaxi [options] [command]"
+description: Inspect a deterministic fixture.
+classification: passive
+arguments: []
+flags[3]:
+  - name: "--help"
+    aliases[4]: "-?","-h",/?,/h
+    required: false
+    minimum_values: 0
+    maximum_values: 0
+    inherited: false
+    description: Show structured help for the selected command.
+  - name: "--solution"
+    aliases: []
+    required: false
+    value_type: string
+    minimum_values: 1
+    maximum_values: 1
+    inherited: false
+    description: Select a solution path.
+  - name: "--version"
+    aliases[1]: "-v"
+    required: false
+    minimum_values: 0
+    maximum_values: 0
+    inherited: false
+    description: Show the installed tool and output-schema versions.
+subcommands[1]{name,description,classification}:
+  inspect,Inspect one registered target.,executing
+examples[2]{command}:
+  dnaxi
+  dnaxi inspect --help

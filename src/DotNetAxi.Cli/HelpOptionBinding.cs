@@ -1,43 +1,39 @@
 using System.CommandLine;
+using System.CommandLine.Help;
 using System.CommandLine.Invocation;
 using DotNetAxi.Contracts;
 
 namespace DotNetAxi.Cli;
 
-internal static class VersionOptionBinding
+internal static class HelpOptionBinding
 {
-    public static void BindVersionOutput(
+    public static void BindHelpOutput(
         this RootCommand rootCommand,
-        Func<ICommandResult> resultFactory,
+        Func<ParseResult, ICommandResult> resultFactory,
         ICommandResponseWriter responseWriter)
     {
         ArgumentNullException.ThrowIfNull(rootCommand);
         ArgumentNullException.ThrowIfNull(resultFactory);
         ArgumentNullException.ThrowIfNull(responseWriter);
 
-        var versionOption = rootCommand.Options
-            .OfType<VersionOption>()
+        var helpOption = rootCommand.Options
+            .OfType<HelpOption>()
             .Single();
-        if (!versionOption.Aliases.Contains("-v", StringComparer.Ordinal))
-        {
-            versionOption.Aliases.Add("-v");
-        }
-
-        versionOption.Description =
-            "Show the installed tool and output-schema versions.";
-        versionOption.Action = new StructuredVersionAction(
+        helpOption.Description =
+            "Show structured help for the selected command.";
+        helpOption.Action = new StructuredHelpAction(
             resultFactory,
             responseWriter);
     }
 
-    private sealed class StructuredVersionAction :
+    private sealed class StructuredHelpAction :
         AsynchronousCommandLineAction
     {
-        private readonly Func<ICommandResult> _resultFactory;
+        private readonly Func<ParseResult, ICommandResult> _resultFactory;
         private readonly ICommandResponseWriter _responseWriter;
 
-        public StructuredVersionAction(
-            Func<ICommandResult> resultFactory,
+        public StructuredHelpAction(
+            Func<ParseResult, ICommandResult> resultFactory,
             ICommandResponseWriter responseWriter)
         {
             _resultFactory = resultFactory;
@@ -54,7 +50,9 @@ internal static class VersionOptionBinding
         {
             ArgumentNullException.ThrowIfNull(parseResult);
             return _responseWriter
-                .WriteAsync(_resultFactory(), cancellationToken)
+                .WriteAsync(
+                    _resultFactory(parseResult),
+                    cancellationToken)
                 .AsTask();
         }
     }

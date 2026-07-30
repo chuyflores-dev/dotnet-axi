@@ -1,0 +1,46 @@
+schema: dotnet-axi/v1
+command: help
+status: success
+topic: inspect
+usage: "dnaxi inspect <target> [options]"
+description: Inspect one registered target.
+classification: executing
+arguments[1]{name,required,value_type,minimum_values,maximum_values,description}:
+  target,true,string,1,1,Stable ID or exact target name.
+flags[4]:
+  - name: "--format"
+    aliases[1]: "-f"
+    required: false
+    value_type: string
+    minimum_values: 1
+    maximum_values: 1
+    default_value: summary
+    inherited: false
+    description: Select the detail format.
+  - name: "--help"
+    aliases[4]: "-?","-h",/?,/h
+    required: false
+    minimum_values: 0
+    maximum_values: 0
+    inherited: true
+    description: Show structured help for the selected command.
+  - name: "--project"
+    aliases: []
+    required: true
+    value_type: string
+    minimum_values: 1
+    maximum_values: 1
+    inherited: false
+    description: Limit inspection to one project.
+  - name: "--solution"
+    aliases: []
+    required: false
+    value_type: string
+    minimum_values: 1
+    maximum_values: 1
+    inherited: true
+    description: Select a solution path.
+subcommands: []
+examples[2]{command}:
+  dnaxi inspect sym_123 --project src/App/App.csproj
+  dnaxi inspect sym_123 --project src/App/App.csproj --format detailed
