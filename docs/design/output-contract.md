@@ -59,6 +59,13 @@ emitted data. Output-contract blocks do not contain illustrative ellipses.
 The .NET serializer implementation is replaceable and is not prescribed by
 this design.
 
+The CLI currently normalizes typed result payloads to the JSON data model
+behind a tool-owned serializer boundary, then encodes that model with its
+internal TOON v4.1 writer. Core contracts do not reference the writer.
+Representative golden documents are produced from typed results and
+strict-decoded by the pinned reference CLI in CI; full corpus conformance
+belongs to `MVP-E13-S05`.
+
 ## Schema design
 
 Collection rows default to approximately three or four fields. Additional

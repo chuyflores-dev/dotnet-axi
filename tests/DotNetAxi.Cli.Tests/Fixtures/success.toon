@@ -1,0 +1,10 @@
+schema: dotnet-axi/v1
+command: search symbol
+status: success
+query: "Widget:\nstatus: failed"
+count: 2
+matches[2]{id,file,line}:
+  sym_1,src/A.cs,3
+  sym_2,"src/B,Injected.cs",9
+suggestions[1]{command}:
+  Run `dnaxi show symbol sym_1`

@@ -1,0 +1,23 @@
+schema: dotnet-axi/v1
+command: search callers
+status: partial
+snapshot: ws_123
+resolution: semantic
+coverage: partial
+confidence: verified
+scope:
+  root: /work/repository
+  analyzed_portion: Selected project graph
+  solution: Repository.slnx
+  projects[2]: src/Api/Api.csproj,src/Core/Core.csproj
+  frameworks[1]: net10.0
+  configuration: Debug
+  considered: 8
+  analyzed: 6
+  remaining: 2
+  partial_reason: Two projects require restore.
+count: 2
+error:
+  code: analysis.incomplete
+  message: Two projects were not analyzed.
+  correction: "Run `dnaxi restore`, then repeat with `--complete`."
