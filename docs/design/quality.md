@@ -86,6 +86,31 @@ identity resolution, deterministic ordering, and dependency translation.
 
 ### Integration fixtures
 
+Each fixture is defined by a committed `dotnet-axi/fixture/v1` manifest and
+explicit template files. The manifest fixes its logical name, random seed,
+selected SDK context, destination paths, and whether well-known fixture tokens
+are expanded. Template and destination paths are repository-relative,
+validated before materialization, and cannot escape the manifest or workspace
+root.
+
+The fixture factory materializes each instance under a unique owned directory.
+The workspace is separate from isolated home, Git configuration, NuGet
+packages and HTTP cache, .NET CLI home, general cache, temporary, and artifact
+directories. It returns child-process environment overrides without mutating
+the test host environment.
+
+Factory creation is passive: it does not start Git, `dotnet`, restore,
+repository code, or any other process. Tests must opt into tooling, restore, or
+repository-code process classifications before the factory creates a
+`ProcessStartInfo`.
+
+Fixture identity includes a SHA-256 hash over normalized relative paths and
+exact materialized bytes. Instance metadata records that hash, the fixed seed,
+the selected SDK context, and runtime/OS identity without timestamps or
+machine-specific workspace paths. Owned-directory markers constrain cleanup;
+transient cleanup is retried, and a remaining failure preserves the path in a
+structured exception so cleanup can be retried.
+
 Fixtures cover:
 
 - Single- and multi-project solutions.
