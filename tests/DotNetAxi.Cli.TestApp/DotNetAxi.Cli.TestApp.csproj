@@ -2,7 +2,14 @@
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <IsPackable>false</IsPackable>
+    <PackageVersion>9.8.7-test</PackageVersion>
   </PropertyGroup>
+
+  <ItemGroup>
+    <AssemblyMetadata
+      Include="DotNetAxi.ToolVersion"
+      Value="$(PackageVersion)" />
+  </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="../../src/DotNetAxi.Cli/DotNetAxi.Cli.csproj" />

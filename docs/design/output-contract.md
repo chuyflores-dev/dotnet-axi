@@ -153,6 +153,11 @@ The CLI supports `--help`, `-v`, and `--version` and SHOULD reserve `update`.
 Global `-v` means version only before subcommand dispatch; command verbosity
 uses `--verbosity`.
 
+Version output is a structured `version` result with `tool`, `tool_version`,
+and `output_schema` fields. The tool version comes from package-version
+metadata embedded in the executable at build time; it is not maintained as a
+separate runtime constant.
+
 ## Schema evolution
 
 Every stdout document begins with `schema: dotnet-axi/v1`.

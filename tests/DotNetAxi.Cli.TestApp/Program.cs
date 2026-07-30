@@ -4,6 +4,10 @@ using DotNetAxi.Contracts;
 
 var rootCommand = new RootCommand();
 var host = new CommandHost(rootCommand, Console.Out, Console.Error);
+rootCommand.BindVersionOutput(
+    static () => VersionResult.Create(
+        ToolVersion.FromAssembly(typeof(ScenarioHandler).Assembly)),
+    host.ResponseWriter);
 
 AddScenario("success", Scenario.Success, includeKnownOption: true);
 AddScenario("empty", Scenario.Empty);
@@ -24,6 +28,7 @@ void AddScenario(
     if (includeKnownOption)
     {
         command.Options.Add(new Option<bool>("--known"));
+        command.Options.Add(new Option<string?>("--verbosity"));
     }
 
     command.BindHandler(
