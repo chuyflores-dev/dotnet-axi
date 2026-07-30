@@ -1,4 +1,5 @@
 using System.CommandLine;
+using DotNetAxi.Contracts;
 
 namespace DotNetAxi.Cli;
 
@@ -8,11 +9,13 @@ internal static class CliApplication
     {
         var rootCommand = new RootCommand(
             "Deterministic .NET discovery, analysis, validation, and safe modification.");
+        var host = new CommandHost(rootCommand, output, error);
         rootCommand.BindHandler(
             static _ => RootInvocation.Instance,
-            static () => RootHandler.Instance);
+            static () => RootHandler.Instance,
+            host.ResponseWriter);
 
-        return new CommandHost(rootCommand, output, error);
+        return host;
     }
 
     private sealed record RootInvocation
@@ -24,13 +27,21 @@ internal static class CliApplication
     {
         public static RootHandler Instance { get; } = new();
 
-        public ValueTask<int> HandleAsync(
+        public ValueTask<ICommandResult> HandleAsync(
             RootInvocation request,
             CancellationToken cancellationToken)
         {
             ArgumentNullException.ThrowIfNull(request);
             cancellationToken.ThrowIfCancellationRequested();
-            return ValueTask.FromResult(0);
+            return ValueTask.FromResult<ICommandResult>(
+                CommandResult<RootPayload>.Success(
+                    "home",
+                    RootPayload.Instance));
         }
+    }
+
+    private sealed record RootPayload
+    {
+        public static RootPayload Instance { get; } = new();
     }
 }

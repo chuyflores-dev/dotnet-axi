@@ -107,6 +107,11 @@ actionable message, and concrete correction.
 - **exit 1:** operation or validation failure.
 - **exit 2:** usage or configuration error detected before execution.
 
+Successful and partial results exit `0`; failed and cancelled results exit `1`.
+The CLI boundary overrides the result-status mapping only for pre-execution
+usage or configuration failures, which are structured failed results with
+exit `2`. Dependency-specific exit codes remain result data.
+
 Progress never appears on stdout. Unhandled exceptions and dependency stack
 traces become a stable internal error with a diagnostic artifact reference.
 Debug stack traces MAY appear on stderr only when explicitly enabled.
