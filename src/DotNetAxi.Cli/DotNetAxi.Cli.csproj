@@ -10,6 +10,14 @@
   </ItemGroup>
 
   <ItemGroup>
+    <AssemblyMetadata
+      Include="DotNetAxi.ToolVersion"
+      Value="$(PackageVersion)" />
+    <InternalsVisibleTo Include="DotNetAxi.Cli.TestApp" />
+    <InternalsVisibleTo Include="DotNetAxi.Cli.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="../DotNetAxi.Analysis/DotNetAxi.Analysis.csproj" />
     <ProjectReference Include="../DotNetAxi.Axi/DotNetAxi.Axi.csproj" />
     <ProjectReference Include="../DotNetAxi.Changes/DotNetAxi.Changes.csproj" />
