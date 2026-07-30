@@ -20,4 +20,8 @@
   <ItemGroup>
     <ProjectReference Include="../../src/DotNetAxi.Cli/DotNetAxi.Cli.csproj" />
   </ItemGroup>
+
+  <ItemGroup>
+    <None Update="Fixtures/*.toon" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
 </Project>

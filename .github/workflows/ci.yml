@@ -34,3 +34,13 @@ jobs:
 
       - name: Test
         run: dotnet test dotnet-axi.slnx --configuration Release --no-build
+
+      - name: Install Node.js for TOON conformance
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - name: Strict-decode TOON v4.1 fixtures
+        run: |
+          npx --yes @toon-format/cli@4.1.0 --decode --strict tests/DotNetAxi.Cli.Tests/Fixtures/success.toon > /dev/null
+          npx --yes @toon-format/cli@4.1.0 --decode --strict tests/DotNetAxi.Cli.Tests/Fixtures/evidence.toon > /dev/null
