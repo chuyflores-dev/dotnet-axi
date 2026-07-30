@@ -8,6 +8,16 @@ internal static class FixtureManifestLoader
 {
     private const string SupportedSchema = "dotnet-axi/fixture/v1";
 
+    private static readonly HashSet<string> WindowsDeviceNames =
+        new(StringComparer.OrdinalIgnoreCase)
+        {
+            "CON",
+            "PRN",
+            "AUX",
+            "NUL",
+            "CLOCK$",
+        };
+
     private static readonly UTF8Encoding StrictUtf8 =
         new(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
 
@@ -304,8 +314,54 @@ internal static class FixtureManifestLoader
                 $"{field} '{value}' cannot contain empty, '.' or '..' segments.");
         }
 
+        foreach (var segment in segments)
+        {
+            if (!segment.IsNormalized(NormalizationForm.FormC))
+            {
+                throw new FixtureManifestException(
+                    $"{field} '{value}' must use NFC-normalized path segments.");
+            }
+
+            if (segment[^1] is ' ' or '.')
+            {
+                throw new FixtureManifestException(
+                    $"{field} '{value}' cannot contain segments ending in a space or '.'.");
+            }
+
+            if (IsWindowsDeviceName(segment))
+            {
+                throw new FixtureManifestException(
+                    $"{field} '{value}' cannot contain a Windows device name.");
+            }
+        }
+
         return string.Join('/', segments);
     }
+
+    private static bool IsWindowsDeviceName(string segment)
+    {
+        var extensionSeparator = segment.IndexOf('.');
+        var baseName = extensionSeparator < 0
+            ? segment
+            : segment[..extensionSeparator];
+        if (WindowsDeviceNames.Contains(baseName))
+        {
+            return true;
+        }
+
+        return baseName.Length == 4
+            && IsWindowsDeviceNumber(baseName[3])
+            && (baseName.StartsWith("COM", StringComparison.OrdinalIgnoreCase)
+                || baseName.StartsWith(
+                    "LPT",
+                    StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static bool IsWindowsDeviceNumber(char character) =>
+        character is (>= '1' and <= '9')
+            or '\u00b9'
+            or '\u00b2'
+            or '\u00b3';
 
     private static string ResolveContainedPath(
         string root,

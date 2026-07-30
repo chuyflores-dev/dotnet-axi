@@ -56,6 +56,7 @@ jobs:
       - name: Strict-decode production TOON v4.1 documents
         run: |
           set -euo pipefail
+          test -f artifacts/toon-conformance/fuzz-untrusted-strings.toon
           find \
             tests/DotNetAxi.Cli.Tests/Fixtures \
             artifacts/toon-conformance \

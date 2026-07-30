@@ -5,26 +5,39 @@ namespace DotNetAxi.Testing;
 
 public sealed class RepositoryFixture : IAsyncDisposable
 {
-    private static readonly HashSet<string> AmbientGitVariables =
+    private static readonly HashSet<string> AllowedAmbientVariables =
         new(StringComparer.OrdinalIgnoreCase)
-    {
-        "GIT_DIR",
-        "GIT_WORK_TREE",
-        "GIT_COMMON_DIR",
-        "GIT_INDEX_FILE",
-        "GIT_OBJECT_DIRECTORY",
-        "GIT_ALTERNATE_OBJECT_DIRECTORIES",
-        "GIT_NAMESPACE",
-        "GIT_CEILING_DIRECTORIES",
-        "GIT_DISCOVERY_ACROSS_FILESYSTEM",
-        "GIT_CONFIG",
-        "GIT_CONFIG_COUNT",
-        "GIT_CONFIG_SYSTEM",
-        "GIT_CONFIG_GLOBAL",
-        "GIT_CONFIG_NOSYSTEM",
-    };
+        {
+            "ALL_PROXY",
+            "COMSPEC",
+            "CommonProgramFiles",
+            "CommonProgramFiles(x86)",
+            "CommonProgramW6432",
+            "HTTP_PROXY",
+            "HTTPS_PROXY",
+            "LANG",
+            "LANGUAGE",
+            "LC_ALL",
+            "LC_CTYPE",
+            "NO_PROXY",
+            "NUMBER_OF_PROCESSORS",
+            "OS",
+            "PATH",
+            "PATHEXT",
+            "PROCESSOR_ARCHITECTURE",
+            "PROCESSOR_ARCHITEW6432",
+            "ProgramFiles",
+            "ProgramFiles(x86)",
+            "ProgramW6432",
+            "SSL_CERT_DIR",
+            "SSL_CERT_FILE",
+            "SystemRoot",
+            "WINDIR",
+        };
 
     private readonly IFixtureDirectoryCleaner _cleaner;
+    private readonly Lazy<string> _dotNetHostPath =
+        new(ResolveDotNetHostPath, LazyThreadSafetyMode.ExecutionAndPublication);
     private readonly string _ownerId;
     private readonly SemaphoreSlim _cleanupGate = new(1, 1);
     private bool _cleaned;
@@ -42,6 +55,7 @@ public sealed class RepositoryFixture : IAsyncDisposable
         string dotNetHomePath,
         string nuGetPackagesPath,
         string nuGetHttpCachePath,
+        string nuGetConfigPath,
         string contentHash,
         IReadOnlyList<string> contentFiles,
         RepositoryFixtureIdentity identity,
@@ -66,6 +80,7 @@ public sealed class RepositoryFixture : IAsyncDisposable
         DotNetHomePath = dotNetHomePath;
         NuGetPackagesPath = nuGetPackagesPath;
         NuGetHttpCachePath = nuGetHttpCachePath;
+        NuGetConfigPath = nuGetConfigPath;
         ContentHash = contentHash;
         ContentFiles = contentFiles;
         Identity = identity;
@@ -102,6 +117,10 @@ public sealed class RepositoryFixture : IAsyncDisposable
     public string NuGetPackagesPath { get; }
 
     public string NuGetHttpCachePath { get; }
+
+    public string NuGetConfigPath { get; }
+
+    public string DotNetHostPath => _dotNetHostPath.Value;
 
     public string ContentHash { get; }
 
@@ -149,7 +168,9 @@ public sealed class RepositoryFixture : IAsyncDisposable
 
         var startInfo = new ProcessStartInfo
         {
-            FileName = fileName,
+            FileName = IsDotNetCommand(fileName)
+                ? ResolveDotNetCommand(fileName)
+                : fileName,
             WorkingDirectory = WorkspacePath,
             RedirectStandardInput = true,
             RedirectStandardOutput = true,
@@ -157,16 +178,19 @@ public sealed class RepositoryFixture : IAsyncDisposable
             UseShellExecute = false,
             CreateNoWindow = true,
         };
-        foreach (var argument in arguments)
+        foreach (var argument in AddFixtureArguments(fileName, arguments))
         {
             startInfo.ArgumentList.Add(argument);
         }
 
-        foreach (var variable in startInfo.Environment.Keys
-                     .Where(IsAmbientGitVariable)
-                     .ToArray())
+        var allowedAmbientEnvironment = startInfo.Environment
+            .Where(static variable =>
+                AllowedAmbientVariables.Contains(variable.Key))
+            .ToArray();
+        startInfo.Environment.Clear();
+        foreach (var variable in allowedAmbientEnvironment)
         {
-            startInfo.Environment.Remove(variable);
+            startInfo.Environment[variable.Key] = variable.Value;
         }
 
         foreach (var variable in EnvironmentVariables)
@@ -177,14 +201,137 @@ public sealed class RepositoryFixture : IAsyncDisposable
         return startInfo;
     }
 
-    private static bool IsAmbientGitVariable(string variable) =>
-        AmbientGitVariables.Contains(variable)
-        || variable.StartsWith(
-            "GIT_CONFIG_KEY_",
-            StringComparison.OrdinalIgnoreCase)
-        || variable.StartsWith(
-            "GIT_CONFIG_VALUE_",
-            StringComparison.OrdinalIgnoreCase);
+    private IEnumerable<string> AddFixtureArguments(
+        string fileName,
+        IReadOnlyList<string> arguments)
+    {
+        foreach (var argument in arguments)
+        {
+            yield return argument;
+        }
+
+        if (!IsDotNetCommand(fileName) || arguments.Count == 0)
+        {
+            yield break;
+        }
+
+        if (string.Equals(
+                arguments[0],
+                "restore",
+                StringComparison.OrdinalIgnoreCase))
+        {
+            yield return "--configfile";
+            yield return NuGetConfigPath;
+        }
+        else if (string.Equals(
+                     arguments[0],
+                     "build",
+                     StringComparison.OrdinalIgnoreCase))
+        {
+            yield return $"-p:RestoreConfigFile={NuGetConfigPath}";
+        }
+    }
+
+    private static bool IsDotNetCommand(string fileName)
+    {
+        var commandName = Path.GetFileName(fileName);
+        return string.Equals(
+                   commandName,
+                   "dotnet",
+                   StringComparison.OrdinalIgnoreCase)
+               || string.Equals(
+                   commandName,
+                   "dotnet.exe",
+                   StringComparison.OrdinalIgnoreCase);
+    }
+
+    private string ResolveDotNetCommand(string fileName)
+    {
+        if (string.IsNullOrEmpty(Path.GetDirectoryName(fileName)))
+        {
+            return DotNetHostPath;
+        }
+
+        var fullPath = Path.GetFullPath(fileName);
+        if (!IsExecutableFile(fullPath))
+        {
+            throw new FileNotFoundException(
+                $"The configured dotnet host '{fullPath}' is not executable.",
+                fullPath);
+        }
+
+        return fullPath;
+    }
+
+    private static string ResolveDotNetHostPath()
+    {
+        var configuredPath = Environment
+            .GetEnvironmentVariable("DOTNET_HOST_PATH")
+            ?.Trim()
+            .Trim('"');
+        if (!string.IsNullOrWhiteSpace(configuredPath)
+            && Path.IsPathFullyQualified(configuredPath)
+            && IsExecutableFile(configuredPath))
+        {
+            return Path.GetFullPath(configuredPath);
+        }
+
+        var executableName = OperatingSystem.IsWindows()
+            ? "dotnet.exe"
+            : "dotnet";
+        var searchPath = Environment.GetEnvironmentVariable("PATH");
+        foreach (var directory in (searchPath ?? string.Empty)
+                     .Split(Path.PathSeparator))
+        {
+            var candidateDirectory = directory.Trim().Trim('"');
+            if (candidateDirectory.Length == 0)
+            {
+                continue;
+            }
+
+            string candidate;
+            try
+            {
+                candidate = Path.GetFullPath(
+                    Path.Combine(candidateDirectory, executableName));
+            }
+            catch (Exception exception)
+                when (exception is ArgumentException
+                      or NotSupportedException
+                      or PathTooLongException)
+            {
+                continue;
+            }
+
+            if (IsExecutableFile(candidate))
+            {
+                return candidate;
+            }
+        }
+
+        throw new FileNotFoundException(
+            "The dotnet host was not found through DOTNET_HOST_PATH or PATH.");
+    }
+
+    private static bool IsExecutableFile(string path)
+    {
+        if (!File.Exists(path))
+        {
+            return false;
+        }
+
+        if (OperatingSystem.IsWindows())
+        {
+            return true;
+        }
+
+        var mode = File.GetUnixFileMode(path);
+        const UnixFileMode executable =
+            UnixFileMode.UserExecute
+            | UnixFileMode.GroupExecute
+            | UnixFileMode.OtherExecute;
+        return (mode & executable) != 0;
+    }
 
     public ValueTask<string> ComputeContentHashAsync(
         CancellationToken cancellationToken = default) =>

@@ -26,6 +26,7 @@ internal static class VersionOptionBinding
         versionOption.Description =
             "Show the installed tool and output-schema versions.";
         versionOption.Action = new StructuredVersionAction(
+            versionOption,
             resultFactory,
             responseWriter);
     }
@@ -33,13 +34,16 @@ internal static class VersionOptionBinding
     private sealed class StructuredVersionAction :
         AsynchronousCommandLineAction
     {
+        private readonly VersionOption _versionOption;
         private readonly Func<ICommandResult> _resultFactory;
         private readonly ICommandResponseWriter _responseWriter;
 
         public StructuredVersionAction(
+            VersionOption versionOption,
             Func<ICommandResult> resultFactory,
             ICommandResponseWriter responseWriter)
         {
+            _versionOption = versionOption;
             _resultFactory = resultFactory;
             _responseWriter = responseWriter;
         }
@@ -53,6 +57,29 @@ internal static class VersionOptionBinding
             CancellationToken cancellationToken)
         {
             ArgumentNullException.ThrowIfNull(parseResult);
+            var validationResult = TerminatingOptionValidation.ReparseWithout(
+                parseResult,
+                _versionOption);
+            if (parseResult.Errors.Count > 0 ||
+                !TerminatingOptionValidation.IsStandalone(
+                    parseResult,
+                    _versionOption) ||
+                TerminatingOptionValidation.ContainsOtherTerminatingOption(
+                    parseResult,
+                    _versionOption) ||
+                !TerminatingOptionValidation.HasOnlyMissingRequiredInputs(
+                    validationResult))
+            {
+                return _responseWriter
+                    .WriteAsync(
+                        UsageErrorResult.Create(
+                            validationResult,
+                            CommandName.From(validationResult)),
+                        CliExitCode.Usage,
+                        cancellationToken)
+                    .AsTask();
+            }
+
             return _responseWriter
                 .WriteAsync(_resultFactory(), cancellationToken)
                 .AsTask();

@@ -78,9 +78,21 @@ public sealed class ToonFuzzConformanceTests
             "artifacts",
             "toon-conformance");
         Directory.CreateDirectory(outputDirectory);
-        File.WriteAllBytes(
-            Path.Combine(outputDirectory, "fuzz-untrusted-strings.toon"),
-            bytes);
+        var outputPath = Path.Combine(
+            outputDirectory,
+            "fuzz-untrusted-strings.toon");
+        var stagingPath = Path.Combine(
+            outputDirectory,
+            $".fuzz-untrusted-strings-{Guid.NewGuid():N}.toon.tmp");
+        try
+        {
+            File.WriteAllBytes(stagingPath, bytes);
+            File.Move(stagingPath, outputPath, overwrite: true);
+        }
+        finally
+        {
+            File.Delete(stagingPath);
+        }
     }
 
     private static IReadOnlyList<string> CreateValues()

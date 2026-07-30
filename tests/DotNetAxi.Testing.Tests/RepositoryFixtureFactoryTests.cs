@@ -1,5 +1,14 @@
 namespace DotNetAxi.Testing.Tests;
 
+[CollectionDefinition(
+    "Environment-sensitive fixture tests",
+    DisableParallelization = true)]
+public sealed class EnvironmentSensitiveFixtureCollection
+{
+    public const string Name = "Environment-sensitive fixture tests";
+}
+
+[Collection(EnvironmentSensitiveFixtureCollection.Name)]
 public sealed class RepositoryFixtureFactoryTests
 {
     [Fact]
@@ -48,6 +57,7 @@ public sealed class RepositoryFixtureFactoryTests
                     Path.Combine(first.WorkspacePath, "global.json"));
                 Assert.Contains("\"version\": \"10.0.302\"", globalJson);
                 Assert.True(File.Exists(first.MetadataPath));
+                Assert.True(File.Exists(first.NuGetConfigPath));
             }
 
             Assert.False(Directory.Exists(firstRoot));
@@ -222,8 +232,16 @@ public sealed class RepositoryFixtureFactoryTests
 
             Assert.Equal(executing.WorkspacePath, startInfo.WorkingDirectory);
             Assert.Equal(
-                ["restore", "--locked-mode"],
+                [
+                    "restore",
+                    "--locked-mode",
+                    "--configfile",
+                    executing.NuGetConfigPath,
+                ],
                 startInfo.ArgumentList);
+            Assert.True(Path.IsPathFullyQualified(startInfo.FileName));
+            Assert.True(File.Exists(startInfo.FileName));
+            Assert.Equal(executing.DotNetHostPath, startInfo.FileName);
             Assert.Equal(
                 executing.GitConfigPath,
                 startInfo.Environment["GIT_CONFIG_GLOBAL"]);
@@ -239,7 +257,144 @@ public sealed class RepositoryFixtureFactoryTests
                 | FixtureProcessKind.RepositoryCode,
                 "dotnet",
                 "build");
-            Assert.Equal(["build"], buildStartInfo.ArgumentList);
+            Assert.Equal(
+                [
+                    "build",
+                    $"-p:RestoreConfigFile={executing.NuGetConfigPath}",
+                ],
+                buildStartInfo.ArgumentList);
+            Assert.Equal(
+                executing.NuGetConfigPath,
+                buildStartInfo.Environment["RestoreConfigFile"]);
+            foreach (var command in new[]
+                     {
+                         "test",
+                         "publish",
+                         "pack",
+                         "run",
+                     })
+            {
+                var implicitRestore = executing.CreateProcessStartInfo(
+                    FixtureProcessKind.Restore
+                    | FixtureProcessKind.RepositoryCode,
+                    "dotnet",
+                    command);
+
+                Assert.Equal(
+                    executing.NuGetConfigPath,
+                    implicitRestore.Environment["RestoreConfigFile"]);
+            }
+        }
+        finally
+        {
+            DeleteTestBaseDirectory(baseDirectory);
+        }
+    }
+
+    [Fact]
+    public async Task Dangerous_ambient_variables_are_not_inherited_by_children()
+    {
+        var baseDirectory = CreateTestBaseDirectory();
+        var dangerousVariables = new[]
+        {
+            "COREHOST_TRACE",
+            "DOTNET_ADDITIONAL_DEPS",
+            "DOTNET_HOST_PATH",
+            "DOTNET_ROOT",
+            "DOTNET_STARTUP_HOOKS",
+            "MSBUILD_EXE_PATH",
+            "MSBuildSDKsPath",
+            "NUGET_CREDENTIALPROVIDERS_PATH",
+            "NUGET_PLUGIN_PATHS",
+        };
+        var previousValues = dangerousVariables.ToDictionary(
+            static name => name,
+            Environment.GetEnvironmentVariable,
+            StringComparer.Ordinal);
+        try
+        {
+            foreach (var variable in dangerousVariables)
+            {
+                Environment.SetEnvironmentVariable(
+                    variable,
+                    $"unsafe-{variable}");
+            }
+
+            var factory = new RepositoryFixtureFactory(baseDirectory);
+            await using var fixture = await factory.CreateAsync(
+                ManifestPath(),
+                new RepositoryFixtureOptions(
+                    FixtureExecutionPermissions.Restore));
+            var startInfo = fixture.CreateProcessStartInfo(
+                FixtureProcessKind.Restore,
+                "dotnet",
+                "restore");
+
+            Assert.DoesNotContain(
+                dangerousVariables,
+                startInfo.Environment.ContainsKey);
+            Assert.Equal(fixture.DotNetHostPath, startInfo.FileName);
+        }
+        finally
+        {
+            foreach (var variable in previousValues)
+            {
+                Environment.SetEnvironmentVariable(
+                    variable.Key,
+                    variable.Value);
+            }
+
+            DeleteTestBaseDirectory(baseDirectory);
+        }
+    }
+
+    [Fact]
+    public async Task Dotnet_commands_use_an_absolute_host_and_owned_nuget_config()
+    {
+        var baseDirectory = CreateTestBaseDirectory();
+        try
+        {
+            var factory = new RepositoryFixtureFactory(baseDirectory);
+            await using var fixture = await factory.CreateAsync(
+                ManifestPath(),
+                new RepositoryFixtureOptions(
+                    FixtureExecutionPermissions.Restore
+                    | FixtureExecutionPermissions.RepositoryCode));
+
+            var nuGetConfig = await File.ReadAllTextAsync(
+                fixture.NuGetConfigPath);
+            Assert.Contains("<clear />", nuGetConfig);
+            Assert.Contains(
+                "https://api.nuget.org/v3/index.json",
+                nuGetConfig);
+
+            var restore = fixture.CreateProcessStartInfo(
+                FixtureProcessKind.Restore,
+                "dotnet",
+                "restore");
+            var build = fixture.CreateProcessStartInfo(
+                FixtureProcessKind.Restore
+                | FixtureProcessKind.RepositoryCode,
+                "dotnet",
+                "build");
+
+            Assert.True(Path.IsPathFullyQualified(restore.FileName));
+            Assert.True(File.Exists(restore.FileName));
+            Assert.Equal(fixture.DotNetHostPath, restore.FileName);
+            Assert.Equal(fixture.DotNetHostPath, build.FileName);
+            Assert.Equal(
+                [
+                    "restore",
+                    "--configfile",
+                    fixture.NuGetConfigPath,
+                ],
+                restore.ArgumentList);
+            Assert.Equal(
+                [
+                    "build",
+                    $"-p:RestoreConfigFile={fixture.NuGetConfigPath}",
+                ],
+                build.ArgumentList);
         }
         finally
         {

@@ -144,12 +144,24 @@ public sealed class CommandResult<TPayload> : ICommandResult
 
 public sealed record ResultSuggestion
 {
-    public ResultSuggestion(string command)
+    public ResultSuggestion(
+        string command,
+        IEnumerable<string> arguments)
     {
+        ArgumentNullException.ThrowIfNull(arguments);
         Command = ContractGuards.RequiredText(command, nameof(command));
+        Arguments = Array.AsReadOnly(
+            ContractGuards
+                .Copy(arguments)
+                .Select(argument => ContractGuards.RequiredText(
+                    argument,
+                    nameof(arguments)))
+                .ToArray());
     }
 
     public string Command { get; }
+
+    public IReadOnlyList<string> Arguments { get; }
 }
 
 public sealed record ResultError

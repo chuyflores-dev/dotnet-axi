@@ -22,7 +22,9 @@ public sealed class ToonResultSerializerTests
                 ]),
             suggestions:
             [
-                new ResultSuggestion("Run `dnaxi show symbol sym_1`"),
+                new ResultSuggestion(
+                    "dnaxi",
+                    ["show", "symbol", "sym_1"]),
             ]);
 
         var document = _serializer.Serialize(result);
@@ -191,6 +193,77 @@ public sealed class ToonResultSerializerTests
     }
 
     [Fact]
+    public void String_keyed_maps_are_canonical_regardless_of_insertion_order()
+    {
+        var first = CommandResult<MapPayload>.Success(
+            "show map",
+            new MapPayload(
+                new Dictionary<string, IReadOnlyDictionary<string, int>>
+                {
+                    ["Zulu"] = new Dictionary<string, int>
+                    {
+                        ["second"] = 2,
+                        ["first"] = 1,
+                    },
+                    ["alpha"] = new Dictionary<string, int>
+                    {
+                        ["fourth"] = 4,
+                        ["third"] = 3,
+                    },
+                }));
+        var second = CommandResult<MapPayload>.Success(
+            "show map",
+            new MapPayload(
+                new Dictionary<string, IReadOnlyDictionary<string, int>>
+                {
+                    ["alpha"] = new Dictionary<string, int>
+                    {
+                        ["third"] = 3,
+                        ["fourth"] = 4,
+                    },
+                    ["Zulu"] = new Dictionary<string, int>
+                    {
+                        ["first"] = 1,
+                        ["second"] = 2,
+                    },
+                }));
+
+        Assert.Equal(
+            _serializer.Serialize(first),
+            _serializer.Serialize(second));
+    }
+
+    [Fact]
+    public void Declared_output_field_order_is_preserved()
+    {
+        var fields = new OutputFieldSet<MapRow>(
+            [
+                new OutputField<MapRow>(
+                    "zulu",
+                    static row => row.Zulu,
+                    includedByDefault: true),
+                new OutputField<MapRow>(
+                    "alpha",
+                    static row => row.Alpha,
+                    includedByDefault: true),
+            ]);
+        var result =
+            CommandResult<IReadOnlyDictionary<string, object?>>.Success(
+                "show fields",
+                fields.Select().Project(new MapRow(1, 2)));
+
+        var document = _serializer.Serialize(result);
+
+        Assert.EndsWith(
+            """
+            zulu: 1
+            alpha: 2
+            """,
+            document,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Unpaired_surrogates_are_rejected_instead_of_replaced()
     {
         var result = CommandResult<MessagePayload>.Success(
@@ -237,6 +310,11 @@ public sealed class ToonResultSerializerTests
     private sealed record MetricsPayload(double Score, double Maximum, double Zero);
 
     private sealed record OrdersPayload(IReadOnlyList<Order> Orders);
+
+    private sealed record MapPayload(
+        IReadOnlyDictionary<string, IReadOnlyDictionary<string, int>> Map);
+
+    private sealed record MapRow(int Zulu, int Alpha);
 
     private sealed record Order(int Id, Customer Customer, int Total);
 

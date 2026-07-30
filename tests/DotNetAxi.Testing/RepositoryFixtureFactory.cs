@@ -67,6 +67,14 @@ public sealed class RepositoryFixtureFactory
             statePath,
             "nuget",
             "http-cache");
+        var nuGetConfigPath = Path.Combine(
+            statePath,
+            "nuget",
+            "NuGet.Config");
+        var nuGetPluginsCachePath = Path.Combine(
+            statePath,
+            "nuget",
+            "plugins-cache");
 
         try
         {
@@ -90,6 +98,7 @@ public sealed class RepositoryFixtureFactory
                          dotNetHomePath,
                          nuGetPackagesPath,
                          nuGetHttpCachePath,
+                         nuGetPluginsCachePath,
                      })
             {
                 Directory.CreateDirectory(path);
@@ -105,6 +114,23 @@ public sealed class RepositoryFixtureFactory
                     defaultBranch = main
                 [commit]
                     gpgSign = false
+
+                """.ReplaceLineEndings("\n"),
+                Utf8WithoutBom,
+                cancellationToken);
+            await File.WriteAllTextAsync(
+                nuGetConfigPath,
+                """
+                <?xml version="1.0" encoding="utf-8"?>
+                <configuration>
+                  <packageSources>
+                    <clear />
+                    <add key="nuget.org" value="https://api.nuget.org/v3/index.json" protocolVersion="3" />
+                  </packageSources>
+                  <disabledPackageSources>
+                    <clear />
+                  </disabledPackageSources>
+                </configuration>
 
                 """.ReplaceLineEndings("\n"),
                 Utf8WithoutBom,
@@ -171,7 +197,9 @@ public sealed class RepositoryFixtureFactory
                 tempPath,
                 dotNetHomePath,
                 nuGetPackagesPath,
-                nuGetHttpCachePath);
+                nuGetHttpCachePath,
+                nuGetConfigPath,
+                nuGetPluginsCachePath);
 
             return new RepositoryFixture(
                 rootPath,
@@ -186,6 +214,7 @@ public sealed class RepositoryFixtureFactory
                 dotNetHomePath,
                 nuGetPackagesPath,
                 nuGetHttpCachePath,
+                nuGetConfigPath,
                 actualContentHash,
                 contentFiles,
                 plan.Identity,
@@ -224,13 +253,17 @@ public sealed class RepositoryFixtureFactory
         string tempPath,
         string dotNetHomePath,
         string nuGetPackagesPath,
-        string nuGetHttpCachePath)
+        string nuGetHttpCachePath,
+        string nuGetConfigPath,
+        string nuGetPluginsCachePath)
     {
         var environment = new Dictionary<string, string>(
             StringComparer.Ordinal)
         {
             ["HOME"] = homePath,
             ["USERPROFILE"] = homePath,
+            ["APPDATA"] = Path.Combine(homePath, "AppData", "Roaming"),
+            ["LOCALAPPDATA"] = Path.Combine(homePath, "AppData", "Local"),
             ["XDG_CONFIG_HOME"] = Path.Combine(homePath, ".config"),
             ["XDG_CACHE_HOME"] = cachePath,
             ["GIT_CONFIG_NOSYSTEM"] = "1",
@@ -247,12 +280,16 @@ public sealed class RepositoryFixtureFactory
             ["MSBUILDDISABLENODEREUSE"] = "1",
             ["NUGET_PACKAGES"] = nuGetPackagesPath,
             ["NUGET_HTTP_CACHE_PATH"] = nuGetHttpCachePath,
+            ["NUGET_PLUGINS_CACHE_PATH"] = nuGetPluginsCachePath,
+            ["RestoreConfigFile"] = nuGetConfigPath,
             ["TMPDIR"] = tempPath,
             ["TMP"] = tempPath,
             ["TEMP"] = tempPath,
             ["DOTNET_AXI_ARTIFACTS"] = artifactsPath,
         };
         Directory.CreateDirectory(environment["XDG_CONFIG_HOME"]);
+        Directory.CreateDirectory(environment["APPDATA"]);
+        Directory.CreateDirectory(environment["LOCALAPPDATA"]);
 
         return RepositoryFixture.ReadOnlyEnvironment(environment);
     }

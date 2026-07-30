@@ -129,7 +129,7 @@ public sealed class OutputFieldSelection<T>
             projection.Add(field.Name, field.ValueSelector(value));
         }
 
-        return new ReadOnlyDictionary<string, object?>(projection);
+        return new DeclaredOrderDictionary<object?>(projection);
     }
 
     public IReadOnlyList<IReadOnlyDictionary<string, object?>> Project(
@@ -139,6 +139,20 @@ public sealed class OutputFieldSelection<T>
 
         return Array.AsReadOnly(
             values.Select(Project).ToArray());
+    }
+}
+
+internal interface IHasDeclaredOutputOrder
+{
+}
+
+internal sealed class DeclaredOrderDictionary<TValue> :
+    ReadOnlyDictionary<string, TValue>,
+    IHasDeclaredOutputOrder
+{
+    public DeclaredOrderDictionary(IDictionary<string, TValue> dictionary)
+        : base(dictionary)
+    {
     }
 }
 

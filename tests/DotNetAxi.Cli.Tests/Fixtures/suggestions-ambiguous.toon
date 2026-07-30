@@ -6,5 +6,6 @@ error:
   code: workspace.ambiguous
   message: More than one solution was found.
   correction: Select one of the reported solution paths.
-suggestions[1]{command}:
-  Run `dnaxi search symbol '<name>' --solution 'Credit Platform.slnx'`
+suggestions[1]:
+  - command: dnaxi
+    arguments[5]: search,symbol,<name>,"--solution",Credit Platform.slnx

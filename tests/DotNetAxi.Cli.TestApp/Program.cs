@@ -24,6 +24,7 @@ AddScenario("failed", Scenario.Failed);
 AddScenario("cancelled", Scenario.Cancelled);
 AddScenario("diagnostic", Scenario.Diagnostic);
 AddScenario("throw", Scenario.Throw);
+AddScenario("hang", Scenario.Hang);
 
 return await host.InvokeAsync(args);
 
@@ -62,6 +63,7 @@ internal enum Scenario
     Cancelled,
     Diagnostic,
     Throw,
+    Hang,
 }
 
 internal sealed record ScenarioRequest(Scenario Scenario);
@@ -110,6 +112,7 @@ internal sealed class ScenarioHandler : ICommandHandler<ScenarioRequest>
             Scenario.Diagnostic => await DiagnosticAsync(cancellationToken),
             Scenario.Throw => throw new InvalidOperationException(
                 "sensitive-stack-marker"),
+            Scenario.Hang => await HangAsync(cancellationToken),
             _ => throw new ArgumentOutOfRangeException(
                 nameof(request),
                 request.Scenario,
@@ -129,6 +132,13 @@ internal sealed class ScenarioHandler : ICommandHandler<ScenarioRequest>
             "progress: fixture",
             cancellationToken);
         return Success("diagnostic");
+    }
+
+    private static async ValueTask<ICommandResult> HangAsync(
+        CancellationToken cancellationToken)
+    {
+        await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+        return Success("hang");
     }
 
     private sealed record KindPayload(string Kind);

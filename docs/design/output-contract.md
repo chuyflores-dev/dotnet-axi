@@ -48,7 +48,9 @@ response-level resolution.
 Collections use deterministic ordering. Unless a command defines a
 domain-specific ranking, ties resolve by normalized path, one-based line,
 one-based column, kind, fully qualified name, and stable ID. Ordering is not
-locale-sensitive.
+locale-sensitive. String-keyed maps order members by their emitted key using
+ordinal comparison; typed objects and explicitly declared output fields retain
+their declaration order.
 
 ## TOON encoding
 
@@ -170,14 +172,17 @@ counts, changed-file count, cheap diagnostic status, and a few contextual
 suggestions.
 
 Discovery and mutation responses SHOULD include a few relevant complete
-commands or templates, preserve fixed scope, use placeholders for runtime
-values, and omit suggestions when the response is self-contained.
+invocations or templates, preserve fixed scope, use placeholders for values
+the caller must supply, and omit suggestions when the response is
+self-contained. Suggestions carry an executable and an ordered argument array;
+callers invoke that array directly without parsing shell-specific quoting.
 
 Capabilities express suggestions as literal command tokens, observed runtime
 values, or named placeholders. The shared composer adds `dnaxi`, appends fixed
 workspace selectors in canonical order, removes duplicates, orders by explicit
 priority and command, and emits at most three suggestions. It does not infer
-runtime values from result content.
+runtime values from result content. Capability templates cannot provide
+composer-owned workspace selector flags.
 
 Every subcommand supports concise `--help` with required arguments,
 flags/defaults, and two or three examples.
@@ -188,11 +193,14 @@ operation classification, arguments, flags, registered subcommands, and two
 or three complete `dnaxi` examples. Argument and flag arity, required state,
 defaults, and inherited state are generated from the active parser
 registration. Only registered, non-hidden commands are listed. Help does not
-create a command handler or probe workspace capabilities.
+create a command handler or probe workspace capabilities. Help may bypass
+missing required inputs for the selected command, but it does not suppress
+unknown commands, flags, arguments, or other usage errors.
 
 The CLI supports `--help`, `-v`, and `--version` and SHOULD reserve `update`.
 Global `-v` means version only before subcommand dispatch; command verbosity
-uses `--verbosity`.
+uses `--verbosity`. Version is a standalone pre-dispatch operation and does
+not suppress unrelated input or subcommands.
 
 Version output is a structured `version` result with `tool`, `tool_version`,
 and `output_schema` fields. The tool version comes from package-version
@@ -231,10 +239,13 @@ git:
 analysis:
   status: not_loaded
   compiler_errors: unknown
-suggestions[3]{command}:
-  Run `dnaxi search symbol '<name>'`
-  Run `dnaxi analyze changed`
-  Run `dnaxi validate --profile fast`
+suggestions[3]:
+  - command: dnaxi
+    arguments[3]: search,symbol,<name>
+  - command: dnaxi
+    arguments[2]: analyze,changed
+  - command: dnaxi
+    arguments[3]: validate,"--profile",fast
 ```
 
 ### Structural search
@@ -254,9 +265,11 @@ matches[3]{id,file,line,construct}:
   ast_01,src/Orders/OrderRepository.cs,84,invocation
   ast_02,src/Payments/PaymentRepository.cs,112,invocation
   ast_03,tests/DbFixture.cs,39,invocation
-suggestions[2]{command}:
-  Run `dnaxi show document <path>`
-  Run `dnaxi search structural --pattern '<pattern>' --verify-as invocation`
+suggestions[2]:
+  - command: dnaxi
+    arguments[3]: show,document,<path>
+  - command: dnaxi
+    arguments[6]: search,structural,"--pattern",<pattern>,"--verify-as",invocation
 ```
 
 ### Verified partial search
@@ -280,8 +293,9 @@ unresolved: 1
 matches[2]{id,kind,name,location}:
   sym_8k2m,method,DbContext.SaveChangesAsync,"src/Orders/OrderRepository.cs:84"
   sym_5p7q,method,DbContext.SaveChangesAsync,"src/Payments/PaymentRepository.cs:112"
-suggestions[1]{command}:
-  Run `dnaxi restore` before repeating with `--complete`
+suggestions[1]:
+  - command: dnaxi
+    arguments[1]: restore
 ```
 
 ### Explicit empty result
@@ -337,8 +351,9 @@ scope:
 callers[2]{id,name,location,confidence}:
   sym_2m9c,CreditEndpoint.Handle,"src/Api/CreditEndpoint.cs:31",verified
   sym_4n1x,RenewalWorker.ExecuteAsync,"src/Workers/RenewalWorker.cs:48",verified
-suggestions[1]{command}:
-  Run `dnaxi search callers sym_8k2m --complete`
+suggestions[1]:
+  - command: dnaxi
+    arguments[4]: search,callers,sym_8k2m,"--complete"
 ```
 
 ### Validation

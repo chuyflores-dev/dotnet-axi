@@ -164,6 +164,10 @@ public sealed class ToonResultSerializer
                 .Select(suggestion => (JsonNode?)new JsonObject
                 {
                     ["command"] = suggestion.Command,
+                    ["arguments"] = new JsonArray(
+                        suggestion.Arguments
+                            .Select(argument => (JsonNode?)argument)
+                            .ToArray()),
                 })
                 .ToArray());
     }
@@ -237,12 +241,122 @@ public sealed class ToonResultSerializer
             PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
         };
         options.Converters.Add(
+            new CanonicalStringDictionaryConverterFactory());
+        options.Converters.Add(
             new JsonStringEnumConverter(JsonNamingPolicy.SnakeCaseLower));
         options.Converters.Add(new ValidatingStringConverter());
         options.Converters.Add(new FiniteDoubleConverter());
         options.Converters.Add(new FiniteSingleConverter());
         return options;
     }
+
+    private sealed class CanonicalStringDictionaryConverterFactory :
+        JsonConverterFactory
+    {
+        public override bool CanConvert(Type typeToConvert) =>
+            !typeof(IHasDeclaredOutputOrder).IsAssignableFrom(typeToConvert) &&
+            FindDictionaryInterface(typeToConvert) is not null;
+
+        public override JsonConverter CreateConverter(
+            Type typeToConvert,
+            JsonSerializerOptions options)
+        {
+            var dictionaryInterface = FindDictionaryInterface(typeToConvert)
+                ?? throw new InvalidOperationException(
+                    $"Type '{typeToConvert}' is not a string-keyed dictionary.");
+            var valueType = dictionaryInterface.GetGenericArguments()[1];
+            var converterType = typeof(CanonicalStringDictionaryConverter<,>)
+                .MakeGenericType(typeToConvert, valueType);
+
+            return (JsonConverter)(Activator.CreateInstance(converterType)
+                ?? throw new InvalidOperationException(
+                    $"Could not create a dictionary converter for '{typeToConvert}'."));
+        }
+
+        private static Type? FindDictionaryInterface(Type type)
+        {
+            var candidates = type.GetInterfaces().Prepend(type);
+            foreach (var candidate in candidates)
+            {
+                if (!candidate.IsGenericType)
+                {
+                    continue;
+                }
+
+                var definition = candidate.GetGenericTypeDefinition();
+                if (definition != typeof(IDictionary<,>) &&
+                    definition != typeof(IReadOnlyDictionary<,>))
+                {
+                    continue;
+                }
+
+                if (candidate.GetGenericArguments()[0] == typeof(string))
+                {
+                    return candidate;
+                }
+            }
+
+            return null;
+        }
+    }
+
+    private sealed class CanonicalStringDictionaryConverter<TDictionary, TValue> :
+        JsonConverter<TDictionary>
+        where TDictionary : IEnumerable<KeyValuePair<string, TValue>>
+    {
+        public override TDictionary? Read(
+            ref Utf8JsonReader reader,
+            Type typeToConvert,
+            JsonSerializerOptions options) =>
+            throw new NotSupportedException(
+                "The output serializer does not deserialize payloads.");
+
+        public override void Write(
+            Utf8JsonWriter writer,
+            TDictionary value,
+            JsonSerializerOptions options)
+        {
+            var projectedEntries = value
+                .Select(entry =>
+                {
+                    ToonV41Encoder.ValidateUnicode(entry.Key);
+                    var outputKey = options.DictionaryKeyPolicy?
+                        .ConvertName(entry.Key) ?? entry.Key;
+                    return new CanonicalDictionaryEntry<TValue>(
+                        outputKey,
+                        entry.Value);
+                });
+            var entries = value is IHasDeclaredOutputOrder
+                ? projectedEntries.ToArray()
+                : projectedEntries
+                    .OrderBy(
+                        static entry => entry.OutputKey,
+                        StringComparer.Ordinal)
+                    .ToArray();
+
+            if (entries
+                .Select(static entry => entry.OutputKey)
+                .Distinct(StringComparer.Ordinal)
+                .Count() != entries.Length)
+            {
+                throw new InvalidOperationException(
+                    "Dictionary keys must remain unique after output naming is applied.");
+            }
+
+            writer.WriteStartObject();
+            foreach (var entry in entries)
+            {
+                writer.WritePropertyName(entry.OutputKey);
+                JsonSerializer.Serialize(writer, entry.Value, options);
+            }
+
+            writer.WriteEndObject();
+        }
+    }
+
+    private sealed record CanonicalDictionaryEntry<TValue>(
+        string OutputKey,
+        TValue Value);
 
     private sealed class ValidatingStringConverter : JsonConverter<string>
     {

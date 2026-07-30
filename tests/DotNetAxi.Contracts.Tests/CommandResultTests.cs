@@ -12,7 +12,12 @@ public sealed class CommandResultTests
         var result = CommandResult<CountPayload>.Success(
             "search symbol",
             payload,
-            suggestions: [new ResultSuggestion("Run `dnaxi search file '*.cs'`")]);
+            suggestions:
+            [
+                new ResultSuggestion(
+                    "dnaxi",
+                    ["search", "file", "*.cs"]),
+            ]);
 
         Assert.Equal(OutputSchema.Current, result.Schema);
         Assert.Equal("search symbol", result.Command);
@@ -132,6 +137,66 @@ public sealed class CommandResultTests
     }
 
     [Fact]
+    public void Coverage_partitions_cannot_exceed_considered_targets()
+    {
+        var exception = Assert.Throws<ArgumentException>(
+            () => new EvidenceCoverage(
+                CoverageLevel.Partial,
+                considered: 1,
+                analyzed: 2,
+                partialReason: "One target was unavailable."));
+
+        Assert.Equal("considered", exception.ParamName);
+    }
+
+    [Fact]
+    public void Fully_declared_coverage_counts_must_partition_considered_targets()
+    {
+        var exception = Assert.Throws<ArgumentException>(
+            () => new EvidenceCoverage(
+                CoverageLevel.Partial,
+                considered: 3,
+                analyzed: 1,
+                remaining: 1,
+                excluded: 0,
+                failed: 0,
+                partialReason: "One target was unavailable."));
+
+        Assert.Equal("considered", exception.ParamName);
+    }
+
+    [Fact]
+    public void Undefined_evidence_enums_are_rejected_at_construction()
+    {
+        Assert.Equal(
+            "resolution",
+            Assert.Throws<ArgumentOutOfRangeException>(
+                () => new Evidence(
+                    "ws_123",
+                    (EvidenceResolution)int.MaxValue,
+                    new EvidenceCoverage(CoverageLevel.Complete),
+                    EvidenceConfidence.Verified,
+                    Scope()))
+                .ParamName);
+        Assert.Equal(
+            "confidence",
+            Assert.Throws<ArgumentOutOfRangeException>(
+                () => new Evidence(
+                    "ws_123",
+                    EvidenceResolution.Semantic,
+                    new EvidenceCoverage(CoverageLevel.Complete),
+                    (EvidenceConfidence)int.MaxValue,
+                    Scope()))
+                .ParamName);
+        Assert.Equal(
+            "level",
+            Assert.Throws<ArgumentOutOfRangeException>(
+                () => new EvidenceCoverage(
+                    (CoverageLevel)int.MaxValue))
+                .ParamName);
+    }
+
+    [Fact]
     public void Failed_result_without_errors_is_rejected()
     {
         var exception = Assert.Throws<ArgumentException>(
@@ -159,6 +224,9 @@ public sealed class CommandResultTests
                 ],
                 frameworks: ["net10.0"],
                 configuration: "Debug"));
+
+    private static EvidenceScope Scope() =>
+        new("/work/repository", "Selected project graph");
 
     private sealed record CountPayload(int Count);
 }
