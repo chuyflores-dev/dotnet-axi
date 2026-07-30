@@ -1,0 +1,33 @@
+{
+  "schema": "dotnet-axi/fixture/v1",
+  "name": "catalog-vstest",
+  "seed": 2005,
+  "sdk": {
+    "version": "10.0.302",
+    "rollForward": "latestPatch",
+    "allowPrerelease": false
+  },
+  "capabilities": [
+    "framework:net10.0",
+    "language:csharp",
+    "test-runner:vstest",
+    "workspace:single-project"
+  ],
+  "testRunner": "VSTest",
+  "build": {
+    "target": "tests/VSTestShape/VSTestShape.csproj",
+    "expectedOutcome": "success"
+  },
+  "files": [
+    {
+      "path": "tests/VSTestShape/VSTestShape.csproj",
+      "template": "templates/VSTestShape.csproj",
+      "expandTokens": false
+    },
+    {
+      "path": "tests/VSTestShape/PassingTest.cs",
+      "template": "templates/PassingTest.cs",
+      "expandTokens": false
+    }
+  ]
+}

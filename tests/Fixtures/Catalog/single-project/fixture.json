@@ -1,0 +1,32 @@
+{
+  "schema": "dotnet-axi/fixture/v1",
+  "name": "catalog-single-project",
+  "seed": 2001,
+  "sdk": {
+    "version": "10.0.302",
+    "rollForward": "latestPatch",
+    "allowPrerelease": false
+  },
+  "capabilities": [
+    "framework:net10.0",
+    "language:csharp",
+    "project:sdk-style",
+    "workspace:single-project"
+  ],
+  "build": {
+    "target": "src/Single/Single.csproj",
+    "expectedOutcome": "success"
+  },
+  "files": [
+    {
+      "path": "src/Single/Single.csproj",
+      "template": "templates/Single.csproj",
+      "expandTokens": false
+    },
+    {
+      "path": "src/Single/Message.cs",
+      "template": "templates/Message.cs",
+      "expandTokens": false
+    }
+  ]
+}

@@ -1,0 +1,33 @@
+{
+  "schema": "dotnet-axi/fixture/v1",
+  "name": "catalog-mtp",
+  "seed": 2006,
+  "sdk": {
+    "version": "10.0.302",
+    "rollForward": "latestPatch",
+    "allowPrerelease": false
+  },
+  "capabilities": [
+    "framework:net10.0",
+    "language:csharp",
+    "test-runner:mtp",
+    "workspace:single-project"
+  ],
+  "testRunner": "Microsoft.Testing.Platform",
+  "build": {
+    "target": "tests/MtpShape/MtpShape.csproj",
+    "expectedOutcome": "success"
+  },
+  "files": [
+    {
+      "path": "tests/MtpShape/MtpShape.csproj",
+      "template": "templates/MtpShape.csproj",
+      "expandTokens": false
+    },
+    {
+      "path": "tests/MtpShape/PassingTest.cs",
+      "template": "templates/PassingTest.cs",
+      "expandTokens": false
+    }
+  ]
+}

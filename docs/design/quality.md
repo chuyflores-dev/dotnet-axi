@@ -93,6 +93,12 @@ are expanded. Template and destination paths are repository-relative,
 validated before materialization, and cannot escape the manifest or workspace
 root.
 
+Catalog manifests also declare sorted capability identifiers, an optional
+VSTest or Microsoft Testing Platform selection, and one build target with an
+expected success or intentional-failure outcome. Optional stable output tokens
+identify the intended failure or analyzer result without copying
+command-specific golden output into the fixture.
+
 The fixture factory materializes each instance under a unique owned directory.
 The workspace is separate from isolated home, Git configuration, NuGet
 packages and HTTP cache, .NET CLI home, general cache, temporary, and artifact
@@ -110,6 +116,12 @@ the selected SDK context, and runtime/OS identity without timestamps or
 machine-specific workspace paths. Owned-directory markers constrain cleanup;
 transient cleanup is retried, and a remaining failure preserves the path in a
 structured exception so cleanup can be retried.
+
+Catalog verification materializes every manifest and invokes its declared
+build target with combined restore and repository-code permission, isolated
+process state, and a bounded timeout. The catalog test rejects missing
+capability classes, unexpected build outcomes, and missing declared output
+tokens.
 
 Fixtures cover:
 

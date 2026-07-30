@@ -157,6 +157,9 @@ public sealed class RepositoryFixtureFactory
             await WriteMetadataAsync(
                 metadataPath,
                 plan.Identity,
+                plan.Capabilities,
+                plan.BuildVerification,
+                plan.TestRunner,
                 toolchain,
                 actualContentHash,
                 cancellationToken);
@@ -186,6 +189,9 @@ public sealed class RepositoryFixtureFactory
                 actualContentHash,
                 contentFiles,
                 plan.Identity,
+                plan.Capabilities,
+                plan.BuildVerification,
+                plan.TestRunner,
                 toolchain,
                 options,
                 environmentVariables,
@@ -234,6 +240,7 @@ public sealed class RepositoryFixtureFactory
             ["GCM_INTERACTIVE"] = "Never",
             ["DOTNET_CLI_HOME"] = dotNetHomePath,
             ["DOTNET_CLI_TELEMETRY_OPTOUT"] = "1",
+            ["DOTNET_CLI_UI_LANGUAGE"] = "en-US",
             ["DOTNET_CLI_WORKLOAD_UPDATE_NOTIFY_DISABLE"] = "1",
             ["DOTNET_NOLOGO"] = "1",
             ["DOTNET_SKIP_FIRST_TIME_EXPERIENCE"] = "1",
@@ -253,6 +260,9 @@ public sealed class RepositoryFixtureFactory
     private static async ValueTask WriteMetadataAsync(
         string metadataPath,
         RepositoryFixtureIdentity identity,
+        IReadOnlyList<string> capabilities,
+        FixtureBuildVerification? buildVerification,
+        string? testRunner,
         FixtureToolchainIdentity toolchain,
         string contentHash,
         CancellationToken cancellationToken)
@@ -262,6 +272,9 @@ public sealed class RepositoryFixtureFactory
             {
                 schema = "dotnet-axi/fixture-instance/v1",
                 identity,
+                capabilities,
+                build = buildVerification,
+                testRunner,
                 contentHash,
                 toolchain,
             },

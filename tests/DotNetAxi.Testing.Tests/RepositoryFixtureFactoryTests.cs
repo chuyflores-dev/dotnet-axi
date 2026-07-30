@@ -178,6 +178,34 @@ public sealed class RepositoryFixtureFactoryTests
                     FixtureProcessKind.RepositoryCode,
                     "dotnet",
                     "test"));
+            Assert.Throws<InvalidOperationException>(
+                () => passive.CreateProcessStartInfo(
+                    FixtureProcessKind.Restore
+                    | FixtureProcessKind.RepositoryCode,
+                    "dotnet",
+                    "build"));
+
+            await using var restoreOnly = await factory.CreateAsync(
+                ManifestPath(),
+                new RepositoryFixtureOptions(
+                    FixtureExecutionPermissions.Restore));
+            Assert.Throws<InvalidOperationException>(
+                () => restoreOnly.CreateProcessStartInfo(
+                    FixtureProcessKind.Restore
+                    | FixtureProcessKind.RepositoryCode,
+                    "dotnet",
+                    "build"));
+
+            await using var repositoryCodeOnly = await factory.CreateAsync(
+                ManifestPath(),
+                new RepositoryFixtureOptions(
+                    FixtureExecutionPermissions.RepositoryCode));
+            Assert.Throws<InvalidOperationException>(
+                () => repositoryCodeOnly.CreateProcessStartInfo(
+                    FixtureProcessKind.Restore
+                    | FixtureProcessKind.RepositoryCode,
+                    "dotnet",
+                    "build"));
 
             var permissions =
                 FixtureExecutionPermissions.Tooling
@@ -205,6 +233,72 @@ public sealed class RepositoryFixtureFactoryTests
             Assert.True(startInfo.RedirectStandardOutput);
             Assert.True(startInfo.RedirectStandardError);
             Assert.False(startInfo.UseShellExecute);
+
+            var buildStartInfo = executing.CreateProcessStartInfo(
+                FixtureProcessKind.Restore
+                | FixtureProcessKind.RepositoryCode,
+                "dotnet",
+                "build");
+            Assert.Equal(["build"], buildStartInfo.ArgumentList);
+        }
+        finally
+        {
+            DeleteTestBaseDirectory(baseDirectory);
+        }
+    }
+
+    [Fact]
+    public async Task Build_target_casing_must_match_materialized_path()
+    {
+        var baseDirectory = CreateTestBaseDirectory();
+        var manifestDirectory = Path.Combine(baseDirectory, "manifest");
+        Directory.CreateDirectory(manifestDirectory);
+        var manifestPath = Path.Combine(manifestDirectory, "fixture.json");
+        try
+        {
+            await File.WriteAllTextAsync(
+                Path.Combine(manifestDirectory, "App.csproj"),
+                """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFramework>net10.0</TargetFramework>
+                  </PropertyGroup>
+                </Project>
+                """);
+            await File.WriteAllTextAsync(
+                manifestPath,
+                """
+                {
+                  "schema": "dotnet-axi/fixture/v1",
+                  "name": "target-case",
+                  "seed": 1,
+                  "sdk": {
+                    "version": "10.0.302",
+                    "rollForward": "latestPatch",
+                    "allowPrerelease": false
+                  },
+                  "build": {
+                    "target": "src/app/App.csproj",
+                    "expectedOutcome": "success"
+                  },
+                  "files": [
+                    {
+                      "path": "src/App/App.csproj",
+                      "template": "App.csproj",
+                      "expandTokens": false
+                    }
+                  ]
+                }
+                """);
+            var factory = new RepositoryFixtureFactory(
+                Path.Combine(baseDirectory, "instances"));
+
+            var exception = await Assert.ThrowsAsync<FixtureManifestException>(
+                () => factory.CreateAsync(manifestPath).AsTask());
+
+            Assert.Contains("casing", exception.Message);
+            Assert.Empty(
+                Directory.EnumerateFileSystemEntries(factory.BaseDirectory));
         }
         finally
         {

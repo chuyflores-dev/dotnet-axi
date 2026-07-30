@@ -45,6 +45,9 @@ public sealed class RepositoryFixture : IAsyncDisposable
         string contentHash,
         IReadOnlyList<string> contentFiles,
         RepositoryFixtureIdentity identity,
+        IReadOnlyList<string> capabilities,
+        FixtureBuildVerification? buildVerification,
+        string? testRunner,
         FixtureToolchainIdentity toolchain,
         RepositoryFixtureOptions options,
         IReadOnlyDictionary<string, string> environmentVariables,
@@ -66,6 +69,9 @@ public sealed class RepositoryFixture : IAsyncDisposable
         ContentHash = contentHash;
         ContentFiles = contentFiles;
         Identity = identity;
+        Capabilities = capabilities;
+        BuildVerification = buildVerification;
+        TestRunner = testRunner;
         Toolchain = toolchain;
         Options = options;
         EnvironmentVariables = environmentVariables;
@@ -103,6 +109,12 @@ public sealed class RepositoryFixture : IAsyncDisposable
 
     public RepositoryFixtureIdentity Identity { get; }
 
+    public IReadOnlyList<string> Capabilities { get; }
+
+    public FixtureBuildVerification? BuildVerification { get; }
+
+    public string? TestRunner { get; }
+
     public FixtureToolchainIdentity Toolchain { get; }
 
     public RepositoryFixtureOptions Options { get; }
@@ -116,21 +128,23 @@ public sealed class RepositoryFixture : IAsyncDisposable
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(fileName);
         ArgumentNullException.ThrowIfNull(arguments);
-        var requiredPermission = kind switch
+        const FixtureProcessKind supportedKinds =
+            FixtureProcessKind.Tooling
+            | FixtureProcessKind.Restore
+            | FixtureProcessKind.RepositoryCode;
+        if (kind == FixtureProcessKind.None
+            || (kind & ~supportedKinds) != FixtureProcessKind.None)
         {
-            FixtureProcessKind.Tooling =>
-                FixtureExecutionPermissions.Tooling,
-            FixtureProcessKind.Restore =>
-                FixtureExecutionPermissions.Restore,
-            FixtureProcessKind.RepositoryCode =>
-                FixtureExecutionPermissions.RepositoryCode,
-            _ => throw new ArgumentOutOfRangeException(nameof(kind)),
-        };
-        if ((Options.ExecutionPermissions & requiredPermission)
-            != requiredPermission)
+            throw new ArgumentOutOfRangeException(nameof(kind));
+        }
+
+        var requiredPermissions =
+            (FixtureExecutionPermissions)(int)kind;
+        if ((Options.ExecutionPermissions & requiredPermissions)
+            != requiredPermissions)
         {
             throw new InvalidOperationException(
-                $"Fixture process kind '{kind}' requires explicit permission.");
+                $"Fixture process kinds '{kind}' require explicit permission.");
         }
 
         var startInfo = new ProcessStartInfo
