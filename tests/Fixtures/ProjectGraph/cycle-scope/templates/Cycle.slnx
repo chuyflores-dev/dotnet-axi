@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/A/A.csproj" />
+    <Project Path="src/B/B.csproj" />
+    <Project Path="src/Root/Root.csproj" />
+    <Project Path="src/Unrelated/Unrelated.csproj" />
+  </Folder>
+</Solution>

@@ -4,6 +4,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="Microsoft.Build" ExcludeAssets="runtime" />
+    <PackageReference Include="Microsoft.Build.Locator" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="../DotNetAxi.Contracts/DotNetAxi.Contracts.csproj" />
   </ItemGroup>
 </Project>
