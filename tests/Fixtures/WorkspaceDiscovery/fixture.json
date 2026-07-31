@@ -1,0 +1,74 @@
+{
+  "schema": "dotnet-axi/fixture/v1",
+  "name": "workspace-discovery",
+  "seed": 2201,
+  "sdk": {
+    "version": "10.0.302",
+    "rollForward": "latestPatch",
+    "allowPrerelease": false
+  },
+  "files": [
+    {
+      "path": "Alpha.sln",
+      "template": "templates/empty.txt",
+      "expandTokens": false
+    },
+    {
+      "path": "Directory.Build.props",
+      "template": "templates/empty.txt",
+      "expandTokens": false
+    },
+    {
+      "path": "Directory.Build.targets",
+      "template": "templates/empty.txt",
+      "expandTokens": false
+    },
+    {
+      "path": "Directory.Packages.props",
+      "template": "templates/empty.txt",
+      "expandTokens": false
+    },
+    {
+      "path": "Filtered.slnf",
+      "template": "templates/empty.txt",
+      "expandTokens": false
+    },
+    {
+      "path": "Zeta.slnx",
+      "template": "templates/empty.txt",
+      "expandTokens": false
+    },
+    {
+      "path": "dotnet-axi.yml",
+      "template": "templates/empty.txt",
+      "expandTokens": false
+    },
+    {
+      "path": "src/App/App.csproj",
+      "template": "templates/empty.txt",
+      "expandTokens": false
+    },
+    {
+      "path": "src/Legacy/Legacy.fsproj",
+      "template": "templates/empty.txt",
+      "expandTokens": false
+    },
+    {
+      "path": "src/Library/Library.csproj",
+      "template": "templates/empty.txt",
+      "expandTokens": false
+    },
+    {
+      "path": "tools/FileApp.cs",
+      "template": "templates/empty.txt",
+      "expandTokens": false
+    }
+  ],
+  "externalFiles": [
+    {
+      "path": "External.csproj",
+      "template": "templates/empty.txt",
+      "expandTokens": false
+    }
+  ]
+}
