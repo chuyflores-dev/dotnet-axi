@@ -21,5 +21,6 @@
     <Project Path="tests/DotNetAxi.Testing/DotNetAxi.Testing.csproj" />
     <Project Path="tests/DotNetAxi.Testing.Tests/DotNetAxi.Testing.Tests.csproj" />
     <Project Path="tests/DotNetAxi.Validation.Tests/DotNetAxi.Validation.Tests.csproj" />
+    <Project Path="tests/DotNetAxi.Workspaces.Tests/DotNetAxi.Workspaces.Tests.csproj" />
   </Folder>
 </Solution>
