@@ -182,6 +182,20 @@ Repository paths, source previews, diagnostics, test names, and dependency
 messages are untrusted data encoded through the TOON boundary, never raw-string
 escape hatches.
 
+### Constrained host failures
+
+The tool reports the restriction it can observe without claiming to identify an agent sandbox that the operating system did not expose.
+Observable process-start denial, filesystem permission denial, host-reported network-policy denial, timeout, cancellation, output overflow, and ordinary dependency failure remain distinct typed causes.
+An ordinary dependency network error remains a dependency failure unless the host supplies authoritative policy evidence.
+Original dependency exit information and bounded diagnostics are preserved when available.
+
+No adapter retries by broadening permissions, changing the active checkout, moving repository writes into a temporary directory, or enabling network.
+Results instead identify the blocked operation and path or destination when safe, then provide a correction that requires the caller or user to change the host boundary explicitly.
+
+Every terminal path is bounded.
+A child that exits while a descendant retains an output handle cannot stall result collection, and process-group or job cleanup cannot later target a reused unrelated process identity.
+Tool-owned temporary artifacts remain task-scoped; they are not an escape hatch for a read-only repository.
+
 ### Repository-code execution
 
 Commands capable of running MSBuild targets, tests, applications, configured

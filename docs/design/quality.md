@@ -250,6 +250,11 @@ version evidence. Adding Claude does not redefine or invalidate the Codex
 series; it tests whether the product benefit generalizes to another agent
 harness.
 
+Adapter contract tests include clean success, explicit permission denial, read-only repository, external worktree, disabled network, silent-but-live reasoning, stalled worker, and malformed event-stream scenarios.
+Oracles distinguish a product failure from a host restriction and require bounded cleanup without duplicate workers or repeated permission retries.
+Codex runs use explicit ephemeral JSONL and sandbox settings; Claude runs use the equivalent documented permission and streaming controls.
+The full cross-platform restricted-host matrix remains deterministic and does not require paid agent execution in pull-request CI.
+
 Every run captures:
 
 - Task success and correctness.

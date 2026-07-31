@@ -8,6 +8,7 @@ pinned Codex CLI, model, reasoning setting, and controlled execution policy.
 ## Design
 
 - [Agent-task benchmark](../../design/quality.md#agent-task-benchmark)
+- [Sandboxed agent operation](../../design/agent-integration.md#sandboxed-agent-operation)
 
 ## Boundary
 
@@ -20,6 +21,8 @@ durable baseline, or run paid benchmarks on pull-request CI.
 - The adapter uses ephemeral machine-readable execution and captures the raw
   event stream, reported usage, final response, commands, file changes, exit
   state, and timeout.
+- Every run selects its sandbox explicitly: write-capable tasks use a declared writable workspace root, while passive tasks use `read-only`.
+- One process identity owns each run; event silence does not start a replacement, and liveness plus a total timeout determine bounded termination.
 - The run manifest pins the Codex CLI version, exact model, reasoning setting,
   sandbox, permissions, loaded instructions, and network policy.
 - Baseline and candidate conditions use isolated equivalent workspaces and
@@ -29,8 +32,7 @@ durable baseline, or run paid benchmarks on pull-request CI.
 
 ## Verification
 
-- Contract fixtures cover successful, failed, timed-out, truncated, and
-  malformed Codex event streams.
+- Contract fixtures cover successful, permission-denied, read-only, network-denied, stalled, timed-out, truncated, and malformed Codex event streams.
 - A manually dispatched smoke run proves that normalized metrics reconcile
   with the captured raw events.
 

@@ -126,6 +126,34 @@ Guidance MUST tell agents not to claim completion solely because files changed.
 Completion SHOULD use the strongest applicable `dnaxi validate` evidence
 available within the requested scope.
 
+## Sandboxed agent operation
+
+The calling agent's sandbox and approval policy are external authorities.
+`dotnet-axi`, its setup adapters, and generated guidance MUST NOT widen, bypass, or silently rewrite them.
+`dnaxi` and every process it starts inherit the caller's effective filesystem, process, and network boundaries.
+
+The portable skill keeps agent-neutral command guidance in `SKILL.md` and uses progressive-disclosure references for host-specific operation.
+A generated `references/codex.md` carries Codex-specific guidance and official-source links; another agent does not receive Codex flags as portable requirements.
+Repository `AGENTS.md` remains the place for durable repository conventions, not user-specific permission profiles or a duplicate tool workflow.
+This follows Codex's documented separation between [skills](https://learn.chatgpt.com/docs/build-skills), [repository instructions](https://learn.chatgpt.com/docs/agent-configuration/agents-md), and the host's [sandbox and approval controls](https://learn.chatgpt.com/docs/sandboxing).
+
+Codex guidance follows these rules:
+
+- Treat the sandbox as the technical boundary and approvals as the mechanism for crossing it.
+  Changing the reviewer does not expand access.
+  Request only the narrow scope needed for the operation and never recommend full access as an automatic recovery.
+  See [Agent approvals and security](https://learn.chatgpt.com/docs/agent-approvals-security).
+- Run from the selected repository or worktree as an active workspace root.
+  If an external worktree is not writable, add or approve that exact root instead of redirecting build outputs into another checkout.
+  Git permits one mutable branch per worktree, as described in [Codex worktrees](https://learn.chatgpt.com/docs/environments/git-worktrees).
+- Prefer passive, network-free discovery first.
+  Restore, package download, and all other networked operations remain explicit and require the host policy to allow their destinations.
+- Treat protected Git or agent configuration metadata, read-only source, denied network, and denied process launch as host restrictions rather than evidence that the product is unsupported.
+  Retry only after a confirmed permission or policy change; otherwise return an actionable blocker.
+- For automated Codex workers, choose the sandbox explicitly: use `workspace-write` only for implementation and `read-only` for review.
+  Prefer ephemeral JSONL execution, capture the final response separately, and bound event-stream silence and total runtime.
+  Codex documents these controls in [non-interactive mode](https://learn.chatgpt.com/docs/non-interactive-mode).
+
 ## Agent-facing composition
 
 Results include the minimum evidence needed for the next decision: source
