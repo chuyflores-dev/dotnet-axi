@@ -1,0 +1,6 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Broken/Broken.csproj" />
+    <Project Path="src/Good/Good.csproj" />
+  </Folder>
+</Solution>

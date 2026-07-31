@@ -47,6 +47,33 @@ project graph without requiring every Roslyn project to compile. Commands that
 do not need dependency information, including the home view, MUST NOT pay this
 cost.
 
+Graph evaluation starts from the solution or project chosen by workspace
+selection and passes configuration, target framework, and repeated explicit
+MSBuild properties as global properties. Repeated properties use the last
+value; the dedicated configuration and framework selectors take precedence
+over conflicting generic properties.
+
+The graph uses the installed SDK's MSBuild `ProjectGraph` authority without
+running targets, restoring, or loading Roslyn. The official PATH-selected
+`dotnet` host resolves repository `global.json` policy before the matching SDK
+instance is registered. An incompatible process-wide registration returns a
+typed compatibility failure instead of evaluating with a different authority.
+Authority probes have bounded time and output and start in owned process
+containment, so completion, failure, or cancellation cannot leave descendants
+behind even when the original host process has already exited.
+
+Project paths and dependency edges are deterministic and slash-separated;
+external projects use paths relative to the workspace and carry an external
+marker. When native relative paths cannot cross storage roots, a non-rooted
+`../.external-volume/<root-hash>/...` identity distinguishes roots without
+emitting an absolute root. Project link targets are authorized before node
+evaluation, and an implicit directory-link escape fails visibly. Failed
+evaluation, circular dependencies, and missing restore assets prevent complete
+graph coverage and remain attached to visible project nodes or the graph as
+stable typed reasons. Cycle reasons apply only to actual cycle participants.
+When MSBuild is unavailable, known solution members remain visible as failed
+nodes and the solution file itself is never represented as a project.
+
 ## Worktree awareness
 
 Commands MUST reflect tracked, staged, unstaged, untracked, renamed, and

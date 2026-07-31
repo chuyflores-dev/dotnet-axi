@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFrameworks>net9.0;net10.0</TargetFrameworks>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference
+      Include="../Central/Central.csproj"
+      Condition="'$(IncludeCentralReference)' == 'true'" />
+    <ProjectReference
+      Include="../Conditional/Conditional.csproj"
+      Condition="'$(Flavor)' == 'conditional'" />
+    <ProjectReference
+      Include="../DebugOnly/DebugOnly.csproj"
+      Condition="'$(Configuration)' == 'Debug'" />
+    <ProjectReference
+      Include="../NetNine/NetNine.csproj"
+      Condition="'$(TargetFramework)' == 'net9.0'" />
+    <ProjectReference
+      Include="../Repeated/Repeated.csproj"
+      Condition="'$(RepeatedProperty)' == 'second'" />
+  </ItemGroup>
+</Project>

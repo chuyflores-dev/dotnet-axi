@@ -1,0 +1,53 @@
+{
+  "schema": "dotnet-axi/fixture/v1",
+  "name": "project-graph-cycle-scope",
+  "seed": 2208,
+  "sdk": {
+    "version": "10.0.302",
+    "rollForward": "latestPatch",
+    "allowPrerelease": false
+  },
+  "capabilities": [
+    "language:csharp",
+    "project-reference:cycle",
+    "solution:slnx",
+    "workspace:multi-project"
+  ],
+  "scenario": {
+    "state": "broken-project",
+    "intentionalFailure": true,
+    "expectedCoverage": "partial",
+    "remainingCoverage": [
+      "project-spec",
+      "workspace"
+    ],
+    "reason": "project-reference-cycle"
+  },
+  "files": [
+    {
+      "path": "Cycle.slnx",
+      "template": "templates/Cycle.slnx",
+      "expandTokens": false
+    },
+    {
+      "path": "src/Root/Root.csproj",
+      "template": "templates/Root.csproj",
+      "expandTokens": false
+    },
+    {
+      "path": "src/A/A.csproj",
+      "template": "templates/A.csproj",
+      "expandTokens": false
+    },
+    {
+      "path": "src/B/B.csproj",
+      "template": "templates/B.csproj",
+      "expandTokens": false
+    },
+    {
+      "path": "src/Unrelated/Unrelated.csproj",
+      "template": "templates/Unrelated.csproj",
+      "expandTokens": false
+    }
+  ]
+}

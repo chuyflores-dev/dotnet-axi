@@ -357,6 +357,7 @@ try {
         "tools/net10.0/any/DotnetToolSettings.xml",
         "tools/net10.0/any/dnaxi.deps.json",
         "tools/net10.0/any/dnaxi.runtimeconfig.json",
+        "tools/net10.0/any/Microsoft.Build.Locator.dll",
         "tools/net10.0/any/System.CommandLine.dll"
     ) + @(
         $assemblyNames |
@@ -375,6 +376,27 @@ try {
     if ($dependencyModel.libraries.PSObject.Properties.Name -notcontains
         "System.CommandLine/2.0.10") {
         throw "The packaged System.CommandLine dependency is not pinned to 2.0.10."
+    }
+    if ($dependencyModel.libraries.PSObject.Properties.Name -notcontains
+        "Microsoft.Build.Locator/1.11.2") {
+        throw "The packaged Microsoft.Build.Locator dependency is not pinned to 1.11.2."
+    }
+    $msBuildRuntimeLibraries = @(
+        $dependencyModel.libraries.PSObject.Properties.Name |
+            Where-Object { $_ -like "Microsoft.Build/*" }
+    )
+    if ($msBuildRuntimeLibraries.Count -ne 0) {
+        throw "The package must load Microsoft.Build from the selected SDK, not ship it as a runtime dependency."
+    }
+    $msBuildRuntimeEntries = @(
+        $archive.Entries |
+            Where-Object {
+                [System.IO.Path]::GetFileName($_.FullName) -eq
+                    "Microsoft.Build.dll"
+            }
+    )
+    if ($msBuildRuntimeEntries.Count -ne 0) {
+        throw "The package must not contain a Microsoft.Build runtime assembly."
     }
 
     [xml] $toolSettings = Read-ZipEntryText `

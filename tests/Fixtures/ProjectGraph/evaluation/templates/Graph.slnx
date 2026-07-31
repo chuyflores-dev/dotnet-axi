@@ -1,0 +1,11 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/App/App.csproj" />
+    <Project Path="src/Central/Central.csproj" />
+    <Project Path="src/Conditional/Conditional.csproj" />
+    <Project Path="src/DebugOnly/DebugOnly.csproj" />
+    <Project Path="src/NetNine/NetNine.csproj" />
+    <Project Path="src/Repeated/Repeated.csproj" />
+    <Project Path="src/SolutionOnly/SolutionOnly.csproj" />
+  </Folder>
+</Solution>

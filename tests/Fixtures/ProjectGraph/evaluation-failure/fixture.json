@@ -1,0 +1,43 @@
+{
+  "schema": "dotnet-axi/fixture/v1",
+  "name": "project-graph-evaluation-failure",
+  "seed": 2206,
+  "sdk": {
+    "version": "10.0.302",
+    "rollForward": "latestPatch",
+    "allowPrerelease": false
+  },
+  "capabilities": [
+    "language:csharp",
+    "project:broken",
+    "solution:slnx",
+    "workspace:multi-project"
+  ],
+  "scenario": {
+    "state": "broken-project",
+    "intentionalFailure": true,
+    "expectedCoverage": "partial",
+    "remainingCoverage": [
+      "project-spec",
+      "workspace"
+    ],
+    "reason": "project-xml-invalid"
+  },
+  "files": [
+    {
+      "path": "Failure.slnx",
+      "template": "templates/Failure.slnx",
+      "expandTokens": false
+    },
+    {
+      "path": "src/Broken/Broken.csproj",
+      "template": "templates/Broken.csproj",
+      "expandTokens": false
+    },
+    {
+      "path": "src/Good/Good.csproj",
+      "template": "templates/Good.csproj",
+      "expandTokens": false
+    }
+  ]
+}

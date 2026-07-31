@@ -1,0 +1,64 @@
+{
+  "schema": "dotnet-axi/fixture/v1",
+  "name": "project-graph-evaluation",
+  "seed": 2205,
+  "sdk": {
+    "version": "10.0.302",
+    "rollForward": "latestPatch",
+    "allowPrerelease": false
+  },
+  "capabilities": [
+    "framework:multi-targeting",
+    "language:csharp",
+    "project:project-reference",
+    "solution:slnx",
+    "workspace:multi-project"
+  ],
+  "files": [
+    {
+      "path": "Directory.Build.props",
+      "template": "templates/Directory.Build.props",
+      "expandTokens": false
+    },
+    {
+      "path": "Graph.slnx",
+      "template": "templates/Graph.slnx",
+      "expandTokens": false
+    },
+    {
+      "path": "src/App/App.csproj",
+      "template": "templates/App.csproj",
+      "expandTokens": false
+    },
+    {
+      "path": "src/Central/Central.csproj",
+      "template": "templates/Dependency.csproj",
+      "expandTokens": false
+    },
+    {
+      "path": "src/Conditional/Conditional.csproj",
+      "template": "templates/Dependency.csproj",
+      "expandTokens": false
+    },
+    {
+      "path": "src/DebugOnly/DebugOnly.csproj",
+      "template": "templates/Dependency.csproj",
+      "expandTokens": false
+    },
+    {
+      "path": "src/NetNine/NetNine.csproj",
+      "template": "templates/Dependency.csproj",
+      "expandTokens": false
+    },
+    {
+      "path": "src/Repeated/Repeated.csproj",
+      "template": "templates/Dependency.csproj",
+      "expandTokens": false
+    },
+    {
+      "path": "src/SolutionOnly/SolutionOnly.csproj",
+      "template": "templates/Dependency.csproj",
+      "expandTokens": false
+    }
+  ]
+}
