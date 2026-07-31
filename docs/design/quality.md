@@ -89,10 +89,12 @@ identity resolution, deterministic ordering, and dependency translation.
 Each fixture is defined by a committed `dotnet-axi/fixture/v1` manifest and
 explicit template files. The manifest fixes its logical name, random seed,
 selected SDK context, destination paths, and whether well-known fixture tokens
-are expanded. Template and destination paths are repository-relative,
-validated before materialization, and cannot escape the manifest or workspace
-root. Every path segment is NFC-normalized; Windows device names and segments
-with trailing spaces or periods are rejected on every host.
+are expanded. Workspace files and optional external-import files have separate
+destination roots inside the owned fixture directory. Template and destination
+paths are repository-relative, validated before materialization, and cannot
+escape their manifest or destination root. Every path segment is
+NFC-normalized; Windows device names and segments with trailing spaces or
+periods are rejected on every host.
 
 Catalog manifests also declare sorted capability identifiers, an optional
 VSTest or Microsoft Testing Platform selection, and one build target with an
@@ -100,25 +102,37 @@ expected success or intentional-failure outcome. Optional stable output tokens
 identify the intended failure or analyzer result without copying
 command-specific golden output into the fixture.
 
+Edge-case manifests add a typed scenario declaration. It records the state,
+whether failure is intentional, expected coverage as `complete`, `partial`, or
+`none`, the coverage classes that remain available, and a stable reason. Git
+scenarios additionally declare typed staged, unstaged, untracked, renamed, and
+deleted changes or one conflict. Change and conflict content comes only from
+validated templates; manifests cannot embed commands.
+
 The fixture factory materializes each instance under a unique owned directory.
-The workspace is separate from isolated home, Git configuration, NuGet
-packages and HTTP cache, .NET CLI home, general cache, temporary, and artifact
-directories. It returns child-process environment overrides without mutating
-the test host environment. Child processes inherit only an explicit
-cross-platform allowlist plus fixture-owned overrides. `dotnet` invocations use
-one resolved absolute host and an owned NuGet configuration with explicit
-package sources, so ambient .NET, MSBuild, NuGet plugin, and user configuration
-cannot alter fixture execution.
+The workspace and optional external-import root are separate from isolated
+home, Git configuration, NuGet packages and HTTP cache, .NET CLI home, general
+cache, temporary, and artifact directories. It returns child-process
+environment overrides without mutating the test host environment. Child
+processes inherit only an explicit cross-platform allowlist plus fixture-owned
+overrides. `dotnet` invocations use one resolved absolute host and an owned
+NuGet configuration with explicit package sources, so ambient .NET, MSBuild,
+NuGet plugin, and user configuration cannot alter fixture execution.
 
 Factory creation is passive: it does not start Git, `dotnet`, restore,
 repository code, or any other process. Tests must opt into tooling, restore, or
 repository-code process classifications before the factory creates a
-`ProcessStartInfo`.
+`ProcessStartInfo`. A Git scenario becomes active only when a test explicitly
+requests preparation with tooling permission. Preparation creates a
+deterministic baseline commit and applies only the typed manifest changes; a
+conflict is produced by merging two deterministic fixture branches.
 
 Fixture identity includes a SHA-256 hash over normalized relative paths and
 exact materialized bytes. Instance metadata records that hash, the fixed seed,
-the selected SDK context, and runtime/OS identity without timestamps or
-machine-specific workspace paths. Committed fixture inputs are pinned to LF
+the optional external-content hash, the scenario contract, the selected SDK
+context, and runtime/OS identity without timestamps or machine-specific
+workspace paths. The workspace hash describes the passive baseline before an
+explicit Git preparation mutates it. Committed fixture inputs are pinned to LF
 checkout bytes, and catalog tests pin their expected content hashes.
 Owned-directory markers constrain cleanup; root and marker link substitution
 is rejected and ownership is revalidated before destructive phases. Transient
@@ -128,8 +142,10 @@ exception so cleanup can be retried.
 Catalog verification materializes every manifest and invokes its declared
 build target with combined restore and repository-code permission, isolated
 process state, and a bounded timeout. The catalog test rejects missing
-capability classes, unexpected build outcomes, and missing declared output
-tokens.
+capability or edge-state classes, unexpected build outcomes, and missing
+declared output tokens. Edge-state self-tests separately inspect the declared
+filesystem and Git state so build verification cannot mask a missing-assets or
+worktree condition.
 
 Fixtures cover:
 

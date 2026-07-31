@@ -1,0 +1,8 @@
+{
+  "solution": {
+    "path": "Workspace.sln",
+    "projects": [
+      "src/App/App.csproj"
+    ]
+  }
+}

@@ -45,6 +45,7 @@ public sealed class RepositoryFixture : IAsyncDisposable
     internal RepositoryFixture(
         string rootPath,
         string workspacePath,
+        string externalPath,
         string statePath,
         string metadataPath,
         string gitConfigPath,
@@ -58,18 +59,23 @@ public sealed class RepositoryFixture : IAsyncDisposable
         string nuGetConfigPath,
         string contentHash,
         IReadOnlyList<string> contentFiles,
+        string? externalContentHash,
+        IReadOnlyList<string> externalContentFiles,
         RepositoryFixtureIdentity identity,
         IReadOnlyList<string> capabilities,
         FixtureBuildVerification? buildVerification,
         string? testRunner,
+        FixtureScenario? scenario,
         FixtureToolchainIdentity toolchain,
         RepositoryFixtureOptions options,
         IReadOnlyDictionary<string, string> environmentVariables,
+        FixtureGitPlan? gitPlan,
         string ownerId,
         IFixtureDirectoryCleaner cleaner)
     {
         RootPath = rootPath;
         WorkspacePath = workspacePath;
+        ExternalPath = externalPath;
         StatePath = statePath;
         MetadataPath = metadataPath;
         GitConfigPath = gitConfigPath;
@@ -83,13 +89,17 @@ public sealed class RepositoryFixture : IAsyncDisposable
         NuGetConfigPath = nuGetConfigPath;
         ContentHash = contentHash;
         ContentFiles = contentFiles;
+        ExternalContentHash = externalContentHash;
+        ExternalContentFiles = externalContentFiles;
         Identity = identity;
         Capabilities = capabilities;
         BuildVerification = buildVerification;
         TestRunner = testRunner;
+        Scenario = scenario;
         Toolchain = toolchain;
         Options = options;
         EnvironmentVariables = environmentVariables;
+        GitPlan = gitPlan;
         _ownerId = ownerId;
         _cleaner = cleaner;
     }
@@ -97,6 +107,8 @@ public sealed class RepositoryFixture : IAsyncDisposable
     public string RootPath { get; }
 
     public string WorkspacePath { get; }
+
+    public string ExternalPath { get; }
 
     public string StatePath { get; }
 
@@ -126,6 +138,10 @@ public sealed class RepositoryFixture : IAsyncDisposable
 
     public IReadOnlyList<string> ContentFiles { get; }
 
+    public string? ExternalContentHash { get; }
+
+    public IReadOnlyList<string> ExternalContentFiles { get; }
+
     public RepositoryFixtureIdentity Identity { get; }
 
     public IReadOnlyList<string> Capabilities { get; }
@@ -134,11 +150,17 @@ public sealed class RepositoryFixture : IAsyncDisposable
 
     public string? TestRunner { get; }
 
+    public FixtureScenario? Scenario { get; }
+
+    public bool RequiresGitPreparation => GitPlan is not null;
+
     public FixtureToolchainIdentity Toolchain { get; }
 
     public RepositoryFixtureOptions Options { get; }
 
     public IReadOnlyDictionary<string, string> EnvironmentVariables { get; }
+
+    internal FixtureGitPlan? GitPlan { get; }
 
     public ProcessStartInfo CreateProcessStartInfo(
         FixtureProcessKind kind,
@@ -339,6 +361,21 @@ public sealed class RepositoryFixture : IAsyncDisposable
             WorkspacePath,
             ContentFiles,
             cancellationToken);
+
+    public ValueTask PrepareGitAsync(
+        CancellationToken cancellationToken = default)
+    {
+        if (GitPlan is null)
+        {
+            throw new InvalidOperationException(
+                "Fixture manifest does not declare Git preparation.");
+        }
+
+        return FixtureGitPreparer.PrepareAsync(
+            this,
+            GitPlan,
+            cancellationToken);
+    }
 
     public async ValueTask DisposeAsync()
     {

@@ -1,0 +1,48 @@
+{
+  "schema": "dotnet-axi/fixture/v1",
+  "name": "catalog-ambiguous-solution",
+  "seed": 2103,
+  "sdk": {
+    "version": "10.0.302",
+    "rollForward": "latestPatch",
+    "allowPrerelease": false
+  },
+  "capabilities": [
+    "framework:net10.0",
+    "language:csharp",
+    "project:sdk-style",
+    "solution:slnx",
+    "workspace:ambiguous"
+  ],
+  "scenario": {
+    "state": "ambiguous-solution",
+    "intentionalFailure": true,
+    "expectedCoverage": "partial",
+    "remainingCoverage": [
+      "filesystem"
+    ],
+    "reason": "multiple-solution-candidates"
+  },
+  "build": {
+    "target": "src/App/App.csproj",
+    "expectedOutcome": "success",
+    "requiredOutput": []
+  },
+  "files": [
+    {
+      "path": "First.slnx",
+      "template": "templates/First.slnx",
+      "expandTokens": false
+    },
+    {
+      "path": "Second.slnx",
+      "template": "templates/Second.slnx",
+      "expandTokens": false
+    },
+    {
+      "path": "src/App/App.csproj",
+      "template": "templates/App.csproj",
+      "expandTokens": false
+    }
+  ]
+}

@@ -1,0 +1,46 @@
+{
+  "schema": "dotnet-axi/fixture/v1",
+  "name": "catalog-external-import",
+  "seed": 2106,
+  "sdk": {
+    "version": "10.0.302",
+    "rollForward": "latestPatch",
+    "allowPrerelease": false
+  },
+  "capabilities": [
+    "framework:net10.0",
+    "project:external-import",
+    "project:sdk-style",
+    "workspace:single-project"
+  ],
+  "scenario": {
+    "state": "external-import",
+    "intentionalFailure": false,
+    "expectedCoverage": "complete",
+    "remainingCoverage": [
+      "external-import",
+      "project",
+      "workspace"
+    ],
+    "reason": "import-outside-workspace"
+  },
+  "build": {
+    "target": "ExternalImport.csproj",
+    "expectedOutcome": "success",
+    "requiredOutput": []
+  },
+  "files": [
+    {
+      "path": "ExternalImport.csproj",
+      "template": "templates/ExternalImport.csproj",
+      "expandTokens": false
+    }
+  ],
+  "externalFiles": [
+    {
+      "path": "External.targets",
+      "template": "templates/External.targets",
+      "expandTokens": false
+    }
+  ]
+}

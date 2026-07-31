@@ -1,0 +1,40 @@
+{
+  "schema": "dotnet-axi/fixture/v1",
+  "name": "catalog-missing-assets",
+  "seed": 2105,
+  "sdk": {
+    "version": "10.0.302",
+    "rollForward": "latestPatch",
+    "allowPrerelease": false
+  },
+  "capabilities": [
+    "framework:net10.0",
+    "language:csharp",
+    "project:sdk-style",
+    "restore:assets-missing",
+    "workspace:single-project"
+  ],
+  "scenario": {
+    "state": "missing-assets",
+    "intentionalFailure": true,
+    "expectedCoverage": "partial",
+    "remainingCoverage": [
+      "filesystem",
+      "project-spec",
+      "workspace"
+    ],
+    "reason": "restore-assets-absent"
+  },
+  "build": {
+    "target": "MissingAssets.csproj",
+    "expectedOutcome": "success",
+    "requiredOutput": []
+  },
+  "files": [
+    {
+      "path": "MissingAssets.csproj",
+      "template": "templates/MissingAssets.csproj",
+      "expandTokens": false
+    }
+  ]
+}
