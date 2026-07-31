@@ -51,6 +51,7 @@ public sealed class RepositoryFixtureFactory
             BaseDirectory,
             $"{plan.Identity.Name}-{Environment.ProcessId}-{ownerId}");
         var workspacePath = Path.Combine(rootPath, "workspace");
+        var externalPath = Path.Combine(rootPath, "external");
         var statePath = Path.Combine(rootPath, "state");
         var metadataPath = Path.Combine(statePath, "fixture.json");
         var gitConfigPath = Path.Combine(statePath, "gitconfig");
@@ -90,6 +91,7 @@ public sealed class RepositoryFixtureFactory
             foreach (var path in new[]
                      {
                          workspacePath,
+                         externalPath,
                          statePath,
                          homePath,
                          cachePath,
@@ -153,6 +155,23 @@ public sealed class RepositoryFixtureFactory
                     cancellationToken);
             }
 
+            foreach (var file in plan.ExternalFiles)
+            {
+                var destinationPath = Path.Combine(
+                    externalPath,
+                    file.RelativePath.Replace(
+                        '/',
+                        Path.DirectorySeparatorChar));
+                Directory.CreateDirectory(
+                    Path.GetDirectoryName(destinationPath)
+                    ?? throw new InvalidOperationException(
+                        "Fixture external destination must have a parent directory."));
+                await File.WriteAllBytesAsync(
+                    destinationPath,
+                    file.Content,
+                    cancellationToken);
+            }
+
             var contentFiles = Array.AsReadOnly(
                 plan.Files
                     .Select(static file => file.RelativePath)
@@ -172,6 +191,30 @@ public sealed class RepositoryFixtureFactory
                     "Materialized fixture content does not match its source plan.");
             }
 
+            var externalContentFiles = Array.AsReadOnly(
+                plan.ExternalFiles
+                    .Select(static file => file.RelativePath)
+                    .Order(StringComparer.Ordinal)
+                    .ToArray());
+            string? externalContentHash = null;
+            if (externalContentFiles.Count != 0)
+            {
+                var expectedExternalContentHash =
+                    FixtureContentHasher.Compute(plan.ExternalFiles);
+                externalContentHash = await FixtureContentHasher.ComputeAsync(
+                    externalPath,
+                    externalContentFiles,
+                    cancellationToken);
+                if (!string.Equals(
+                        expectedExternalContentHash,
+                        externalContentHash,
+                        StringComparison.Ordinal))
+                {
+                    throw new IOException(
+                        "Materialized external fixture content does not match its source plan.");
+                }
+            }
+
             var toolchain = new FixtureToolchainIdentity(
                 RuntimeInformation.FrameworkDescription,
                 RuntimeInformation.RuntimeIdentifier,
@@ -186,8 +229,10 @@ public sealed class RepositoryFixtureFactory
                 plan.Capabilities,
                 plan.BuildVerification,
                 plan.TestRunner,
+                plan.Scenario,
                 toolchain,
                 actualContentHash,
+                externalContentHash,
                 cancellationToken);
             var environmentVariables = CreateEnvironment(
                 gitConfigPath,
@@ -204,6 +249,7 @@ public sealed class RepositoryFixtureFactory
             return new RepositoryFixture(
                 rootPath,
                 workspacePath,
+                externalPath,
                 statePath,
                 metadataPath,
                 gitConfigPath,
@@ -217,13 +263,17 @@ public sealed class RepositoryFixtureFactory
                 nuGetConfigPath,
                 actualContentHash,
                 contentFiles,
+                externalContentHash,
+                externalContentFiles,
                 plan.Identity,
                 plan.Capabilities,
                 plan.BuildVerification,
                 plan.TestRunner,
+                plan.Scenario,
                 toolchain,
                 options,
                 environmentVariables,
+                plan.Git,
                 ownerId,
                 _cleaner);
         }
@@ -300,8 +350,10 @@ public sealed class RepositoryFixtureFactory
         IReadOnlyList<string> capabilities,
         FixtureBuildVerification? buildVerification,
         string? testRunner,
+        FixtureScenario? scenario,
         FixtureToolchainIdentity toolchain,
         string contentHash,
+        string? externalContentHash,
         CancellationToken cancellationToken)
     {
         var json = JsonSerializer.Serialize(
@@ -312,7 +364,9 @@ public sealed class RepositoryFixtureFactory
                 capabilities,
                 build = buildVerification,
                 testRunner,
+                scenario,
                 contentHash,
+                externalContentHash,
                 toolchain,
             },
             MetadataJsonOptions);

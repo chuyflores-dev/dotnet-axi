@@ -1,0 +1,95 @@
+{
+  "schema": "dotnet-axi/fixture/v1",
+  "name": "catalog-git-worktree",
+  "seed": 2101,
+  "sdk": {
+    "version": "10.0.302",
+    "rollForward": "latestPatch",
+    "allowPrerelease": false
+  },
+  "capabilities": [
+    "framework:net10.0",
+    "git:deleted",
+    "git:renamed",
+    "git:staged",
+    "git:unstaged",
+    "git:untracked",
+    "language:csharp",
+    "project:sdk-style",
+    "workspace:single-project"
+  ],
+  "scenario": {
+    "state": "git-worktree",
+    "intentionalFailure": false,
+    "expectedCoverage": "complete",
+    "remainingCoverage": [
+      "changed-files",
+      "project",
+      "workspace"
+    ],
+    "reason": "mixed-worktree-state"
+  },
+  "git": {
+    "changes": [
+      {
+        "kind": "staged",
+        "path": "src/Staged.cs",
+        "template": "templates/Staged.after.cs",
+        "expandTokens": false
+      },
+      {
+        "kind": "unstaged",
+        "path": "src/Unstaged.cs",
+        "template": "templates/Unstaged.after.cs",
+        "expandTokens": false
+      },
+      {
+        "kind": "untracked",
+        "path": "src/Untracked.cs",
+        "template": "templates/Untracked.cs",
+        "expandTokens": false
+      },
+      {
+        "kind": "renamed",
+        "path": "src/RenamedBefore.cs",
+        "newPath": "src/RenamedAfter.cs"
+      },
+      {
+        "kind": "deleted",
+        "path": "src/Deleted.cs"
+      }
+    ]
+  },
+  "build": {
+    "target": "Workspace.csproj",
+    "expectedOutcome": "success",
+    "requiredOutput": []
+  },
+  "files": [
+    {
+      "path": "Workspace.csproj",
+      "template": "templates/Workspace.csproj",
+      "expandTokens": false
+    },
+    {
+      "path": "src/Staged.cs",
+      "template": "templates/Staged.before.cs",
+      "expandTokens": false
+    },
+    {
+      "path": "src/Unstaged.cs",
+      "template": "templates/Unstaged.before.cs",
+      "expandTokens": false
+    },
+    {
+      "path": "src/RenamedBefore.cs",
+      "template": "templates/RenamedBefore.cs",
+      "expandTokens": false
+    },
+    {
+      "path": "src/Deleted.cs",
+      "template": "templates/Deleted.cs",
+      "expandTokens": false
+    }
+  ]
+}

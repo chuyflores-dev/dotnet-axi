@@ -88,42 +88,18 @@ internal static class FixtureManifestLoader
             Path.GetDirectoryName(fullManifestPath)
             ?? throw new FixtureManifestException(
                 "The fixture manifest must have a parent directory.");
-        var files = new List<FixtureMaterializedFile>();
-        var destinations = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-
-        foreach (var file in document.Files ?? [])
-        {
-            var destination = NormalizeRelativePath(
-                file.Path,
-                "Fixture destination path");
-            if (!destinations.Add(destination))
-            {
-                throw new FixtureManifestException(
-                    $"Fixture destination '{destination}' is duplicated.");
-            }
-
-            var template = NormalizeRelativePath(
-                file.Template,
-                "Fixture template path");
-            var templatePath = ResolveContainedPath(
-                manifestDirectory,
-                template,
-                "Fixture template");
-            EnsureTemplateIsRegularFile(
-                manifestDirectory,
-                template,
-                templatePath);
-
-            var content = await File.ReadAllBytesAsync(
-                templatePath,
-                cancellationToken);
-            if (file.ExpandTokens)
-            {
-                content = ExpandTokens(content, identity, templatePath);
-            }
-
-            files.Add(new FixtureMaterializedFile(destination, content));
-        }
+        var (files, destinations) = await LoadFilesAsync(
+            document.Files,
+            "Fixture",
+            manifestDirectory,
+            identity,
+            cancellationToken);
+        var (externalFiles, _) = await LoadFilesAsync(
+            document.ExternalFiles,
+            "Fixture external",
+            manifestDirectory,
+            identity,
+            cancellationToken);
 
         const string globalJsonPath = "global.json";
         if (!destinations.Add(globalJsonPath))
@@ -140,15 +116,91 @@ internal static class FixtureManifestLoader
         var buildVerification = ValidateBuild(
             document.Build,
             destinations);
+        var scenario = ValidateScenario(document.Scenario);
+        var git = await ValidateGitAsync(
+            document.Git,
+            scenario,
+            destinations,
+            manifestDirectory,
+            identity,
+            cancellationToken);
 
         return new FixtureMaterializationPlan(
             identity,
             capabilities,
             buildVerification,
             testRunner,
+            scenario,
+            git,
             files
                 .OrderBy(static file => file.RelativePath, StringComparer.Ordinal)
+                .ToArray(),
+            externalFiles
+                .OrderBy(static file => file.RelativePath, StringComparer.Ordinal)
                 .ToArray());
+    }
+
+    private static async ValueTask<(
+        List<FixtureMaterializedFile> Files,
+        HashSet<string> Destinations)> LoadFilesAsync(
+        IReadOnlyList<FixtureFileDocument>? documents,
+        string fieldPrefix,
+        string manifestDirectory,
+        RepositoryFixtureIdentity identity,
+        CancellationToken cancellationToken)
+    {
+        var files = new List<FixtureMaterializedFile>();
+        var destinations = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var file in documents ?? [])
+        {
+            var destination = NormalizeRelativePath(
+                file.Path,
+                $"{fieldPrefix} destination path");
+            if (!destinations.Add(destination))
+            {
+                throw new FixtureManifestException(
+                    $"{fieldPrefix} destination '{destination}' is duplicated.");
+            }
+
+            var content = await LoadTemplateAsync(
+                file.Template,
+                file.ExpandTokens,
+                fieldPrefix,
+                manifestDirectory,
+                identity,
+                cancellationToken);
+            files.Add(new FixtureMaterializedFile(destination, content));
+        }
+
+        return (files, destinations);
+    }
+
+    private static async ValueTask<byte[]> LoadTemplateAsync(
+        string? value,
+        bool expandTokens,
+        string fieldPrefix,
+        string manifestDirectory,
+        RepositoryFixtureIdentity identity,
+        CancellationToken cancellationToken)
+    {
+        var template = NormalizeRelativePath(
+            value,
+            $"{fieldPrefix} template path");
+        var templatePath = ResolveContainedPath(
+            manifestDirectory,
+            template,
+            $"{fieldPrefix} template");
+        EnsureTemplateIsRegularFile(
+            manifestDirectory,
+            template,
+            templatePath);
+
+        var content = await File.ReadAllBytesAsync(
+            templatePath,
+            cancellationToken);
+        return expandTokens
+            ? ExpandTokens(content, identity, templatePath)
+            : content;
     }
 
     private static string ValidateName(string? value)
@@ -283,6 +335,312 @@ internal static class FixtureManifestLoader
             expectedOutcome,
             Array.AsReadOnly(
                 requiredOutput.Order(StringComparer.Ordinal).ToArray()));
+    }
+
+    private static FixtureScenario? ValidateScenario(
+        FixtureScenarioDocument? scenario)
+    {
+        if (scenario is null)
+        {
+            return null;
+        }
+
+        var state = ValidateIdentifier(
+            scenario.State,
+            "Fixture scenario.state");
+        var expectedCoverage = scenario.ExpectedCoverage switch
+        {
+            "complete" => FixtureCoverageExpectation.Complete,
+            "partial" => FixtureCoverageExpectation.Partial,
+            "none" => FixtureCoverageExpectation.None,
+            _ => throw new FixtureManifestException(
+                "Fixture scenario.expectedCoverage must be 'complete', 'partial', or 'none'."),
+        };
+        var remainingCoverage = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var value in scenario.RemainingCoverage ?? [])
+        {
+            var identifier = ValidateIdentifier(
+                value,
+                "Fixture scenario.remainingCoverage");
+            if (!remainingCoverage.Add(identifier))
+            {
+                throw new FixtureManifestException(
+                    $"Fixture remaining coverage '{identifier}' is duplicated.");
+            }
+        }
+
+        if (expectedCoverage == FixtureCoverageExpectation.None
+            && remainingCoverage.Count != 0)
+        {
+            throw new FixtureManifestException(
+                "A fixture scenario with no expected coverage cannot declare remaining coverage.");
+        }
+
+        if (expectedCoverage != FixtureCoverageExpectation.None
+            && remainingCoverage.Count == 0)
+        {
+            throw new FixtureManifestException(
+                "A fixture scenario with expected coverage must declare remaining coverage.");
+        }
+
+        var reason = ValidateIdentifier(
+            scenario.Reason,
+            "Fixture scenario.reason");
+        if (scenario.IntentionalFailure is null)
+        {
+            throw new FixtureManifestException(
+                "Fixture scenario.intentionalFailure is required.");
+        }
+
+        return new FixtureScenario(
+            state,
+            scenario.IntentionalFailure.Value,
+            expectedCoverage,
+            Array.AsReadOnly(
+                remainingCoverage.Order(StringComparer.Ordinal).ToArray()),
+            reason);
+    }
+
+    private static async ValueTask<FixtureGitPlan?> ValidateGitAsync(
+        FixtureGitDocument? git,
+        FixtureScenario? scenario,
+        IReadOnlySet<string> destinations,
+        string manifestDirectory,
+        RepositoryFixtureIdentity identity,
+        CancellationToken cancellationToken)
+    {
+        if (git is null)
+        {
+            if (scenario?.State.StartsWith("git-", StringComparison.Ordinal)
+                == true)
+            {
+                throw new FixtureManifestException(
+                    "A Git fixture scenario must declare git preparation.");
+            }
+
+            return null;
+        }
+
+        if (scenario is null
+            || !scenario.State.StartsWith("git-", StringComparison.Ordinal))
+        {
+            throw new FixtureManifestException(
+                "Fixture git preparation requires a matching Git scenario.");
+        }
+
+        var changes = git.Changes ?? [];
+        if (changes.Count == 0 && git.Conflict is null)
+        {
+            throw new FixtureManifestException(
+                "Fixture git preparation must declare changes or a conflict.");
+        }
+
+        if (changes.Count != 0 && git.Conflict is not null)
+        {
+            throw new FixtureManifestException(
+                "Fixture git changes and conflict preparation cannot be combined.");
+        }
+
+        if (changes.Count != 0
+            && !string.Equals(
+                scenario.State,
+                "git-worktree",
+                StringComparison.Ordinal))
+        {
+            throw new FixtureManifestException(
+                "Fixture git changes require the 'git-worktree' scenario state.");
+        }
+
+        if (git.Conflict is not null
+            && !string.Equals(
+                scenario.State,
+                "git-conflict",
+                StringComparison.Ordinal))
+        {
+            throw new FixtureManifestException(
+                "Fixture git conflict preparation requires the 'git-conflict' scenario state.");
+        }
+
+        var touchedPaths = new HashSet<string>(
+            StringComparer.OrdinalIgnoreCase);
+        var plans = new List<FixtureGitChangePlan>();
+        foreach (var change in changes)
+        {
+            var path = NormalizeRelativePath(
+                change.Path,
+                "Fixture git change path");
+            if (!touchedPaths.Add(path))
+            {
+                throw new FixtureManifestException(
+                    $"Fixture git path '{path}' is changed more than once.");
+            }
+
+            var kind = change.Kind switch
+            {
+                "staged" => FixtureGitChangeKind.Staged,
+                "unstaged" => FixtureGitChangeKind.Unstaged,
+                "untracked" => FixtureGitChangeKind.Untracked,
+                "renamed" => FixtureGitChangeKind.Renamed,
+                "deleted" => FixtureGitChangeKind.Deleted,
+                _ => throw new FixtureManifestException(
+                    "Fixture git change.kind must be 'staged', 'unstaged', 'untracked', 'renamed', or 'deleted'."),
+            };
+
+            string? newPath = null;
+            byte[]? content = null;
+            if (kind is FixtureGitChangeKind.Staged
+                or FixtureGitChangeKind.Unstaged
+                or FixtureGitChangeKind.Untracked)
+            {
+                if (change.NewPath is not null)
+                {
+                    throw new FixtureManifestException(
+                        $"Fixture git {change.Kind} change cannot declare newPath.");
+                }
+
+                content = await LoadTemplateAsync(
+                    change.Template,
+                    change.ExpandTokens,
+                    "Fixture git change",
+                    manifestDirectory,
+                    identity,
+                    cancellationToken);
+            }
+            else
+            {
+                if (change.Template is not null || change.ExpandTokens)
+                {
+                    throw new FixtureManifestException(
+                        $"Fixture git {change.Kind} change cannot declare a template.");
+                }
+            }
+
+            if (kind == FixtureGitChangeKind.Renamed)
+            {
+                newPath = NormalizeRelativePath(
+                    change.NewPath,
+                    "Fixture git rename newPath");
+                if (!touchedPaths.Add(newPath))
+                {
+                    throw new FixtureManifestException(
+                        $"Fixture git path '{newPath}' is changed more than once.");
+                }
+
+                EnsureDestinationAbsent(
+                    destinations,
+                    newPath,
+                    "Fixture git rename destination");
+            }
+            else if (change.NewPath is not null)
+            {
+                throw new FixtureManifestException(
+                    $"Fixture git {change.Kind} change cannot declare newPath.");
+            }
+
+            if (kind == FixtureGitChangeKind.Untracked)
+            {
+                EnsureDestinationAbsent(
+                    destinations,
+                    path,
+                    "Fixture git untracked path");
+            }
+            else
+            {
+                EnsureDestinationExists(
+                    destinations,
+                    path,
+                    "Fixture git change path");
+            }
+
+            plans.Add(new FixtureGitChangePlan(
+                kind,
+                path,
+                newPath,
+                content));
+        }
+
+        FixtureGitConflictPlan? conflict = null;
+        if (git.Conflict is not null)
+        {
+            var path = NormalizeRelativePath(
+                git.Conflict.Path,
+                "Fixture git conflict path");
+            EnsureDestinationExists(
+                destinations,
+                path,
+                "Fixture git conflict path");
+            var ours = await LoadTemplateAsync(
+                git.Conflict.OursTemplate,
+                git.Conflict.ExpandTokens,
+                "Fixture git conflict ours",
+                manifestDirectory,
+                identity,
+                cancellationToken);
+            var theirs = await LoadTemplateAsync(
+                git.Conflict.TheirsTemplate,
+                git.Conflict.ExpandTokens,
+                "Fixture git conflict theirs",
+                manifestDirectory,
+                identity,
+                cancellationToken);
+            conflict = new FixtureGitConflictPlan(path, ours, theirs);
+        }
+
+        return new FixtureGitPlan(
+            Array.AsReadOnly(plans.ToArray()),
+            conflict);
+    }
+
+    private static string ValidateIdentifier(string? value, string field)
+    {
+        if (string.IsNullOrWhiteSpace(value)
+            || value.Any(static character =>
+                !(char.IsAsciiLetterOrDigit(character)
+                  || character is ':' or '.' or '-' or '_'))
+            || !string.Equals(
+                value,
+                value.ToLowerInvariant(),
+                StringComparison.Ordinal))
+        {
+            throw new FixtureManifestException(
+                $"{field} must be a lowercase portable identifier.");
+        }
+
+        return value;
+    }
+
+    private static void EnsureDestinationExists(
+        IReadOnlySet<string> destinations,
+        string path,
+        string field)
+    {
+        if (!destinations.Any(
+                destination => string.Equals(
+                    destination,
+                    path,
+                    StringComparison.Ordinal)))
+        {
+            if (destinations.Contains(path))
+            {
+                throw new FixtureManifestException(
+                    $"{field} '{path}' casing must exactly match its materialized path.");
+            }
+
+            throw new FixtureManifestException(
+                $"{field} '{path}' is not a materialized file.");
+        }
+    }
+
+    private static void EnsureDestinationAbsent(
+        IReadOnlySet<string> destinations,
+        string path,
+        string field)
+    {
+        if (destinations.Contains(path))
+        {
+            throw new FixtureManifestException(
+                $"{field} '{path}' collides with a materialized file.");
+        }
     }
 
     private static string NormalizeRelativePath(
@@ -498,7 +856,13 @@ internal static class FixtureManifestLoader
 
         public FixtureBuildDocument? Build { get; init; }
 
+        public FixtureScenarioDocument? Scenario { get; init; }
+
+        public FixtureGitDocument? Git { get; init; }
+
         public IReadOnlyList<FixtureFileDocument>? Files { get; init; }
+
+        public IReadOnlyList<FixtureFileDocument>? ExternalFiles { get; init; }
     }
 
     private sealed class FixtureSdkDocument
@@ -527,6 +891,50 @@ internal static class FixtureManifestLoader
 
         public IReadOnlyList<string>? RequiredOutput { get; init; }
     }
+
+    private sealed class FixtureScenarioDocument
+    {
+        public string? State { get; init; }
+
+        public bool? IntentionalFailure { get; init; }
+
+        public string? ExpectedCoverage { get; init; }
+
+        public IReadOnlyList<string>? RemainingCoverage { get; init; }
+
+        public string? Reason { get; init; }
+    }
+
+    private sealed class FixtureGitDocument
+    {
+        public IReadOnlyList<FixtureGitChangeDocument>? Changes { get; init; }
+
+        public FixtureGitConflictDocument? Conflict { get; init; }
+    }
+
+    private sealed class FixtureGitChangeDocument
+    {
+        public string? Kind { get; init; }
+
+        public string? Path { get; init; }
+
+        public string? NewPath { get; init; }
+
+        public string? Template { get; init; }
+
+        public bool ExpandTokens { get; init; }
+    }
+
+    private sealed class FixtureGitConflictDocument
+    {
+        public string? Path { get; init; }
+
+        public string? OursTemplate { get; init; }
+
+        public string? TheirsTemplate { get; init; }
+
+        public bool ExpandTokens { get; init; }
+    }
 }
 
 internal sealed record FixtureMaterializationPlan(
@@ -534,4 +942,7 @@ internal sealed record FixtureMaterializationPlan(
     IReadOnlyList<string> Capabilities,
     FixtureBuildVerification? BuildVerification,
     string? TestRunner,
-    IReadOnlyList<FixtureMaterializedFile> Files);
+    FixtureScenario? Scenario,
+    FixtureGitPlan? Git,
+    IReadOnlyList<FixtureMaterializedFile> Files,
+    IReadOnlyList<FixtureMaterializedFile> ExternalFiles);

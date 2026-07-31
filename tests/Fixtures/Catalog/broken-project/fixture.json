@@ -1,0 +1,38 @@
+{
+  "schema": "dotnet-axi/fixture/v1",
+  "name": "catalog-broken-project",
+  "seed": 2104,
+  "sdk": {
+    "version": "10.0.302",
+    "rollForward": "latestPatch",
+    "allowPrerelease": false
+  },
+  "capabilities": [
+    "project:broken",
+    "workspace:single-project"
+  ],
+  "scenario": {
+    "state": "broken-project",
+    "intentionalFailure": true,
+    "expectedCoverage": "partial",
+    "remainingCoverage": [
+      "filesystem",
+      "workspace"
+    ],
+    "reason": "project-xml-invalid"
+  },
+  "build": {
+    "target": "Broken.csproj",
+    "expectedOutcome": "failure",
+    "requiredOutput": [
+      "MSB4025"
+    ]
+  },
+  "files": [
+    {
+      "path": "Broken.csproj",
+      "template": "templates/Broken.csproj",
+      "expandTokens": false
+    }
+  ]
+}
