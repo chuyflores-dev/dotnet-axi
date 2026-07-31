@@ -13,6 +13,7 @@ platform, SDK, and optional-engine compatibility matrix.
 - Roslyn/MSBuild host compatibility and isolated failure behavior.
 - Git, `rg`, and AST-grep discovery, version reporting, and graceful
   degradation.
+- Constrained-host package behavior across supported platforms and invocation forms.
 
 ## Boundary
 
@@ -43,6 +44,7 @@ accelerators are outside the MVP.
 - [MVP-E12-S07 — Isolate incompatible compiler hosts](MVP-E12-S07-host-isolation.md)
 - [MVP-E12-S08 — Publish compatibility evidence](MVP-E12-S08-compatibility-evidence.md)
 - [MVP-E12-S09 — Plan release versions and publishing](MVP-E12-S09-release-version-plan.md)
+- [MVP-E12-S10 - Verify constrained agent hosts](MVP-E12-S10-constrained-agent-hosts.md)
 
 ## Complete when
 

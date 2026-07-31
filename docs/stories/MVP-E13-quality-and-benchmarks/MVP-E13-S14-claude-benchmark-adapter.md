@@ -19,6 +19,7 @@ Codex metrics or used to retroactively tune the shared task corpus.
 - The adapter uses supported noninteractive streaming output and captures raw
   events, usage, cost, turns, final response, tool activity, exit state, and
   timeout.
+- Worker monitoring distinguishes observable progress from a bounded stall, preserves the first permission failure, and never starts a duplicate worker while one remains live.
 - The run manifest pins the Claude Code CLI version, exact model, permission
   mode, allowed tools, turn limit, loaded instructions, and network policy.
 - It runs the same applicable task definitions, baseline/candidate boundaries,
@@ -28,8 +29,7 @@ Codex metrics or used to retroactively tune the shared task corpus.
 
 ## Verification
 
-- Contract fixtures cover successful, failed, timed-out, truncated, and
-  malformed Claude event streams.
+- Contract fixtures cover successful, permission-denied, read-only, network-denied, stalled, timed-out, truncated, and malformed Claude event streams.
 - A manually dispatched smoke run proves that normalized metrics reconcile
   with the captured raw events.
 
