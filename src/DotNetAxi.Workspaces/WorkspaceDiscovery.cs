@@ -57,6 +57,7 @@ public sealed class WorkspaceDiscoveryResult
 {
     internal WorkspaceDiscoveryResult(
         string rootPath,
+        string currentDirectory,
         WorkspaceKind workspaceKind,
         IEnumerable<WorkspaceSolution> solutions,
         IEnumerable<WorkspaceProject> projects,
@@ -64,6 +65,7 @@ public sealed class WorkspaceDiscoveryResult
         IEnumerable<WorkspaceCapability> capabilities)
     {
         RootPath = rootPath;
+        CurrentDirectory = currentDirectory;
         WorkspaceKind = workspaceKind;
         Solutions = Copy(solutions);
         Projects = Copy(projects);
@@ -72,6 +74,8 @@ public sealed class WorkspaceDiscoveryResult
     }
 
     public string RootPath { get; }
+
+    public string CurrentDirectory { get; }
 
     public WorkspaceKind WorkspaceKind { get; }
 
@@ -120,7 +124,7 @@ public sealed class WorkspaceDiscoverer
 
         var current = new DirectoryInfo(currentPath);
         var (root, kind) = FindWorkspaceRoot(current);
-        return Catalog(root.FullName, kind);
+        return Catalog(root.FullName, currentPath, kind);
     }
 
     private static (DirectoryInfo Root, WorkspaceKind Kind) FindWorkspaceRoot(
@@ -161,6 +165,7 @@ public sealed class WorkspaceDiscoverer
 
     private static WorkspaceDiscoveryResult Catalog(
         string rootPath,
+        string currentDirectory,
         WorkspaceKind workspaceKind)
     {
         var files = EnumerateWorkspaceFiles(rootPath).ToArray();
@@ -243,6 +248,7 @@ public sealed class WorkspaceDiscoverer
 
         return new WorkspaceDiscoveryResult(
             rootPath,
+            currentDirectory,
             workspaceKind,
             solutions.OrderBy(
                 static solution => solution.Path,
