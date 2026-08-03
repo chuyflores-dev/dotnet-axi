@@ -38,6 +38,7 @@ discovery must not perform implicit restore or compilation.
 - [MVP-E02-S06 — Report project and framework coverage](MVP-E02-S06-project-coverage.md)
 - [MVP-E02-S07 — Normalize paths and locations](MVP-E02-S07-paths-and-locations.md)
 - [MVP-E02-S08 — Compute snapshot identity](MVP-E02-S08-snapshot-identity.md)
+- [MVP-E02-S09 - Stabilize host-runner timeout cleanup](MVP-E02-S09-host-runner-timeout-cleanup.md)
 
 ## Complete when
 

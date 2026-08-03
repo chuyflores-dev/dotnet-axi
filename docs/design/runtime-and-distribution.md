@@ -194,6 +194,7 @@ Results instead identify the blocked operation and path or destination when safe
 
 Every terminal path is bounded.
 A child that exits while a descendant retains an output handle cannot stall result collection, and process-group or job cleanup cannot later target a reused unrelated process identity.
+Timeout cleanup waits for bounded process and stream wrappers while continuing to fault-observe underlying operations that ignore cancellation without extending the terminal bound.
 Tool-owned temporary artifacts remain task-scoped; they are not an escape hatch for a read-only repository.
 
 ### Repository-code execution
