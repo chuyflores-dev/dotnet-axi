@@ -88,6 +88,69 @@ public sealed class HomeViewIntegrationTests
     }
 
     [Fact]
+    public async Task Ambiguous_workspace_selector_is_valid_from_a_nested_directory()
+    {
+        await using var fixture = await _fixtures.CreateAsync(
+            CatalogManifestPath("ambiguous-solution"));
+        var nestedDirectory = Path.Combine(
+            fixture.WorkspacePath,
+            "src",
+            "App");
+        const string emittedSelector = "../../First.slnx";
+
+        var result = await InvokeHomeAsync(fixture, nestedDirectory);
+        var selected = new WorkspaceEntryPointSelector().Select(
+            new WorkspaceDiscoverer().Discover(nestedDirectory),
+            new WorkspaceSelectionRequest(solution: emittedSelector));
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Equal(string.Empty, result.StandardError);
+        AssertEnvelope(result.StandardOutput);
+        Assert.Contains(
+            "workspace:\n  root: ~/workspace\n  solution: unknown\n",
+            result.StandardOutput);
+        Assert.Contains(
+            $"search,symbol,<name>,\"--solution\",{emittedSelector}",
+            result.StandardOutput);
+        Assert.Equal("First.slnx", selected.Path);
+    }
+
+    [Fact]
+    public async Task Mixed_layout_ambiguity_uses_the_candidate_entry_point_kind()
+    {
+        await using var fixture = await _fixtures.CreateAsync(
+            CatalogManifestPath("single-project"));
+        var workspace = Path.Combine(fixture.ExternalPath, "mixed");
+        Directory.CreateDirectory(Path.Combine(workspace, "nested"));
+        await File.WriteAllTextAsync(
+            Path.Combine(workspace, "dotnet-axi.yml"),
+            string.Empty);
+        await File.WriteAllTextAsync(
+            Path.Combine(workspace, "nested", "Nested.slnx"),
+            "<Solution />");
+        await File.WriteAllTextAsync(
+            Path.Combine(workspace, "First.csproj"),
+            "<Project />");
+        await File.WriteAllTextAsync(
+            Path.Combine(workspace, "Second.csproj"),
+            "<Project />");
+
+        var result = await InvokeHomeAsync(fixture, workspace);
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Equal(string.Empty, result.StandardError);
+        AssertEnvelope(result.StandardOutput);
+        Assert.Contains(
+            "workspace:\n  root: ~/external/mixed\n  project: unknown\n",
+            result.StandardOutput);
+        Assert.DoesNotContain("solution: unknown", result.StandardOutput);
+        Assert.Contains(
+            "search,symbol,<name>,\"--project\",First.csproj",
+            result.StandardOutput);
+        Assert.DoesNotContain("--solution", result.StandardOutput);
+    }
+
+    [Fact]
     public async Task Empty_directory_renders_zero_counts_and_unknown_state()
     {
         await using var fixture = await _fixtures.CreateAsync(
@@ -148,23 +211,28 @@ public sealed class HomeViewIntegrationTests
     }
 
     [Theory]
-    [InlineData("--help", "help")]
-    [InlineData("--version", "version")]
+    [InlineData("--help", "help", 0)]
+    [InlineData("--version", "version", 0)]
+    [InlineData("--unknown", "home", 2)]
     public async Task Parser_owned_output_does_not_create_home_dependencies(
         string option,
-        string expectedCommand)
+        string expectedCommand,
+        int expectedExitCode)
     {
         var output = new StringWriter();
         var error = new StringWriter();
+        var contextFactoryCalls = 0;
         var workspaceFactoryCalls = 0;
         var gitFactoryCalls = 0;
         var host = CliApplication.Create(
             output,
             error,
-            new HomeInvocationContext(
-                Path.Combine(Path.GetTempPath(), "dnaxi-missing-workspace"),
-                "dnaxi",
-                homeDirectory: null),
+            () =>
+            {
+                contextFactoryCalls++;
+                throw new InvalidOperationException(
+                    "Parser-owned output captured the invocation context.");
+            },
             () =>
             {
                 workspaceFactoryCalls++;
@@ -180,7 +248,8 @@ public sealed class HomeViewIntegrationTests
 
         var exitCode = await host.InvokeAsync([option]);
 
-        Assert.Equal(0, exitCode);
+        Assert.Equal(expectedExitCode, exitCode);
+        Assert.Equal(0, contextFactoryCalls);
         Assert.Equal(0, workspaceFactoryCalls);
         Assert.Equal(0, gitFactoryCalls);
         Assert.Contains($"command: {expectedCommand}\n", output.ToString());
@@ -196,7 +265,7 @@ public sealed class HomeViewIntegrationTests
         var host = CliApplication.Create(
             output,
             error,
-            new HomeInvocationContext(
+            () => new HomeInvocationContext(
                 currentDirectory,
                 Path.Combine(
                     fixture.RootPath,

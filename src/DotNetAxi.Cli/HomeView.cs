@@ -169,24 +169,28 @@ internal sealed class HomeCommandHandler : ICommandHandler<HomeRequest>
         catch (WorkspaceSelectionUsageException exception)
         {
             var candidate = exception.CandidatePaths.FirstOrDefault();
-            if (workspace.Solutions.Count > 0)
+            var candidateKind = CandidateKind(workspace, candidate);
+            var selector = candidate is null
+                ? null
+                : SelectorPath(workspace, candidate);
+            if (candidateKind is WorkspaceEntryPointKind.Solution)
             {
                 return new HomeSelection(
                     Unknown,
                     Project: null,
-                    candidate is null
+                    selector is null
                         ? WorkspaceSelectors.Empty
-                        : new WorkspaceSelectors(solution: candidate));
+                        : new WorkspaceSelectors(solution: selector));
             }
 
-            if (workspace.Projects.Count > 0)
+            if (candidateKind is WorkspaceEntryPointKind.Project)
             {
                 return new HomeSelection(
                     Solution: null,
                     Unknown,
-                    candidate is null
+                    selector is null
                         ? WorkspaceSelectors.Empty
-                        : new WorkspaceSelectors(project: candidate));
+                        : new WorkspaceSelectors(project: selector));
             }
 
             return new HomeSelection(
@@ -194,6 +198,44 @@ internal sealed class HomeCommandHandler : ICommandHandler<HomeRequest>
                 Project: null,
                 WorkspaceSelectors.Empty);
         }
+    }
+
+    private static WorkspaceEntryPointKind? CandidateKind(
+        WorkspaceDiscoveryResult workspace,
+        string? candidate)
+    {
+        if (candidate is null)
+        {
+            return null;
+        }
+
+        if (workspace.Solutions.Any(solution => solution.Path.Equals(
+                candidate,
+                PathComparison())))
+        {
+            return WorkspaceEntryPointKind.Solution;
+        }
+
+        return workspace.Projects.Any(project => project.Path.Equals(
+            candidate,
+            PathComparison()))
+                ? WorkspaceEntryPointKind.Project
+                : null;
+    }
+
+    private static string SelectorPath(
+        WorkspaceDiscoveryResult workspace,
+        string candidate)
+    {
+        var nativeCandidate = candidate
+            .Replace('/', Path.DirectorySeparatorChar)
+            .Replace('\\', Path.DirectorySeparatorChar);
+        var absoluteCandidate = Path.GetFullPath(
+            nativeCandidate,
+            workspace.RootPath);
+        return NormalizePath(Path.GetRelativePath(
+            workspace.CurrentDirectory,
+            absoluteCandidate));
     }
 
     private static HomeGitPayload CreateGitPayload(
@@ -274,6 +316,11 @@ internal sealed class HomeCommandHandler : ICommandHandler<HomeRequest>
     private static string NormalizePath(string path) =>
         path.Replace(Path.DirectorySeparatorChar, '/')
             .Replace(Path.AltDirectorySeparatorChar, '/');
+
+    private static StringComparison PathComparison() =>
+        OperatingSystem.IsWindows()
+            ? StringComparison.OrdinalIgnoreCase
+            : StringComparison.Ordinal;
 
     private sealed record HomeSelection(
         string? Solution,

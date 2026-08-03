@@ -10,18 +10,18 @@ internal static class CliApplication
         => Create(
             output,
             error,
-            HomeInvocationContext.Capture(),
+            static () => HomeInvocationContext.Capture(),
             static () => new WorkspaceDiscoverer(),
             static () => new WorktreeStateInspector());
 
     internal static CommandHost Create(
         TextWriter output,
         TextWriter error,
-        HomeInvocationContext homeContext,
+        Func<HomeInvocationContext> homeContextFactory,
         Func<WorkspaceDiscoverer> workspaceDiscovererFactory,
         Func<WorktreeStateInspector> worktreeStateInspectorFactory)
     {
-        ArgumentNullException.ThrowIfNull(homeContext);
+        ArgumentNullException.ThrowIfNull(homeContextFactory);
         ArgumentNullException.ThrowIfNull(workspaceDiscovererFactory);
         ArgumentNullException.ThrowIfNull(worktreeStateInspectorFactory);
         var rootCommand = new RootCommand(
@@ -42,7 +42,7 @@ internal static class CliApplication
         rootCommand.BindHandler(
             static _ => HomeRequest.Instance,
             () => new HomeCommandHandler(
-                homeContext,
+                homeContextFactory(),
                 workspaceDiscovererFactory(),
                 new WorkspaceEntryPointSelector(),
                 worktreeStateInspectorFactory()),
