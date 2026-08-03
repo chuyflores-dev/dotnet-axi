@@ -1,5 +1,6 @@
 using System.CommandLine;
 using System.Globalization;
+using DotNetAxi.Axi;
 using DotNetAxi.Contracts;
 
 namespace DotNetAxi.Cli;
@@ -49,6 +50,7 @@ internal static class CommandHelpResult
                 CreateUsage(operation, arguments, flags, subcommands),
                 OptionalText(command.Description),
                 operation.Policy.Classification,
+                AgentGuidanceCatalog.Command,
                 arguments,
                 flags,
                 subcommands,
@@ -224,6 +226,7 @@ internal static class CommandHelpResult
         string Usage,
         string? Description,
         OperationClassification Classification,
+        AgentCommandGuidance Guidance,
         IReadOnlyList<HelpArgument> Arguments,
         IReadOnlyList<HelpFlag> Flags,
         IReadOnlyList<HelpSubcommand> Subcommands,

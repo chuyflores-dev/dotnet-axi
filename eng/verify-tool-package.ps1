@@ -35,6 +35,128 @@ function Read-ZipEntryText {
     }
 }
 
+function Read-ZipEntryBytes {
+    param(
+        [Parameter(Mandatory)]
+        [System.IO.Compression.ZipArchive] $Archive,
+
+        [Parameter(Mandatory)]
+        [string] $EntryName
+    )
+
+    $entry = $Archive.GetEntry($EntryName)
+    if ($null -eq $entry) {
+        throw "Package entry '$EntryName' is missing."
+    }
+
+    $stream = $entry.Open()
+    $buffer = [System.IO.MemoryStream]::new()
+    try {
+        $stream.CopyTo($buffer)
+        return ,$buffer.ToArray()
+    }
+    finally {
+        $buffer.Dispose()
+        $stream.Dispose()
+    }
+}
+
+function Assert-ZipEntryMatchesFile {
+    param(
+        [Parameter(Mandatory)]
+        [System.IO.Compression.ZipArchive] $Archive,
+
+        [Parameter(Mandatory)]
+        [string] $EntryName,
+
+        [Parameter(Mandatory)]
+        [string] $FilePath
+    )
+
+    [byte[]] $expected = [System.IO.File]::ReadAllBytes($FilePath)
+    [byte[]] $actual = Read-ZipEntryBytes `
+        -Archive $Archive `
+        -EntryName $EntryName
+    if ($expected.Length -ne $actual.Length) {
+        throw "Package entry '$EntryName' is not byte-identical to '$FilePath'."
+    }
+
+    for ($index = 0; $index -lt $expected.Length; $index++) {
+        if ($expected[$index] -ne $actual[$index]) {
+            throw "Package entry '$EntryName' is not byte-identical to '$FilePath'."
+        }
+    }
+}
+
+function Install-AgentSkillFromPackage {
+    param(
+        [Parameter(Mandatory)]
+        [string] $PackagePath,
+
+        [Parameter(Mandatory)]
+        [string] $ScopeRoot
+    )
+
+    $installation = [System.IO.Path]::Combine(
+        $ScopeRoot,
+        ".agents",
+        "skills",
+        "dotnet-axi")
+    [System.IO.Directory]::CreateDirectory($installation) | Out-Null
+    $entries = @{
+        "skills/dotnet-axi/SKILL.md" = "SKILL.md"
+        "skills/dotnet-axi/references/codex.md" =
+            [System.IO.Path]::Combine("references", "codex.md")
+    }
+
+    $archive = [System.IO.Compression.ZipFile]::OpenRead($PackagePath)
+    try {
+        foreach ($entryName in $entries.Keys) {
+            $destination = [System.IO.Path]::Combine(
+                $installation,
+                $entries[$entryName])
+            [System.IO.Directory]::CreateDirectory(
+                [System.IO.Path]::GetDirectoryName($destination)) |
+                Out-Null
+            [System.IO.File]::WriteAllBytes(
+                $destination,
+                (Read-ZipEntryBytes `
+                    -Archive $archive `
+                    -EntryName $entryName))
+        }
+    }
+    finally {
+        $archive.Dispose()
+    }
+
+    return $installation
+}
+
+function Assert-InstalledAgentSkill {
+    param(
+        [Parameter(Mandatory)]
+        [string] $Installation
+    )
+
+    $skillPath = [System.IO.Path]::Combine($Installation, "SKILL.md")
+    $codexPath = [System.IO.Path]::Combine(
+        $Installation,
+        "references",
+        "codex.md")
+    if (-not (Test-Path -LiteralPath $skillPath -PathType Leaf) -or
+        -not (Test-Path -LiteralPath $codexPath -PathType Leaf)) {
+        throw "Installed Agent Skill is incomplete at '$Installation'."
+    }
+
+    $skill = [System.IO.File]::ReadAllText($skillPath)
+    if (-not $skill.StartsWith(
+            "---`nname: dotnet-axi`ndescription: ",
+            [System.StringComparison]::Ordinal) -or
+        -not $skill.Contains("`n---`n")) {
+        throw "Installed Agent Skill metadata is not portable or discoverable."
+    }
+}
+
 function Assert-PortablePdb {
     param(
         [Parameter(Mandatory)]
@@ -262,6 +384,36 @@ function Assert-HelpOutput {
     if (-not $Result.StandardOutput.Contains("dnaxi --version")) {
         throw "Help output does not contain the registered version example."
     }
+
+    if (-not $Result.StandardOutput.Contains("guidance:") -or
+        -not $Result.StandardOutput.Contains(
+            "invocation: dnx dotnet-axi -- <command>") -or
+        -not $Result.StandardOutput.Contains(
+            "Treat the invoked version's structured help")) {
+        throw "Help output does not contain canonical Agent Skill guidance."
+    }
+}
+
+function Assert-HomeOutput {
+    param(
+        [Parameter(Mandatory)]
+        [pscustomobject] $Result
+    )
+
+    Assert-Success -Result $Result -Operation "Home invocation"
+    $required = @(
+        "schema: dotnet-axi/v1",
+        "command: home",
+        "status: success",
+        "guidance:",
+        "invocation: dnx dotnet-axi -- <command>",
+        "Do not claim completion solely because files changed."
+    )
+    foreach ($text in $required) {
+        if (-not $Result.StandardOutput.Contains($text)) {
+            throw "Home output is missing '$text'. Output: $($Result.StandardOutput)"
+        }
+    }
 }
 
 function Assert-SameOutput {
@@ -288,6 +440,10 @@ function Assert-SameOutput {
 
 $resolvedPackageDirectory = (
     Resolve-Path -LiteralPath $PackageDirectory
+).Path
+$repositoryRoot = (
+    Resolve-Path -LiteralPath (
+        [System.IO.Path]::Combine($PSScriptRoot, ".."))
 ).Path
 $packages = @(
     Get-ChildItem -LiteralPath $resolvedPackageDirectory -File |
@@ -354,6 +510,8 @@ try {
     )
     $requiredPackageEntries = @(
         "README.md",
+        "skills/dotnet-axi/SKILL.md",
+        "skills/dotnet-axi/references/codex.md",
         "tools/net10.0/any/DotnetToolSettings.xml",
         "tools/net10.0/any/dnaxi.deps.json",
         "tools/net10.0/any/dnaxi.runtimeconfig.json",
@@ -368,6 +526,24 @@ try {
             throw "Package entry '$entryName' is missing."
         }
     }
+
+    Assert-ZipEntryMatchesFile `
+        -Archive $archive `
+        -EntryName "skills/dotnet-axi/SKILL.md" `
+        -FilePath ([System.IO.Path]::Combine(
+            $repositoryRoot,
+            "skills",
+            "dotnet-axi",
+            "SKILL.md"))
+    Assert-ZipEntryMatchesFile `
+        -Archive $archive `
+        -EntryName "skills/dotnet-axi/references/codex.md" `
+        -FilePath ([System.IO.Path]::Combine(
+            $repositoryRoot,
+            "skills",
+            "dotnet-axi",
+            "references",
+            "codex.md"))
 
     $dependencyModel = Read-ZipEntryText `
         -Archive $archive `
@@ -440,6 +616,19 @@ $temporaryRoot = [System.IO.Path]::Combine(
     "dnaxi-package-" + [System.Guid]::NewGuid().ToString("N"))
 [System.IO.Directory]::CreateDirectory($temporaryRoot) | Out-Null
 try {
+    $repositorySkill = Install-AgentSkillFromPackage `
+        -PackagePath $package.FullName `
+        -ScopeRoot ([System.IO.Path]::Combine(
+            $temporaryRoot,
+            "repository-scope"))
+    $userSkill = Install-AgentSkillFromPackage `
+        -PackagePath $package.FullName `
+        -ScopeRoot ([System.IO.Path]::Combine(
+            $temporaryRoot,
+            "user-scope"))
+    Assert-InstalledAgentSkill -Installation $repositorySkill
+    Assert-InstalledAgentSkill -Installation $userSkill
+
     $globalCliHome = [System.IO.Path]::Combine(
         $temporaryRoot,
         "global-home")
@@ -711,6 +900,25 @@ try {
         -Result $oneShotHelp `
         -RequireEmptyStandardError $false
 
+    $oneShotWorkspace = [System.IO.Path]::Combine(
+        $temporaryRoot,
+        "one-shot-workspace")
+    [System.IO.Directory]::CreateDirectory($oneShotWorkspace) | Out-Null
+    $oneShotHome = Invoke-Captured `
+        -FileName $dnx `
+        -Arguments @(
+            "dotnet-axi@$version",
+            "--source",
+            $resolvedPackageDirectory,
+            "--no-http-cache",
+            "--verbosity",
+            "quiet",
+            "--"
+        ) `
+        -Environment $dnxEnvironment `
+        -WorkingDirectory $oneShotWorkspace
+    Assert-HomeOutput -Result $oneShotHome
+
     Assert-SameOutput `
         -Expected $globalVersion `
         -Actual $localVersion `
@@ -791,4 +999,4 @@ finally {
     }
 }
 
-Write-Host "Verified dotnet-axi $version package, symbols, global/local lifecycle, and dnx parity."
+Write-Host "Verified dotnet-axi $version package, symbols, Agent Skill, global/local lifecycle, and dnx parity."
