@@ -1,12 +1,29 @@
 using System.CommandLine;
 using DotNetAxi.Contracts;
+using DotNetAxi.Workspaces;
 
 namespace DotNetAxi.Cli;
 
 internal static class CliApplication
 {
     public static CommandHost Create(TextWriter output, TextWriter error)
+        => Create(
+            output,
+            error,
+            static () => HomeInvocationContext.Capture(),
+            static () => new WorkspaceDiscoverer(),
+            static () => new WorktreeStateInspector());
+
+    internal static CommandHost Create(
+        TextWriter output,
+        TextWriter error,
+        Func<HomeInvocationContext> homeContextFactory,
+        Func<WorkspaceDiscoverer> workspaceDiscovererFactory,
+        Func<WorktreeStateInspector> worktreeStateInspectorFactory)
     {
+        ArgumentNullException.ThrowIfNull(homeContextFactory);
+        ArgumentNullException.ThrowIfNull(workspaceDiscovererFactory);
+        ArgumentNullException.ThrowIfNull(worktreeStateInspectorFactory);
         var rootCommand = new RootCommand(
             "Deterministic .NET discovery, analysis, validation, and safe modification.");
         var host = new CommandHost(
@@ -23,37 +40,14 @@ internal static class CliApplication
             static () => VersionResult.Create(ToolVersion.Current),
             host.ResponseWriter);
         rootCommand.BindHandler(
-            static _ => RootInvocation.Instance,
-            static () => RootHandler.Instance,
+            static _ => HomeRequest.Instance,
+            () => new HomeCommandHandler(
+                homeContextFactory(),
+                workspaceDiscovererFactory(),
+                new WorkspaceEntryPointSelector(),
+                worktreeStateInspectorFactory()),
             host.ResponseWriter);
 
         return host;
-    }
-
-    private sealed record RootInvocation
-    {
-        public static RootInvocation Instance { get; } = new();
-    }
-
-    private sealed class RootHandler : ICommandHandler<RootInvocation>
-    {
-        public static RootHandler Instance { get; } = new();
-
-        public ValueTask<ICommandResult> HandleAsync(
-            RootInvocation request,
-            CancellationToken cancellationToken)
-        {
-            ArgumentNullException.ThrowIfNull(request);
-            cancellationToken.ThrowIfCancellationRequested();
-            return ValueTask.FromResult<ICommandResult>(
-                CommandResult<RootPayload>.Success(
-                    "home",
-                    RootPayload.Instance));
-        }
-    }
-
-    private sealed record RootPayload
-    {
-        public static RootPayload Instance { get; } = new();
     }
 }

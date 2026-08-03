@@ -61,14 +61,17 @@ public sealed class WorkspaceDiscoveryResult
         WorkspaceKind workspaceKind,
         IEnumerable<WorkspaceSolution> solutions,
         IEnumerable<WorkspaceProject> projects,
+        int cSharpFileCount,
         IEnumerable<WorkspaceRootMarker> rootMarkers,
         IEnumerable<WorkspaceCapability> capabilities)
     {
+        ArgumentOutOfRangeException.ThrowIfNegative(cSharpFileCount);
         RootPath = rootPath;
         CurrentDirectory = currentDirectory;
         WorkspaceKind = workspaceKind;
         Solutions = Copy(solutions);
         Projects = Copy(projects);
+        CSharpFileCount = cSharpFileCount;
         RootMarkers = Copy(rootMarkers);
         Capabilities = Copy(capabilities);
     }
@@ -82,6 +85,8 @@ public sealed class WorkspaceDiscoveryResult
     public IReadOnlyList<WorkspaceSolution> Solutions { get; }
 
     public IReadOnlyList<WorkspaceProject> Projects { get; }
+
+    public int CSharpFileCount { get; }
 
     public IReadOnlyList<WorkspaceRootMarker> RootMarkers { get; }
 
@@ -260,6 +265,9 @@ public sealed class WorkspaceDiscoverer
             projects.OrderBy(
                 static project => project.Path,
                 StringComparer.Ordinal),
+            files.Count(static file => file.Extension.Equals(
+                ".cs",
+                StringComparison.OrdinalIgnoreCase)),
             rootMarkers,
             capabilities.OrderBy(
                 static capability => capability.Path,

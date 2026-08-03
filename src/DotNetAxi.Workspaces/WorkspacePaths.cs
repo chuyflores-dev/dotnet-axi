@@ -176,6 +176,35 @@ public sealed class WorkspacePathResolver
         return Resolve(fullPath, resolvedPath);
     }
 
+    public string ToInputPath(string workspaceRelativePath)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(workspaceRelativePath);
+
+        var nativePath = ToNativeInputPath(workspaceRelativePath);
+        if (Path.IsPathRooted(nativePath))
+        {
+            throw new ArgumentException(
+                "The path must be relative to the workspace.",
+                nameof(workspaceRelativePath));
+        }
+
+        var physicalWorkspacePath = Path.GetFullPath(
+            nativePath,
+            _resolvedWorkspaceRoot);
+        if (RelativeIdentity(
+                _resolvedWorkspaceRoot,
+                physicalWorkspacePath).IsExternal)
+        {
+            throw new ArgumentException(
+                "The path must be contained by the workspace.",
+                nameof(workspaceRelativePath));
+        }
+
+        return NormalizeNativeSeparators(Path.GetRelativePath(
+            _resolvedCurrentDirectory,
+            physicalWorkspacePath));
+    }
+
     internal string NormalizeContainedOutput(string path)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
