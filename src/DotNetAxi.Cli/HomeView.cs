@@ -1,3 +1,4 @@
+using DotNetAxi.Axi;
 using DotNetAxi.Contracts;
 using DotNetAxi.Workspaces;
 
@@ -128,6 +129,7 @@ internal sealed class HomeCommandHandler : ICommandHandler<HomeRequest>
                     _context.CurrentDirectory,
                     _context.HomeDirectory),
                 "Search, analyze, validate, and safely change the current .NET workspace",
+                AgentGuidanceCatalog.Command,
                 new HomeWorkspacePayload(
                     DisplayPath(
                         workspace.RootPath,
@@ -323,6 +325,7 @@ internal sealed class HomeCommandHandler : ICommandHandler<HomeRequest>
     private sealed record HomePayload(
         string Bin,
         string Description,
+        AgentCommandGuidance Guidance,
         HomeWorkspacePayload Workspace,
         HomeGitPayload Git,
         HomeAnalysisPayload Analysis);

@@ -27,6 +27,14 @@
       Pack="true"
       PackagePath="/"
       Link="README.md" />
+    <None
+      Include="../../skills/dotnet-axi/SKILL.md"
+      Pack="true"
+      PackagePath="skills/dotnet-axi/" />
+    <None
+      Include="../../skills/dotnet-axi/references/codex.md"
+      Pack="true"
+      PackagePath="skills/dotnet-axi/references/" />
     <PackageReference Include="System.CommandLine" />
   </ItemGroup>
 

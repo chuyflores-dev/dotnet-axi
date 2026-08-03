@@ -1,4 +1,7 @@
 <Solution>
+  <Folder Name="/eng/">
+    <Project Path="eng/DotNetAxi.AgentSkillGenerator/DotNetAxi.AgentSkillGenerator.csproj" />
+  </Folder>
   <Folder Name="/src/">
     <Project Path="src/DotNetAxi.Analysis/DotNetAxi.Analysis.csproj" />
     <Project Path="src/DotNetAxi.Axi/DotNetAxi.Axi.csproj" />
