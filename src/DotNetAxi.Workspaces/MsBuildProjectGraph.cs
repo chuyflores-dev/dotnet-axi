@@ -1,5 +1,4 @@
 using System.Collections.ObjectModel;
-using System.Security.Cryptography;
 using System.Text;
 using System.Xml;
 using System.Xml.Linq;
@@ -694,59 +693,17 @@ public sealed class MsBuildProjectGraphEvaluator
         string workspaceRoot,
         string path)
     {
-        var resolvedRoot = ResolveLinkTargets(workspaceRoot);
-        var fullPath = ResolveLinkTargets(path);
-        var relativePath = Path.GetRelativePath(resolvedRoot, fullPath);
-        if (Path.IsPathRooted(relativePath))
-        {
-            var volumeRoot = Path.GetPathRoot(fullPath)!;
-            return CrossVolumeExternalIdentity(
-                volumeRoot,
-                fullPath[volumeRoot.Length..]);
-        }
-
-        var isExternal = relativePath.Equals("..", StringComparison.Ordinal)
-                         || relativePath.StartsWith(
-                             $"..{Path.DirectorySeparatorChar}",
-                             StringComparison.Ordinal)
-                         || Path.IsPathRooted(relativePath);
-        var normalizedPath = relativePath
-            .Replace(Path.DirectorySeparatorChar, '/')
-            .Replace(Path.AltDirectorySeparatorChar, '/');
-        return (normalizedPath, isExternal);
-    }
-
-    internal static (string Path, bool IsExternal) CrossVolumeExternalIdentity(
-        string volumeRoot,
-        string volumeRelativePath)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(volumeRoot);
-        ArgumentNullException.ThrowIfNull(volumeRelativePath);
-        var canonicalRoot = volumeRoot
-            .Replace('\\', '/')
-            .TrimEnd('/')
-            .ToUpperInvariant();
-        var rootHash = Convert.ToHexStringLower(
-            SHA256.HashData(Encoding.UTF8.GetBytes(canonicalRoot)));
-        var normalizedRelativePath = volumeRelativePath
-            .Replace('\\', '/')
-            .TrimStart('/');
-        return (
-            $"../.external-volume/{rootHash}/{normalizedRelativePath}",
-            true);
+        var normalized = new WorkspacePathResolver(
+                workspaceRoot,
+                workspaceRoot)
+            .NormalizeOutput(path);
+        return (normalized.Path, normalized.IsExternal);
     }
 
     private static (string Path, bool IsExternal) NormalizeOutputPath(
         string workspaceRoot,
-        string path)
-    {
-        var nativePath = path.Replace('/', Path.DirectorySeparatorChar);
-        return NormalizePath(
-            workspaceRoot,
-            Path.IsPathRooted(nativePath)
-                ? nativePath
-                : Path.GetFullPath(nativePath, workspaceRoot));
-    }
+        string path) =>
+        NormalizePath(workspaceRoot, path);
 
     private static bool IsSelectedSolutionNode(
         WorkspaceSelection selection,
@@ -766,63 +723,14 @@ public sealed class MsBuildProjectGraphEvaluator
         string workspaceRoot,
         string projectPath)
     {
-        var lexical = NormalizeLexicalPath(workspaceRoot, projectPath);
-        var resolved = NormalizePath(workspaceRoot, projectPath);
-        if (!lexical.IsExternal && resolved.IsExternal)
+        var resolved = new WorkspacePathResolver(
+                workspaceRoot,
+                workspaceRoot)
+            .NormalizeOutput(projectPath);
+        if (resolved.EscapesThroughSymbolicLink)
         {
             throw new ProjectPathScopeException(projectPath);
         }
-    }
-
-    private static (string Path, bool IsExternal) NormalizeLexicalPath(
-        string workspaceRoot,
-        string path)
-    {
-        var relativePath = Path.GetRelativePath(
-            Path.GetFullPath(workspaceRoot),
-            Path.GetFullPath(path));
-        var isExternal = relativePath.Equals("..", StringComparison.Ordinal)
-                         || relativePath.StartsWith(
-                             $"..{Path.DirectorySeparatorChar}",
-                             StringComparison.Ordinal)
-                         || Path.IsPathRooted(relativePath);
-        return (
-            relativePath
-                .Replace(Path.DirectorySeparatorChar, '/')
-                .Replace(Path.AltDirectorySeparatorChar, '/'),
-            isExternal);
-    }
-
-    private static string ResolveLinkTargets(string path)
-    {
-        var fullPath = Path.GetFullPath(path);
-        var root = Path.GetPathRoot(fullPath)!;
-        var current = root;
-        var segments = fullPath[root.Length..].Split(
-            [Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar],
-            StringSplitOptions.RemoveEmptyEntries);
-        foreach (var segment in segments)
-        {
-            var candidate = Path.Combine(current, segment);
-            FileSystemInfo? entry = Directory.Exists(candidate)
-                ? new DirectoryInfo(candidate)
-                : File.Exists(candidate)
-                    ? new FileInfo(candidate)
-                    : null;
-            if (entry is null
-                || (entry.Attributes & FileAttributes.ReparsePoint) == 0)
-            {
-                current = candidate;
-                continue;
-            }
-
-            var target = entry.ResolveLinkTarget(returnFinalTarget: true);
-            current = target is null
-                ? candidate
-                : ResolveLinkTargets(target.FullName);
-        }
-
-        return Path.GetFullPath(current);
     }
 
     private static string ProjectInstanceIdentity(

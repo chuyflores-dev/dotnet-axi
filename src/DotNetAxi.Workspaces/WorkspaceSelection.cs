@@ -288,18 +288,13 @@ public sealed class WorkspaceEntryPointSelector
         string workspaceRootPath,
         string selector)
     {
-        var nativeSelector = selector
-            .Replace('\\', Path.DirectorySeparatorChar)
-            .Replace('/', Path.DirectorySeparatorChar);
-
         try
         {
-            var fullPath = Path.IsPathRooted(nativeSelector)
-                ? Path.GetFullPath(nativeSelector)
-                : Path.GetFullPath(nativeSelector, selectorBasePath);
-            return Path.GetRelativePath(workspaceRootPath, fullPath)
-                .Replace(Path.DirectorySeparatorChar, '/')
-                .Replace(Path.AltDirectorySeparatorChar, '/');
+            return new WorkspacePathResolver(
+                    workspaceRootPath,
+                    selectorBasePath)
+                .ResolveInput(selector, WorkspacePathScope.Explicit)
+                .Path;
         }
         catch (Exception exception)
             when (exception is ArgumentException
@@ -387,11 +382,10 @@ public sealed class WorkspaceEntryPointSelector
         var absoluteCandidatePath = Path.GetFullPath(
             nativeCandidatePath,
             discovery.RootPath);
-        return Path.GetRelativePath(
-                discovery.CurrentDirectory,
-                absoluteCandidatePath)
-            .Replace(Path.DirectorySeparatorChar, '/')
-            .Replace(Path.AltDirectorySeparatorChar, '/');
+        var relativePath = Path.GetRelativePath(
+            discovery.CurrentDirectory,
+            absoluteCandidatePath);
+        return WorkspacePathResolver.NormalizeNativeSeparators(relativePath);
     }
 
     private static StringComparison PathComparison() =>
