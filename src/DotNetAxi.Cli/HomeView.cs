@@ -1,0 +1,314 @@
+using DotNetAxi.Contracts;
+using DotNetAxi.Workspaces;
+
+namespace DotNetAxi.Cli;
+
+internal sealed record HomeRequest
+{
+    public static HomeRequest Instance { get; } = new();
+}
+
+internal sealed record HomeInvocationContext
+{
+    public HomeInvocationContext(
+        string currentDirectory,
+        string executablePath,
+        string? homeDirectory)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(currentDirectory);
+        ArgumentException.ThrowIfNullOrWhiteSpace(executablePath);
+        CurrentDirectory = currentDirectory;
+        ExecutablePath = executablePath;
+        HomeDirectory = string.IsNullOrWhiteSpace(homeDirectory)
+            ? null
+            : homeDirectory;
+    }
+
+    public string CurrentDirectory { get; }
+
+    public string ExecutablePath { get; }
+
+    public string? HomeDirectory { get; }
+
+    public static HomeInvocationContext Capture()
+    {
+        var commandLinePath = Environment.GetCommandLineArgs()
+            .FirstOrDefault(static argument =>
+                !string.IsNullOrWhiteSpace(argument));
+        var processPath = Environment.ProcessPath;
+        var executablePath = processPath is not null
+            && !Path.GetFileNameWithoutExtension(processPath).Equals(
+                "dotnet",
+                StringComparison.OrdinalIgnoreCase)
+                ? processPath
+                : commandLinePath ?? processPath ?? "dnaxi";
+        return new HomeInvocationContext(
+            Directory.GetCurrentDirectory(),
+            executablePath,
+            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile));
+    }
+}
+
+internal sealed class HomeCommandHandler : ICommandHandler<HomeRequest>
+{
+    private const string Unknown = "unknown";
+
+    private static readonly SuggestionTemplate SearchSuggestion = new(
+        priority: 10,
+        [
+            SuggestionToken.Literal("search"),
+            SuggestionToken.Literal("symbol"),
+            SuggestionToken.Placeholder("name"),
+        ]);
+
+    private static readonly SuggestionTemplate ChangedAnalysisSuggestion = new(
+        priority: 20,
+        [
+            SuggestionToken.Literal("analyze"),
+            SuggestionToken.Literal("changed"),
+        ]);
+
+    private static readonly SuggestionTemplate ValidationSuggestion = new(
+        priority: 30,
+        [
+            SuggestionToken.Literal("validate"),
+            SuggestionToken.Literal("--profile"),
+            SuggestionToken.Literal("fast"),
+        ]);
+
+    private static readonly SuggestionTemplate HelpSuggestion = new(
+        priority: 40,
+        [SuggestionToken.Literal("--help")]);
+
+    private readonly HomeInvocationContext _context;
+    private readonly WorkspaceDiscoverer _workspaceDiscoverer;
+    private readonly WorkspaceEntryPointSelector _entryPointSelector;
+    private readonly WorktreeStateInspector _worktreeStateInspector;
+
+    public HomeCommandHandler(
+        HomeInvocationContext context,
+        WorkspaceDiscoverer workspaceDiscoverer,
+        WorkspaceEntryPointSelector entryPointSelector,
+        WorktreeStateInspector worktreeStateInspector)
+    {
+        _context = context
+            ?? throw new ArgumentNullException(nameof(context));
+        _workspaceDiscoverer = workspaceDiscoverer
+            ?? throw new ArgumentNullException(nameof(workspaceDiscoverer));
+        _entryPointSelector = entryPointSelector
+            ?? throw new ArgumentNullException(nameof(entryPointSelector));
+        _worktreeStateInspector = worktreeStateInspector
+            ?? throw new ArgumentNullException(nameof(worktreeStateInspector));
+    }
+
+    public async ValueTask<ICommandResult> HandleAsync(
+        HomeRequest request,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var workspace = _workspaceDiscoverer.Discover(
+            _context.CurrentDirectory);
+        var selection = SelectEntryPoint(workspace);
+        var worktree = await _worktreeStateInspector
+            .InspectAsync(workspace, cancellationToken)
+            .ConfigureAwait(false);
+        var git = CreateGitPayload(worktree);
+        var suggestions = CreateSuggestions(
+            workspace,
+            worktree,
+            selection.SuggestionSelectors);
+
+        return CommandResult<HomePayload>.Success(
+            "home",
+            new HomePayload(
+                DisplayPath(
+                    _context.ExecutablePath,
+                    _context.CurrentDirectory,
+                    _context.HomeDirectory),
+                "Search, analyze, validate, and safely change the current .NET workspace",
+                new HomeWorkspacePayload(
+                    DisplayPath(
+                        workspace.RootPath,
+                        _context.CurrentDirectory,
+                        _context.HomeDirectory),
+                    selection.Solution,
+                    selection.Project,
+                    workspace.Projects.Count,
+                    workspace.CSharpFileCount),
+                git,
+                new HomeAnalysisPayload(
+                    HomeAnalysisStatus.NotLoaded,
+                    HomeCompilerErrorState.Unknown)),
+            suggestions: suggestions);
+    }
+
+    private HomeSelection SelectEntryPoint(
+        WorkspaceDiscoveryResult workspace)
+    {
+        try
+        {
+            var selection = _entryPointSelector.Select(workspace);
+            return selection.Kind switch
+            {
+                WorkspaceEntryPointKind.Solution => new HomeSelection(
+                    selection.Path,
+                    Project: null,
+                    WorkspaceSelectors.Empty),
+                WorkspaceEntryPointKind.Project => new HomeSelection(
+                    Solution: null,
+                    selection.Path,
+                    WorkspaceSelectors.Empty),
+                _ => throw new ArgumentOutOfRangeException(
+                    nameof(workspace),
+                    selection.Kind,
+                    "The workspace entry-point kind is not defined."),
+            };
+        }
+        catch (WorkspaceSelectionUsageException exception)
+        {
+            var candidate = exception.CandidatePaths.FirstOrDefault();
+            if (workspace.Solutions.Count > 0)
+            {
+                return new HomeSelection(
+                    Unknown,
+                    Project: null,
+                    candidate is null
+                        ? WorkspaceSelectors.Empty
+                        : new WorkspaceSelectors(solution: candidate));
+            }
+
+            if (workspace.Projects.Count > 0)
+            {
+                return new HomeSelection(
+                    Solution: null,
+                    Unknown,
+                    candidate is null
+                        ? WorkspaceSelectors.Empty
+                        : new WorkspaceSelectors(project: candidate));
+            }
+
+            return new HomeSelection(
+                Unknown,
+                Project: null,
+                WorkspaceSelectors.Empty);
+        }
+    }
+
+    private static HomeGitPayload CreateGitPayload(
+        WorktreeStateResult result)
+    {
+        if (result.Outcome is not WorktreeInspectionOutcome.Available
+            || result.State is null)
+        {
+            return new HomeGitPayload(Unknown, Unknown);
+        }
+
+        var branch = result.State.Head.Kind switch
+        {
+            GitHeadKind.Branch or GitHeadKind.Unborn =>
+                result.State.Head.BranchName ?? Unknown,
+            GitHeadKind.Detached => "detached",
+            _ => throw new ArgumentOutOfRangeException(
+                nameof(result),
+                result.State.Head.Kind,
+                "The Git head kind is not defined."),
+        };
+        return new HomeGitPayload(branch, result.State.Entries.Count);
+    }
+
+    private static IReadOnlyList<ResultSuggestion> CreateSuggestions(
+        WorkspaceDiscoveryResult workspace,
+        WorktreeStateResult worktree,
+        WorkspaceSelectors selectors)
+    {
+        if (workspace.Solutions.Count == 0 && workspace.Projects.Count == 0)
+        {
+            return ContextualSuggestions.Compose(
+                [HelpSuggestion],
+                WorkspaceSelectors.Empty);
+        }
+
+        var templates = new List<SuggestionTemplate>
+        {
+            SearchSuggestion,
+        };
+        if (worktree.Outcome is WorktreeInspectionOutcome.Available)
+        {
+            templates.Add(ChangedAnalysisSuggestion);
+        }
+
+        templates.Add(ValidationSuggestion);
+        return ContextualSuggestions.Compose(templates, selectors);
+    }
+
+    private static string DisplayPath(
+        string path,
+        string basePath,
+        string? homeDirectory)
+    {
+        var fullPath = Path.GetFullPath(path, basePath);
+        if (homeDirectory is not null)
+        {
+            var homePath = Path.GetFullPath(homeDirectory);
+            var relativeToHome = Path.GetRelativePath(homePath, fullPath);
+            if (relativeToHome.Equals(".", StringComparison.Ordinal))
+            {
+                return "~";
+            }
+
+            if (!Path.IsPathFullyQualified(relativeToHome)
+                && !relativeToHome.Equals("..", StringComparison.Ordinal)
+                && !relativeToHome.StartsWith(
+                    $"..{Path.DirectorySeparatorChar}",
+                    StringComparison.Ordinal))
+            {
+                return $"~/{NormalizePath(relativeToHome)}";
+            }
+        }
+
+        return NormalizePath(fullPath);
+    }
+
+    private static string NormalizePath(string path) =>
+        path.Replace(Path.DirectorySeparatorChar, '/')
+            .Replace(Path.AltDirectorySeparatorChar, '/');
+
+    private sealed record HomeSelection(
+        string? Solution,
+        string? Project,
+        WorkspaceSelectors SuggestionSelectors);
+
+    private sealed record HomePayload(
+        string Bin,
+        string Description,
+        HomeWorkspacePayload Workspace,
+        HomeGitPayload Git,
+        HomeAnalysisPayload Analysis);
+
+    private sealed record HomeWorkspacePayload(
+        string Root,
+        string? Solution,
+        string? Project,
+        int Projects,
+        int CsharpFiles);
+
+    private sealed record HomeGitPayload(
+        string Branch,
+        object ChangedFiles);
+
+    private sealed record HomeAnalysisPayload(
+        HomeAnalysisStatus Status,
+        HomeCompilerErrorState CompilerErrors);
+
+    private enum HomeAnalysisStatus
+    {
+        NotLoaded,
+    }
+
+    private enum HomeCompilerErrorState
+    {
+        Unknown,
+    }
+}

@@ -22,6 +22,7 @@
     <ProjectReference
       Include="../DotNetAxi.Cli.TestApp/DotNetAxi.Cli.TestApp.csproj"
       ReferenceOutputAssembly="false" />
+    <ProjectReference Include="../DotNetAxi.Testing/DotNetAxi.Testing.csproj" />
   </ItemGroup>
 
   <ItemGroup>

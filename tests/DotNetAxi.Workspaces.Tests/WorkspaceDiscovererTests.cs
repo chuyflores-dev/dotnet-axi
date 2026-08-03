@@ -26,6 +26,7 @@ public sealed class WorkspaceDiscovererTests
         Assert.Equal(WorkspaceKind.Git, result.WorkspaceKind);
         Assert.Equal(fixture.WorkspacePath, result.RootPath);
         Assert.Equal(["Workspace.csproj"], ProjectPaths(result));
+        Assert.Equal(4, result.CSharpFileCount);
     }
 
     [Fact]
@@ -80,6 +81,7 @@ public sealed class WorkspaceDiscovererTests
         Assert.Equal(WorkspaceKind.Project, result.WorkspaceKind);
         Assert.Equal(projectDirectory, result.RootPath);
         Assert.Equal(["Single.csproj"], ProjectPaths(result));
+        Assert.Equal(1, result.CSharpFileCount);
         Assert.Empty(result.Solutions);
     }
 
@@ -100,6 +102,7 @@ public sealed class WorkspaceDiscovererTests
         Assert.Equal(markerFreeDirectory, result.RootPath);
         Assert.Empty(result.Solutions);
         Assert.Empty(result.Projects);
+        Assert.Equal(0, result.CSharpFileCount);
         Assert.Empty(result.RootMarkers);
         Assert.Empty(result.Capabilities);
     }
@@ -143,6 +146,7 @@ public sealed class WorkspaceDiscovererTests
         Assert.Equal(
             ["src/App/App.csproj", "src/Library/Library.csproj"],
             ProjectPaths(first));
+        Assert.Equal(1, first.CSharpFileCount);
         Assert.Equal(
             [
                 new WorkspaceRootMarker(
@@ -183,6 +187,7 @@ public sealed class WorkspaceDiscovererTests
                 capability.Support));
         Assert.Equal(SolutionPaths(first), SolutionPaths(second));
         Assert.Equal(ProjectPaths(first), ProjectPaths(second));
+        Assert.Equal(first.CSharpFileCount, second.CSharpFileCount);
         Assert.Equal(
             first.RootMarkers,
             second.RootMarkers);
