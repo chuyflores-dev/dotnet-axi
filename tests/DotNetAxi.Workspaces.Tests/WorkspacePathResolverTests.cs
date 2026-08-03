@@ -55,6 +55,32 @@ public sealed class WorkspacePathResolverTests
     }
 
     [Fact]
+    public async Task Input_paths_use_the_physical_symlinked_current_directory()
+    {
+        await using var fixture = await CreateFixtureAsync();
+        var linkedDirectory = Path.Combine(
+            fixture.WorkspacePath,
+            "current");
+        if (!TryCreateDirectorySymbolicLink(
+                linkedDirectory,
+                Path.Combine(fixture.WorkspacePath, "src", "Nested")))
+        {
+            return;
+        }
+
+        var resolver = new WorkspacePathResolver(
+            fixture.WorkspacePath,
+            linkedDirectory);
+
+        var inputPath = resolver.ToInputPath("Workspace.csproj");
+        var resolved = resolver.ResolveInput(inputPath);
+
+        Assert.Equal("../../Workspace.csproj", inputPath);
+        Assert.Equal("Workspace.csproj", resolved.Path);
+        Assert.False(resolved.IsExternal);
+    }
+
+    [Fact]
     public async Task External_inputs_require_explicit_scope_and_stay_labeled()
     {
         await using var fixture = await CreateFixtureAsync();

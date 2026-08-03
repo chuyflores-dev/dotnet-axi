@@ -374,19 +374,11 @@ public sealed class WorkspaceEntryPointSelector
 
     private static string CorrectionPath(
         WorkspaceDiscoveryResult discovery,
-        Candidate candidate)
-    {
-        var nativeCandidatePath = candidate.Path.Replace(
-            '/',
-            Path.DirectorySeparatorChar);
-        var absoluteCandidatePath = Path.GetFullPath(
-            nativeCandidatePath,
-            discovery.RootPath);
-        var relativePath = Path.GetRelativePath(
-            discovery.CurrentDirectory,
-            absoluteCandidatePath);
-        return WorkspacePathResolver.NormalizeNativeSeparators(relativePath);
-    }
+        Candidate candidate) =>
+        new WorkspacePathResolver(
+            discovery.RootPath,
+            discovery.CurrentDirectory)
+            .ToInputPath(candidate.Path);
 
     private static StringComparison PathComparison() =>
         OperatingSystem.IsWindows()

@@ -225,18 +225,11 @@ internal sealed class HomeCommandHandler : ICommandHandler<HomeRequest>
 
     private static string SelectorPath(
         WorkspaceDiscoveryResult workspace,
-        string candidate)
-    {
-        var nativeCandidate = candidate
-            .Replace('/', Path.DirectorySeparatorChar)
-            .Replace('\\', Path.DirectorySeparatorChar);
-        var absoluteCandidate = Path.GetFullPath(
-            nativeCandidate,
-            workspace.RootPath);
-        return NormalizePath(Path.GetRelativePath(
-            workspace.CurrentDirectory,
-            absoluteCandidate));
-    }
+        string candidate) =>
+        new WorkspacePathResolver(
+            workspace.RootPath,
+            workspace.CurrentDirectory)
+            .ToInputPath(candidate);
 
     private static HomeGitPayload CreateGitPayload(
         WorktreeStateResult result)

@@ -116,6 +116,37 @@ public sealed class HomeViewIntegrationTests
     }
 
     [Fact]
+    public async Task Ambiguous_workspace_selector_is_valid_from_a_symlinked_directory()
+    {
+        await using var fixture = await _fixtures.CreateAsync(
+            CatalogManifestPath("ambiguous-solution"));
+        var linkedDirectory = Path.Combine(
+            fixture.WorkspacePath,
+            "current");
+        if (!TryCreateDirectorySymbolicLink(
+                linkedDirectory,
+                Path.Combine(fixture.WorkspacePath, "src", "App")))
+        {
+            return;
+        }
+
+        const string emittedSelector = "../../First.slnx";
+        var discovery = new WorkspaceDiscoverer().Discover(linkedDirectory);
+
+        var result = await InvokeHomeAsync(fixture, linkedDirectory);
+        var selected = new WorkspaceEntryPointSelector().Select(
+            discovery,
+            new WorkspaceSelectionRequest(solution: emittedSelector));
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Equal(string.Empty, result.StandardError);
+        Assert.Contains(
+            $"search,symbol,<name>,\"--solution\",{emittedSelector}",
+            result.StandardOutput);
+        Assert.Equal("First.slnx", selected.Path);
+    }
+
+    [Fact]
     public async Task Mixed_layout_ambiguity_uses_the_candidate_entry_point_kind()
     {
         await using var fixture = await _fixtures.CreateAsync(
@@ -314,6 +345,24 @@ public sealed class HomeViewIntegrationTests
                 "..",
                 "..",
                 ".."));
+
+    private static bool TryCreateDirectorySymbolicLink(
+        string path,
+        string target)
+    {
+        try
+        {
+            Directory.CreateSymbolicLink(path, target);
+            return true;
+        }
+        catch (Exception exception)
+            when (exception is IOException
+                or UnauthorizedAccessException
+                or PlatformNotSupportedException)
+        {
+            return false;
+        }
+    }
 
     private sealed record HomeInvocationResult(
         int ExitCode,
