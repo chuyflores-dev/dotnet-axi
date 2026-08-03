@@ -825,24 +825,12 @@ public sealed class MsBuildProjectGraphEvaluator
             properties,
             StringComparer.OrdinalIgnoreCase);
         unconstrainedProperties.Remove("TargetFramework");
-        var selectedPaths = selection.Kind is WorkspaceEntryPointKind.Solution
-            ? KnownSolutionProjects(entryPath)
-            : [entryPath];
-        using var projectCollection = new ProjectCollection();
-        var declarations = selectedPaths
-            .Select(Path.GetFullPath)
-            .Distinct(PathComparer())
-            .OrderBy(
-                static path => path,
-                PathComparer())
-            .Select(path => ReadFrameworkDeclaration(
+        var declarations = ReadFrameworkDeclarations(
                 workspaceRoot,
-                path,
+                selection,
+                entryPath,
                 unconstrainedProperties,
-                projectCollection,
-                cancellationToken))
-            .Where(static declaration => declaration is not null)
-            .Select(static declaration => declaration!)
+                cancellationToken)
             .Where(declaration => !declaration.Frameworks.Contains(
                 framework,
                 StringComparer.Ordinal))
@@ -878,34 +866,104 @@ public sealed class MsBuildProjectGraphEvaluator
                 ", ",
                 declaration.Frameworks.Select(static value => $"`{value}`"));
 
-    private static ProjectFrameworkDeclaration? ReadFrameworkDeclaration(
+    private static IReadOnlyList<ProjectFrameworkDeclaration> ReadFrameworkDeclarations(
         string workspaceRoot,
-        string projectPath,
+        WorkspaceSelection selection,
+        string entryPath,
         IDictionary<string, string> properties,
-        ProjectCollection projectCollection,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        AuthorizeProjectPath(workspaceRoot, projectPath);
+        using var projectCollection = new ProjectCollection();
+        ProjectGraph.ProjectInstanceFactoryFunc projectFactory =
+            (projectPath, globalProperties, collection) =>
+            {
+                AuthorizeProjectPath(workspaceRoot, projectPath);
+                return new ProjectInstance(
+                    projectPath,
+                    globalProperties,
+                    toolsVersion: null,
+                    collection);
+            };
+        ProjectGraph graph;
         try
         {
-            var project = new ProjectInstance(
-                projectPath,
-                properties,
-                toolsVersion: null,
-                projectCollection);
-            return new ProjectFrameworkDeclaration(
-                NormalizePath(workspaceRoot, projectPath).Path,
-                DeclaredFrameworks(project));
+            graph = new ProjectGraph(
+                [new ProjectGraphEntryPoint(entryPath, properties)],
+                projectCollection,
+                projectFactory,
+                degreeOfParallelism: 1,
+                cancellationToken);
         }
         catch (Exception exception)
             when (exception is InvalidProjectFileException
+                  or CircularDependencyException
+                  or AggregateException
                   or IOException
                   or UnauthorizedAccessException)
         {
             // The constrained graph evaluation reports project failures.
-            return null;
+            return [];
         }
+
+        var selectedPaths = selection.Kind is WorkspaceEntryPointKind.Solution
+            ? KnownSolutionProjects(entryPath)
+            : [entryPath];
+        var selectedPathSet = selectedPaths
+            .Select(Path.GetFullPath)
+            .ToHashSet(PathComparer());
+        var directNodes = graph.EntryPointNodes
+            .Where(node => selectedPathSet.Contains(
+                Path.GetFullPath(node.ProjectInstance.FullPath)))
+            .Concat(graph.ProjectNodes
+                .Where(node => IsSelectedSolutionNode(
+                    selection,
+                    node.ProjectInstance.FullPath,
+                    workspaceRoot))
+                .SelectMany(static node => node.ProjectReferences)
+                .Where(node => selectedPathSet.Contains(
+                    Path.GetFullPath(node.ProjectInstance.FullPath))))
+            .Distinct()
+            .ToArray();
+        return directNodes
+            .GroupBy(
+                node => Path.GetFullPath(node.ProjectInstance.FullPath),
+                PathComparer())
+            .Select(group => new ProjectFrameworkDeclaration(
+                NormalizePath(workspaceRoot, group.Key).Path,
+                MergedDeclaredFrameworks(group.Select(
+                    static node => node.ProjectInstance))))
+            .OrderBy(
+                static declaration => declaration.Project,
+                StringComparer.Ordinal)
+            .ToArray();
+    }
+
+    private static IReadOnlyList<string> MergedDeclaredFrameworks(
+        IEnumerable<ProjectInstance> projects)
+    {
+        var declarations = projects
+            .Select(DeclaredFrameworks)
+            .Where(static frameworks => frameworks.Count > 0)
+            .ToArray();
+        var primary = declarations
+            .OrderByDescending(static frameworks => frameworks.Count)
+            .ThenBy(
+                static frameworks => string.Join('\u001f', frameworks),
+                StringComparer.Ordinal)
+            .FirstOrDefault();
+        if (primary is null)
+        {
+            return [];
+        }
+
+        var result = primary.ToList();
+        var known = result.ToHashSet(StringComparer.Ordinal);
+        result.AddRange(declarations
+            .SelectMany(static frameworks => frameworks)
+            .Where(known.Add)
+            .Order(StringComparer.Ordinal));
+        return result;
     }
 
     private static IEnumerable<ProjectEvaluationFailure> AssetsFailures(

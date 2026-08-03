@@ -156,6 +156,77 @@ public sealed class MsBuildProjectGraphEvaluatorTests
     }
 
     [Fact]
+    public async Task Solution_framework_validation_honors_member_configuration_mapping()
+    {
+        await using var fixture = await ProjectGraphFixtureAsync("coverage");
+        var projectDirectory = Path.Combine(
+            fixture.WorkspacePath,
+            "src",
+            "Mapped");
+        Directory.CreateDirectory(projectDirectory);
+        await File.WriteAllTextAsync(
+            Path.Combine(projectDirectory, "Mapped.csproj"),
+            """
+            <Project Sdk="Microsoft.NET.Sdk">
+              <PropertyGroup Condition="'$(Configuration)' == 'Debug'">
+                <TargetFramework>net10.0</TargetFramework>
+              </PropertyGroup>
+              <PropertyGroup Condition="'$(Configuration)' != 'Debug'">
+                <TargetFramework>net9.0</TargetFramework>
+              </PropertyGroup>
+            </Project>
+            """);
+        await File.WriteAllTextAsync(
+            Path.Combine(fixture.WorkspacePath, "Mapped.sln"),
+            """
+            Microsoft Visual Studio Solution File, Format Version 12.00
+            # Visual Studio Version 17
+            VisualStudioVersion = 17.0.31903.59
+            MinimumVisualStudioVersion = 10.0.40219.1
+            Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Mapped", "src\Mapped\Mapped.csproj", "{11111111-1111-1111-1111-111111111111}"
+            EndProject
+            Global
+                GlobalSection(SolutionConfigurationPlatforms) = preSolution
+                    Release|Any CPU = Release|Any CPU
+                EndGlobalSection
+                GlobalSection(ProjectConfigurationPlatforms) = postSolution
+                    {11111111-1111-1111-1111-111111111111}.Release|Any CPU.ActiveCfg = Debug|Any CPU
+                    {11111111-1111-1111-1111-111111111111}.Release|Any CPU.Build.0 = Debug|Any CPU
+                EndGlobalSection
+            EndGlobal
+            """);
+        await AddAssetsAsync(fixture.WorkspacePath);
+        var discovery = _discoverer.Discover(fixture.WorkspacePath);
+        var selection = _selector.Select(
+            discovery,
+            new WorkspaceSelectionRequest(solution: "Mapped.sln"));
+        var platform = new MsBuildProperty("Platform", "Any CPU");
+
+        var accepted = _evaluator.Evaluate(
+            discovery,
+            selection,
+            new ProjectGraphEvaluationOptions(
+                configuration: "Release",
+                framework: "net10.0",
+                properties: [platform]));
+        var error = Assert.Throws<ProjectGraphUsageException>(() =>
+            _evaluator.Evaluate(
+                discovery,
+                selection,
+                new ProjectGraphEvaluationOptions(
+                    configuration: "Release",
+                    framework: "net9.0",
+                    properties: [platform])));
+
+        Assert.Equal(
+            "Debug",
+            Assert.Single(accepted.Projects).Configuration);
+        var declaration = Assert.Single(error.Declarations);
+        Assert.Equal("src/Mapped/Mapped.csproj", declaration.Project);
+        Assert.Equal(["net10.0"], declaration.Frameworks);
+    }
+
+    [Fact]
     public async Task Selected_project_honors_configuration_framework_and_properties()
     {
         await using var fixture = await EvaluationFixtureAsync();
@@ -628,6 +699,50 @@ public sealed class MsBuildProjectGraphEvaluatorTests
             graph.Failures,
             static failure =>
                 failure.AuthorityCode == "workspace.project_link_escape");
+    }
+
+    [Fact]
+    public async Task Explicit_framework_preserves_solution_member_symlink_escape_failure()
+    {
+        await using var fixture = await EvaluationFixtureAsync();
+        var externalProject = Path.Combine(
+            fixture.ExternalPath,
+            "External.csproj");
+        await WriteSimpleProjectAsync(externalProject);
+        var linkPath = Path.Combine(
+            fixture.WorkspacePath,
+            "src",
+            "App",
+            "external-link");
+        if (!TryCreateDirectorySymbolicLink(linkPath, fixture.ExternalPath))
+        {
+            return;
+        }
+
+        await File.WriteAllTextAsync(
+            Path.Combine(fixture.WorkspacePath, "Escape.slnx"),
+            """
+            <Solution>
+              <Project Path="src/App/external-link/External.csproj" />
+            </Solution>
+            """);
+        var discovery = _discoverer.Discover(fixture.WorkspacePath);
+        var selection = _selector.Select(
+            discovery,
+            new WorkspaceSelectionRequest(solution: "Escape.slnx"));
+
+        var graph = _evaluator.Evaluate(
+            discovery,
+            selection,
+            new ProjectGraphEvaluationOptions(framework: "net10.0"));
+
+        Assert.Equal(ProjectGraphCompleteness.Failed, graph.Completeness);
+        Assert.Contains(
+            graph.Failures,
+            static failure =>
+                failure.Reason
+                    is ProjectEvaluationFailureReason.WorkspacePathEscape
+                && failure.AuthorityCode == "workspace.project_link_escape");
     }
 
     [Fact]
