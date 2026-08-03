@@ -492,6 +492,17 @@ public sealed class WorkspaceSnapshotCapturerTests
             StringComparison.Ordinal);
     }
 
+    [Fact]
+    public async Task Fresh_process_containment_terminates_a_descendant_after_the_root_exits()
+    {
+        var output = await CaptureInFreshProcessAsync(
+            "en-US",
+            "exit-with-grandchild",
+            TimeSpan.FromSeconds(1));
+
+        Assert.Empty(output);
+    }
+
     public static TheoryData<WorkspaceSnapshotFileKind> FileKinds =>
         Enum.GetValues<WorkspaceSnapshotFileKind>()
             .Aggregate(
@@ -566,39 +577,77 @@ public sealed class WorkspaceSnapshotCapturerTests
         startInfo.Environment["DOTNET_NOLOGO"] = "1";
         startInfo.Environment["DOTNET_SKIP_FIRST_TIME_EXPERIENCE"] = "1";
 
-        using var process = new Process { StartInfo = startInfo };
-        Assert.True(process.Start());
+        using var process = new SystemDotNetHostProcessFactory().Start(startInfo);
+        Assert.NotNull(process);
         var standardOutput = process.StandardOutput.ReadToEndAsync();
         var standardError = process.StandardError.ReadToEndAsync();
+        var completion = CompleteFreshProcessAsync(
+            process,
+            standardOutput,
+            standardError);
         var timeoutDuration = timeoutAfter ?? TimeSpan.FromSeconds(30);
-        using var timeout = new CancellationTokenSource(timeoutDuration);
         try
         {
-            await process.WaitForExitAsync(timeout.Token);
+            var result = await completion.WaitAsync(timeoutDuration);
+            Assert.True(
+                result.ExitCode == 0,
+                $"Snapshot process failed.\n{result.StandardError}");
+            return result.StandardOutput.Trim();
         }
-        catch (OperationCanceledException exception)
-            when (timeout.IsCancellationRequested)
+        catch (TimeoutException exception)
         {
-            try
-            {
-                process.Kill(entireProcessTree: true);
-            }
-            catch (InvalidOperationException)
-            {
-                // The process exited between the timeout and termination.
-            }
-
-            await process.WaitForExitAsync();
-            await Task.WhenAll(standardOutput, standardError);
+            TerminateFreshProcess(process);
+            await ObserveWithinAsync(completion, TimeSpan.FromSeconds(5));
             throw new TimeoutException(
                 $"Snapshot process timed out after {timeoutDuration} and its process tree was terminated.",
                 exception);
         }
+    }
 
-        Assert.True(
-            process.ExitCode == 0,
-            $"Snapshot process failed.\n{await standardError}");
-        return (await standardOutput).Trim();
+    private static async Task<DotNetHostResult> CompleteFreshProcessAsync(
+        IDotNetHostProcess process,
+        Task<string> standardOutput,
+        Task<string> standardError)
+    {
+        await process.WaitForExitAsync(CancellationToken.None);
+        TerminateFreshProcess(process);
+        await Task.WhenAll(standardOutput, standardError);
+        return new DotNetHostResult(
+            process.ExitCode,
+            standardOutput.Result,
+            standardError.Result);
+    }
+
+    private static void TerminateFreshProcess(IDotNetHostProcess process)
+    {
+        try
+        {
+            process.TerminateTree();
+        }
+        catch (Exception exception)
+            when (exception is InvalidOperationException
+                  or System.ComponentModel.Win32Exception
+                  or NotSupportedException)
+        {
+            // The contained process tree already exited.
+        }
+    }
+
+    private static async Task ObserveWithinAsync(Task operation, TimeSpan timeout)
+    {
+        try
+        {
+            await operation.WaitAsync(timeout);
+        }
+        catch (Exception)
+        {
+            _ = operation.ContinueWith(
+                static completed => _ = completed.Exception,
+                CancellationToken.None,
+                TaskContinuationOptions.ExecuteSynchronously
+                | TaskContinuationOptions.OnlyOnFaulted,
+                TaskScheduler.Default);
+        }
     }
 }
 
@@ -608,7 +657,8 @@ internal static class SnapshotIdentityProcess
     {
         if (args.Length != 3
             || !args[0].Equals("snapshot-identity", StringComparison.Ordinal)
-            || args[2] is not ("forward" or "reverse" or "hang"))
+            || args[2] is not (
+                "forward" or "reverse" or "hang" or "exit-with-grandchild"))
         {
             return 64;
         }
@@ -620,12 +670,40 @@ internal static class SnapshotIdentityProcess
             Thread.Sleep(Timeout.Infinite);
         }
 
+        if (args[2] is "exit-with-grandchild")
+        {
+            return StartGrandchild(args[1]) ? 0 : 70;
+        }
+
         var reverse = args[2].Equals("reverse", StringComparison.Ordinal);
         var snapshot = SnapshotIdentityFixture.Capture(
             reverse,
             windowsSeparators: reverse);
         Console.WriteLine(snapshot.Identity);
         return 0;
+    }
+
+    private static bool StartGrandchild(string culture)
+    {
+        var startInfo = new ProcessStartInfo
+        {
+            FileName = Environment.GetEnvironmentVariable("DOTNET_HOST_PATH")
+                ?? "dotnet",
+            WorkingDirectory = AppContext.BaseDirectory,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+        };
+        startInfo.ArgumentList.Add(
+            typeof(WorkspaceSnapshotCapturerTests).Assembly.Location);
+        startInfo.ArgumentList.Add("snapshot-identity");
+        startInfo.ArgumentList.Add(culture);
+        startInfo.ArgumentList.Add("hang");
+        startInfo.Environment["DOTNET_CLI_TELEMETRY_OPTOUT"] = "1";
+        startInfo.Environment["DOTNET_NOLOGO"] = "1";
+        startInfo.Environment["DOTNET_SKIP_FIRST_TIME_EXPERIENCE"] = "1";
+
+        using var process = Process.Start(startInfo);
+        return process is not null;
     }
 }
 
