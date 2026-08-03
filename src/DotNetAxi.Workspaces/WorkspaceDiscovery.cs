@@ -169,6 +169,9 @@ public sealed class WorkspaceDiscoverer
         WorkspaceKind workspaceKind)
     {
         var files = EnumerateWorkspaceFiles(rootPath).ToArray();
+        var pathResolver = new WorkspacePathResolver(
+            rootPath,
+            currentDirectory);
         var projectDirectories = files
             .Where(static file => file.Extension.Equals(
                 ".csproj",
@@ -182,7 +185,8 @@ public sealed class WorkspaceDiscoverer
 
         foreach (var file in files)
         {
-            var relativePath = NormalizeRelativePath(rootPath, file.FullName);
+            var relativePath = pathResolver.NormalizeContainedOutput(
+                file.FullName);
             var extension = file.Extension;
             if (extension.Equals(".sln", StringComparison.OrdinalIgnoreCase))
             {
@@ -242,7 +246,7 @@ public sealed class WorkspaceDiscoverer
                 PathComparison()))
             .Where(file => RootMarkerKinds.ContainsKey(file.Name))
             .Select(file => new WorkspaceRootMarker(
-                NormalizeRelativePath(rootPath, file.FullName),
+                pathResolver.NormalizeContainedOutput(file.FullName),
                 RootMarkerKinds[file.Name]))
             .OrderBy(static marker => marker.Path, StringComparer.Ordinal);
 
@@ -314,7 +318,9 @@ public sealed class WorkspaceDiscoverer
 
         return target is FileInfo targetFile
             && targetFile.Exists
-            && IsWithinDirectory(targetFile.FullName, rootPath);
+            && !new WorkspacePathResolver(rootPath, rootPath)
+                .NormalizeOutput(file.FullName)
+                .IsExternal;
     }
 
     private static DirectoryInfo? FindAncestor(
@@ -453,12 +459,6 @@ public sealed class WorkspaceDiscoverer
         string path,
         WorkspaceCapabilityKind kind) =>
         new(path, kind, WorkspaceCapabilitySupport.ReportedOnly);
-
-    private static string NormalizeRelativePath(
-        string rootPath,
-        string path) =>
-        Path.GetRelativePath(rootPath, path)
-            .Replace(Path.DirectorySeparatorChar, '/');
 
     private static bool IsWithinDirectory(string path, string directory)
     {

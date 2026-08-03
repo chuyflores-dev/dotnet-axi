@@ -481,13 +481,13 @@ public sealed class MsBuildProjectGraphEvaluatorTests
     [Fact]
     public void Cross_volume_external_paths_use_nonrooted_hashed_root_identities()
     {
-        var driveC = MsBuildProjectGraphEvaluator.CrossVolumeExternalIdentity(
+        var driveC = WorkspacePathResolver.CrossVolumeExternalIdentity(
             @"C:\",
             @"src\App\App.csproj");
-        var driveD = MsBuildProjectGraphEvaluator.CrossVolumeExternalIdentity(
+        var driveD = WorkspacePathResolver.CrossVolumeExternalIdentity(
             @"D:\",
             @"src\App\App.csproj");
-        var unc = MsBuildProjectGraphEvaluator.CrossVolumeExternalIdentity(
+        var unc = WorkspacePathResolver.CrossVolumeExternalIdentity(
             @"\\server\share\",
             @"src\App\App.csproj");
 
@@ -509,7 +509,7 @@ public sealed class MsBuildProjectGraphEvaluatorTests
         Assert.NotEqual(driveC.Path, unc.Path);
         Assert.Equal(
             driveC.Path,
-            MsBuildProjectGraphEvaluator.CrossVolumeExternalIdentity(
+            WorkspacePathResolver.CrossVolumeExternalIdentity(
                 "c:/",
                 "src/App/App.csproj").Path);
     }

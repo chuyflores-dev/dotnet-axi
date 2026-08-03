@@ -1,0 +1,44 @@
+{
+  "schema": "dotnet-axi/fixture/v1",
+  "name": "paths-and-locations",
+  "seed": 2207,
+  "sdk": {
+    "version": "10.0.302",
+    "rollForward": "latestPatch",
+    "allowPrerelease": false
+  },
+  "files": [
+    {
+      "path": "Workspace.csproj",
+      "template": "templates/Workspace.csproj",
+      "expandTokens": false
+    },
+    {
+      "path": "src/Linked/Café😀.csproj",
+      "template": "templates/Workspace.csproj",
+      "expandTokens": false
+    },
+    {
+      "path": "src/Nested/marker.txt",
+      "template": "templates/empty.txt",
+      "expandTokens": false
+    },
+    {
+      "path": "src/Unicode/Café😀.cs",
+      "template": "templates/Unicode.cs",
+      "expandTokens": false
+    }
+  ],
+  "externalFiles": [
+    {
+      "path": "Outside😀.cs",
+      "template": "templates/Unicode.cs",
+      "expandTokens": false
+    },
+    {
+      "path": "Outside😀.csproj",
+      "template": "templates/Workspace.csproj",
+      "expandTokens": false
+    }
+  ]
+}
