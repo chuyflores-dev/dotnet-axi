@@ -7,6 +7,8 @@ public sealed class ProjectCoverageReporterTests
 {
     private const string UnrestoredProject =
         "src/Unrestored/Unrestored.csproj";
+    private const string VisualBasicProject =
+        "src/VisualBasic/VisualBasic.vbproj";
 
     private readonly WorkspaceDiscoverer _discoverer = new();
     private readonly WorkspaceEntryPointSelector _selector = new();
@@ -169,6 +171,97 @@ public sealed class ProjectCoverageReporterTests
     }
 
     [Fact]
+    public async Task Unsupported_language_precedes_missing_assets_and_retains_both_issues()
+    {
+        await using var fixture = await ProjectGraphFixtureAsync("coverage");
+        await AddAssetsExceptAsync(
+            fixture.WorkspacePath,
+            VisualBasicProject);
+        var discovery = _discoverer.Discover(fixture.WorkspacePath);
+        var selection = _selector.Select(
+            discovery,
+            new WorkspaceSelectionRequest(solution: "Coverage.slnx"));
+
+        var graph = _evaluator.Evaluate(discovery, selection);
+        var report = _reporter.Report(
+            graph,
+            ProjectFrameworkCoverageMode.Complete);
+
+        AssertCoverage(
+            report.Coverage,
+            considered: 6,
+            analyzed: 4,
+            remaining: 0,
+            excluded: 2,
+            failed: 0);
+        var visualBasic = Assert.Single(
+            report.Variants,
+            static variant => variant.Project == VisualBasicProject);
+        Assert.Equal(
+            ProjectVariantCoverageState.Unsupported,
+            visualBasic.State);
+        Assert.False(visualBasic.IsSelected);
+        Assert.Equal(
+            [
+                ProjectCoverageIssueReason.UnsupportedLanguage,
+                ProjectCoverageIssueReason.MissingAssets,
+            ],
+            visualBasic.Issues.Select(static issue => issue.Reason));
+        Assert.Contains(
+            visualBasic.Issues,
+            static issue => issue.Reason
+                            is ProjectCoverageIssueReason.MissingAssets
+                            && issue.Correction.Contains(
+                                "dnaxi restore",
+                                StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Malformed_assets_are_a_stable_broken_coverage_reason()
+    {
+        await using var fixture = await ProjectGraphFixtureAsync("coverage");
+        await AddAssetsExceptAsync(
+            fixture.WorkspacePath,
+            excludedProject: null);
+        var assetsPath = Path.Combine(
+            fixture.WorkspacePath,
+            "src",
+            "Supported",
+            "obj",
+            "project.assets.json");
+        const string malformedAssets = "{ invalid";
+        await File.WriteAllTextAsync(assetsPath, malformedAssets);
+        var discovery = _discoverer.Discover(fixture.WorkspacePath);
+        var selection = _selector.Select(
+            discovery,
+            new WorkspaceSelectionRequest(solution: "Coverage.slnx"));
+
+        var graph = _evaluator.Evaluate(discovery, selection);
+        var report = _reporter.Report(
+            graph,
+            ProjectFrameworkCoverageMode.Complete);
+
+        AssertCoverage(
+            report.Coverage,
+            considered: 6,
+            analyzed: 3,
+            remaining: 0,
+            excluded: 2,
+            failed: 1);
+        var supported = Assert.Single(
+            report.Variants,
+            static variant => variant.Project
+                == "src/Supported/Supported.csproj");
+        Assert.Equal(ProjectVariantCoverageState.Broken, supported.State);
+        var issue = Assert.Single(supported.Issues);
+        Assert.Equal(
+            ProjectCoverageIssueReason.InvalidAssetsFile,
+            issue.Reason);
+        Assert.Equal("assets.invalid", issue.AuthorityCode);
+        Assert.Equal(malformedAssets, await File.ReadAllTextAsync(assetsPath));
+    }
+
+    [Fact]
     public async Task Broken_project_remains_in_the_denominator_with_authority_reason()
     {
         await using var fixture = await ProjectGraphFixtureAsync(
@@ -297,9 +390,13 @@ public sealed class ProjectCoverageReporterTests
             Directory.CreateDirectory(assetsDirectory);
             await File.WriteAllTextAsync(
                 Path.Combine(assetsDirectory, "project.assets.json"),
-                "{}");
+                Assets("net9.0", "net10.0", "net10.0-windows"));
         }
     }
+
+    private static string Assets(params string[] targets) =>
+        $"{{\"version\":3,\"targets\":{{{string.Join(',', targets.Select(
+            static target => $"\"{target}\":{{}}"))}}}}}";
 
     private static void AssertCoverage(
         EvidenceCoverage coverage,
@@ -315,6 +412,12 @@ public sealed class ProjectCoverageReporterTests
         Assert.Equal(remaining, coverage.Remaining);
         Assert.Equal(excluded, coverage.Excluded);
         Assert.Equal(failed, coverage.Failed);
+        Assert.Equal(
+            coverage.Considered,
+            coverage.Analyzed
+            + coverage.Remaining
+            + coverage.Excluded
+            + coverage.Failed);
         Assert.NotNull(coverage.PartialReason);
     }
 
@@ -345,6 +448,12 @@ public sealed class ProjectCoverageReporterTests
         Assert.Equal(0, coverage.Remaining);
         Assert.Equal(0, coverage.Excluded);
         Assert.Equal(0, coverage.Failed);
+        Assert.Equal(
+            coverage.Considered,
+            coverage.Analyzed
+            + coverage.Remaining
+            + coverage.Excluded
+            + coverage.Failed);
         Assert.Null(coverage.PartialReason);
     }
 

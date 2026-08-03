@@ -10,6 +10,68 @@ public sealed class MsBuildProjectGraphEvaluatorTests
     private readonly MsBuildProjectGraphEvaluator _evaluator = new();
     private readonly RepositoryFixtureFactory _fixtures = new();
 
+    [Theory]
+    [InlineData("Supported", "net10.0")]
+    [InlineData("Multi", "net9.0")]
+    public async Task Explicit_declared_framework_is_accepted_for_single_and_multi_target_projects(
+        string project,
+        string framework)
+    {
+        await using var fixture = await ProjectGraphFixtureAsync("coverage");
+        await AddAssetsAsync(fixture.WorkspacePath);
+        var discovery = _discoverer.Discover(fixture.WorkspacePath);
+        var selection = _selector.Select(
+            discovery,
+            new WorkspaceSelectionRequest(project: project));
+
+        var graph = _evaluator.Evaluate(
+            discovery,
+            selection,
+            new ProjectGraphEvaluationOptions(framework: framework));
+
+        Assert.Equal(ProjectGraphCompleteness.Complete, graph.Completeness);
+        Assert.Equal(
+            framework,
+            Assert.Single(graph.Projects).Framework);
+    }
+
+    [Theory]
+    [InlineData("Supported", "net9.0", "net10.0")]
+    [InlineData("Multi", "net8.0", "net9.0;net10.0")]
+    public async Task Explicit_undeclared_framework_is_a_stable_typed_usage_error(
+        string project,
+        string framework,
+        string declaredFrameworks)
+    {
+        await using var fixture = await ProjectGraphFixtureAsync("coverage");
+        await AddAssetsAsync(fixture.WorkspacePath);
+        var discovery = _discoverer.Discover(fixture.WorkspacePath);
+        var selection = _selector.Select(
+            discovery,
+            new WorkspaceSelectionRequest(project: project));
+
+        var error = Assert.Throws<ProjectGraphUsageException>(() =>
+            _evaluator.Evaluate(
+                discovery,
+                selection,
+                new ProjectGraphEvaluationOptions(framework: framework)));
+
+        Assert.Equal(
+            ProjectGraphUsageErrorKind.FrameworkNotDeclared,
+            error.Kind);
+        Assert.Equal("usage.framework_not_declared", error.Code);
+        Assert.Equal(framework, error.Framework);
+        var declaration = Assert.Single(error.Declarations);
+        Assert.EndsWith($"/{project}/{project}.csproj", declaration.Project);
+        Assert.Equal(
+            declaredFrameworks.Split(';'),
+            declaration.Frameworks);
+        Assert.Contains(
+            "--framework",
+            error.Correction,
+            StringComparison.Ordinal);
+    }
+
     [Fact]
     public async Task Selected_project_honors_configuration_framework_and_properties()
     {
@@ -268,6 +330,113 @@ public sealed class MsBuildProjectGraphEvaluatorTests
                 failure.Reason == ProjectEvaluationFailureReason.MissingAssets);
         Assert.False(Directory.Exists(
             Path.Combine(fixture.WorkspacePath, "obj")));
+    }
+
+    [Fact]
+    public async Task Assets_without_the_exact_evaluated_framework_are_missing_assets()
+    {
+        await using var fixture = await CatalogFixtureAsync("missing-assets");
+        var projectPath = Path.Combine(
+            fixture.WorkspacePath,
+            "MissingAssets.csproj");
+        var assets = Assets("net9.0");
+        await AddAssetsForProjectAsync(projectPath, assets);
+        var discovery = _discoverer.Discover(fixture.WorkspacePath);
+        var selection = _selector.Select(discovery);
+
+        var graph = _evaluator.Evaluate(discovery, selection);
+
+        Assert.Equal(ProjectGraphCompleteness.Partial, graph.Completeness);
+        var project = Assert.Single(graph.Projects);
+        Assert.Equal(EvaluatedProjectState.Incomplete, project.State);
+        Assert.Equal(
+            ProjectEvaluationFailureReason.MissingAssets,
+            Assert.Single(project.Failures).Reason);
+        Assert.Equal(
+            assets,
+            await File.ReadAllTextAsync(Path.Combine(
+                fixture.WorkspacePath,
+                "obj",
+                "project.assets.json")));
+    }
+
+    [Theory]
+    [InlineData("net10.0/linux-x64", ProjectGraphCompleteness.Complete)]
+    [InlineData("net10.0", ProjectGraphCompleteness.Partial)]
+    public async Task Assets_require_the_exact_evaluated_framework_and_runtime_target(
+        string assetsTarget,
+        ProjectGraphCompleteness expectedCompleteness)
+    {
+        await using var fixture = await CatalogFixtureAsync("missing-assets");
+        var projectPath = Path.Combine(
+            fixture.WorkspacePath,
+            "MissingAssets.csproj");
+        await File.WriteAllTextAsync(
+            projectPath,
+            """
+            <Project Sdk="Microsoft.NET.Sdk">
+              <PropertyGroup>
+                <TargetFramework>net10.0</TargetFramework>
+                <RuntimeIdentifier>linux-x64</RuntimeIdentifier>
+              </PropertyGroup>
+            </Project>
+            """);
+        var assets = Assets(assetsTarget);
+        await AddAssetsForProjectAsync(projectPath, assets);
+        var discovery = _discoverer.Discover(fixture.WorkspacePath);
+        var selection = _selector.Select(discovery);
+
+        var graph = _evaluator.Evaluate(discovery, selection);
+
+        Assert.Equal(expectedCompleteness, graph.Completeness);
+        var project = Assert.Single(graph.Projects);
+        if (expectedCompleteness is ProjectGraphCompleteness.Complete)
+        {
+            Assert.Equal(EvaluatedProjectState.Evaluated, project.State);
+            Assert.Empty(project.Failures);
+        }
+        else
+        {
+            Assert.Equal(EvaluatedProjectState.Incomplete, project.State);
+            Assert.Equal(
+                ProjectEvaluationFailureReason.MissingAssets,
+                Assert.Single(project.Failures).Reason);
+        }
+
+        Assert.Equal(
+            assets,
+            await File.ReadAllTextAsync(Path.Combine(
+                fixture.WorkspacePath,
+                "obj",
+                "project.assets.json")));
+    }
+
+    [Fact]
+    public async Task Malformed_assets_have_a_stable_typed_failure_without_writes()
+    {
+        await using var fixture = await CatalogFixtureAsync("missing-assets");
+        var projectPath = Path.Combine(
+            fixture.WorkspacePath,
+            "MissingAssets.csproj");
+        const string malformedAssets = "{ invalid";
+        await AddAssetsForProjectAsync(projectPath, malformedAssets);
+        var discovery = _discoverer.Discover(fixture.WorkspacePath);
+        var selection = _selector.Select(discovery);
+
+        var graph = _evaluator.Evaluate(discovery, selection);
+
+        Assert.Equal(ProjectGraphCompleteness.Partial, graph.Completeness);
+        var failure = Assert.Single(Assert.Single(graph.Projects).Failures);
+        Assert.Equal(
+            ProjectEvaluationFailureReason.InvalidAssetsFile,
+            failure.Reason);
+        Assert.Equal("assets.invalid", failure.AuthorityCode);
+        Assert.Equal(
+            malformedAssets,
+            await File.ReadAllTextAsync(Path.Combine(
+                fixture.WorkspacePath,
+                "obj",
+                "project.assets.json")));
     }
 
     [Fact]
@@ -1264,11 +1433,17 @@ public sealed class MsBuildProjectGraphEvaluatorTests
             Directory.CreateDirectory(assetsDirectory);
             await File.WriteAllTextAsync(
                 Path.Combine(assetsDirectory, "project.assets.json"),
-                "{}");
+                Assets(
+                    "net8.0",
+                    "net9.0",
+                    "net10.0",
+                    "net10.0-windows"));
         }
     }
 
-    private static async Task AddAssetsForProjectAsync(string projectPath)
+    private static async Task AddAssetsForProjectAsync(
+        string projectPath,
+        string? contents = null)
     {
         var assetsDirectory = Path.Combine(
             Path.GetDirectoryName(projectPath)!,
@@ -1276,8 +1451,16 @@ public sealed class MsBuildProjectGraphEvaluatorTests
         Directory.CreateDirectory(assetsDirectory);
         await File.WriteAllTextAsync(
             Path.Combine(assetsDirectory, "project.assets.json"),
-            "{}");
+            contents ?? Assets(
+                "net8.0",
+                "net9.0",
+                "net10.0",
+                "net10.0-windows"));
     }
+
+    private static string Assets(params string[] targets) =>
+        $"{{\"version\":3,\"targets\":{{{string.Join(',', targets.Select(
+            static target => $"\"{target}\":{{}}"))}}}}}";
 
     private static async Task WriteSimpleProjectAsync(string projectPath)
     {

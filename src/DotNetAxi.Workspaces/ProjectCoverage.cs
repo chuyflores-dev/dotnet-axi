@@ -32,6 +32,7 @@ public enum ProjectCoverageIssueReason
     MsBuildUnavailable,
     MsBuildIncompatible,
     WorkspacePathEscape,
+    InvalidAssetsFile,
 }
 
 public sealed record ProjectCoverageIssue
@@ -291,6 +292,30 @@ public sealed class ProjectCoverageReporter
         string? framework,
         bool? isMultiTargeted)
     {
+        if (evidence.IsSdkStyle is false)
+        {
+            return new ClassifiedVariant(
+                evidence,
+                framework,
+                isMultiTargeted,
+                ProjectVariantCoverageState.Unsupported,
+                ProjectCoverageIssueReason.UnsupportedProjectShape);
+        }
+
+        if (evidence.Language is not null
+            && !string.Equals(
+                evidence.Language,
+                "C#",
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return new ClassifiedVariant(
+                evidence,
+                framework,
+                isMultiTargeted,
+                ProjectVariantCoverageState.Unsupported,
+                ProjectCoverageIssueReason.UnsupportedLanguage);
+        }
+
         var onlyMissingAssets = evidence.Failures.Count > 0
                                 && evidence.Failures.All(
                                     static failure => failure.Reason
@@ -373,7 +398,16 @@ public sealed class ProjectCoverageReporter
 
         if (variant.UnsupportedReason is not null)
         {
-            return [Issue(variant.UnsupportedReason.Value)];
+            return new[] { Issue(variant.UnsupportedReason.Value) }
+                .Concat(variant.Evidence.Failures.Select(
+                    static failure => Issue(
+                        FailureReason(failure.Reason),
+                        failure.AuthorityCode)))
+                .Distinct()
+                .OrderBy(static issue => issue.Reason)
+                .ThenBy(
+                    static issue => issue.AuthorityCode,
+                    StringComparer.Ordinal);
         }
 
         var failures = variant.Evidence.Failures.Count == 0
@@ -402,6 +436,8 @@ public sealed class ProjectCoverageReporter
         {
             ProjectEvaluationFailureReason.MissingAssets =>
                 ProjectCoverageIssueReason.MissingAssets,
+            ProjectEvaluationFailureReason.InvalidAssetsFile =>
+                ProjectCoverageIssueReason.InvalidAssetsFile,
             ProjectEvaluationFailureReason.CircularDependency =>
                 ProjectCoverageIssueReason.CircularDependency,
             ProjectEvaluationFailureReason.ProjectNotFound =>
@@ -436,6 +472,8 @@ public sealed class ProjectCoverageReporter
                 "Convert the project to SDK style or narrow the scope to a supported SDK-style C# project.",
             ProjectCoverageIssueReason.MissingAssets =>
                 "Run `dnaxi restore` for this project, then retry.",
+            ProjectCoverageIssueReason.InvalidAssetsFile =>
+                "Run `dnaxi restore` to replace the invalid assets file, then retry.",
             ProjectCoverageIssueReason.SdkNotFound
                 or ProjectCoverageIssueReason.MsBuildUnavailable =>
                 "Install or select the required .NET SDK, or narrow the project scope, then retry.",

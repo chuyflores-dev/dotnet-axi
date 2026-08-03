@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.Text;
+using System.Text.Json;
 using System.Xml;
 using System.Xml.Linq;
 using Microsoft.Build.Evaluation;
@@ -36,6 +37,56 @@ public enum ProjectEvaluationFailureReason
     MsBuildUnavailable,
     MsBuildIncompatible,
     WorkspacePathEscape,
+    InvalidAssetsFile,
+}
+
+public enum ProjectGraphUsageErrorKind
+{
+    FrameworkNotDeclared,
+}
+
+public sealed class ProjectFrameworkDeclaration
+{
+    internal ProjectFrameworkDeclaration(
+        string project,
+        IEnumerable<string> frameworks)
+    {
+        Project = project;
+        Frameworks = Array.AsReadOnly(frameworks.ToArray());
+    }
+
+    public string Project { get; }
+
+    public IReadOnlyList<string> Frameworks { get; }
+}
+
+public sealed class ProjectGraphUsageException : InvalidOperationException
+{
+    internal ProjectGraphUsageException(
+        ProjectGraphUsageErrorKind kind,
+        string code,
+        string message,
+        string framework,
+        IEnumerable<ProjectFrameworkDeclaration> declarations,
+        string correction)
+        : base(message)
+    {
+        Kind = kind;
+        Code = code;
+        Framework = framework;
+        Declarations = Array.AsReadOnly(declarations.ToArray());
+        Correction = correction;
+    }
+
+    public ProjectGraphUsageErrorKind Kind { get; }
+
+    public string Code { get; }
+
+    public string Framework { get; }
+
+    public IReadOnlyList<ProjectFrameworkDeclaration> Declarations { get; }
+
+    public string Correction { get; }
 }
 
 public sealed record MsBuildProperty
@@ -244,6 +295,12 @@ public sealed class MsBuildProjectGraphEvaluator
         var entryPath = Path.GetFullPath(
             selection.Path.Replace('/', Path.DirectorySeparatorChar),
             discovery.RootPath);
+        ValidateDeclaredFramework(
+            discovery.RootPath,
+            selection,
+            entryPath,
+            properties,
+            cancellationToken);
         var capturedProjects = new List<CapturedProjectInstance>();
         var attemptedProjectPaths = new List<string>();
 
@@ -542,20 +599,7 @@ public sealed class MsBuildProjectGraphEvaluator
     {
         var normalized = NormalizePath(workspaceRoot, project.FullPath);
         var failures = graphFailures.ToList();
-        var assetsPath = project.GetPropertyValue("ProjectAssetsFile");
-        if (!string.IsNullOrWhiteSpace(assetsPath))
-        {
-            var fullAssetsPath = Path.IsPathRooted(assetsPath)
-                ? Path.GetFullPath(assetsPath)
-                : Path.GetFullPath(
-                    assetsPath,
-                    Path.GetDirectoryName(project.FullPath)!);
-            if (!File.Exists(fullAssetsPath))
-            {
-                failures.Add(new ProjectEvaluationFailure(
-                    ProjectEvaluationFailureReason.MissingAssets));
-            }
-        }
+        failures.AddRange(AssetsFailures(project));
 
         return new EvaluatedProject(
             normalized.Path,
@@ -764,6 +808,216 @@ public sealed class MsBuildProjectGraphEvaluator
 
         return new ReadOnlyDictionary<string, string>(properties);
     }
+
+    private static void ValidateDeclaredFramework(
+        string workspaceRoot,
+        WorkspaceSelection selection,
+        string entryPath,
+        IReadOnlyDictionary<string, string> properties,
+        CancellationToken cancellationToken)
+    {
+        if (!properties.TryGetValue("TargetFramework", out var framework))
+        {
+            return;
+        }
+
+        var unconstrainedProperties = new Dictionary<string, string>(
+            properties,
+            StringComparer.OrdinalIgnoreCase);
+        unconstrainedProperties.Remove("TargetFramework");
+        var capturedProjects = new List<ProjectInstance>();
+        using var projectCollection = new ProjectCollection();
+        ProjectGraph.ProjectInstanceFactoryFunc projectFactory =
+            (projectPath, globalProperties, collection) =>
+            {
+                AuthorizeProjectPath(workspaceRoot, projectPath);
+                var project = new ProjectInstance(
+                    projectPath,
+                    globalProperties,
+                    toolsVersion: null,
+                    collection);
+                capturedProjects.Add(project);
+                return project;
+            };
+
+        try
+        {
+            _ = new ProjectGraph(
+                [
+                    new ProjectGraphEntryPoint(
+                        entryPath,
+                        unconstrainedProperties),
+                ],
+                projectCollection,
+                projectFactory,
+                degreeOfParallelism: 1,
+                cancellationToken);
+        }
+        catch (Exception exception)
+            when (exception is InvalidProjectFileException
+                  or CircularDependencyException
+                  or AggregateException
+                  or IOException
+                  or UnauthorizedAccessException)
+        {
+            // Captured declarations remain authoritative. The constrained
+            // evaluation below owns unrelated graph failures.
+        }
+
+        var selectedPaths = selection.Kind is WorkspaceEntryPointKind.Solution
+            ? KnownSolutionProjects(entryPath)
+            : [entryPath];
+        var selectedPathSet = selectedPaths
+            .Select(Path.GetFullPath)
+            .ToHashSet(PathComparer());
+        var declarations = capturedProjects
+            .Where(project => selectedPathSet.Contains(
+                Path.GetFullPath(project.FullPath)))
+            .GroupBy(
+                project => Path.GetFullPath(project.FullPath),
+                PathComparer())
+            .Select(group => new ProjectFrameworkDeclaration(
+                NormalizePath(workspaceRoot, group.Key).Path,
+                MergedDeclaredFrameworks(group)))
+            .Where(static declaration => declaration.Frameworks.Count > 0)
+            .Where(declaration => !declaration.Frameworks.Contains(
+                framework,
+                StringComparer.Ordinal))
+            .OrderBy(
+                static declaration => declaration.Project,
+                StringComparer.Ordinal)
+            .ToArray();
+        if (declarations.Length == 0)
+        {
+            return;
+        }
+
+        var projects = string.Join(
+            ", ",
+            declarations.Select(
+                static declaration => $"`{declaration.Project}`"));
+        var available = string.Join(
+            "; ",
+            declarations.Select(declaration =>
+                $"`{declaration.Project}`: {FrameworkList(declaration)}"));
+        throw new ProjectGraphUsageException(
+            ProjectGraphUsageErrorKind.FrameworkNotDeclared,
+            "usage.framework_not_declared",
+            $"Target framework `{framework}` is not declared by selected project(s) {projects}.",
+            framework,
+            declarations,
+            "Use `--framework` with a framework declared by every selected "
+            + $"project. Available declarations: {available}.");
+    }
+
+    private static string FrameworkList(
+        ProjectFrameworkDeclaration declaration) =>
+        string.Join(
+            ", ",
+            declaration.Frameworks.Select(static value => $"`{value}`"));
+
+    private static IReadOnlyList<string> MergedDeclaredFrameworks(
+        IEnumerable<ProjectInstance> projects)
+    {
+        var declarations = projects
+            .Select(DeclaredFrameworks)
+            .Where(static frameworks => frameworks.Count > 0)
+            .ToArray();
+        var primary = declarations
+            .OrderByDescending(static frameworks => frameworks.Count)
+            .ThenBy(
+                static frameworks => string.Join('\u001f', frameworks),
+                StringComparer.Ordinal)
+            .FirstOrDefault();
+        if (primary is null)
+        {
+            return [];
+        }
+
+        var result = primary.ToList();
+        var known = result.ToHashSet(StringComparer.Ordinal);
+        result.AddRange(declarations
+            .SelectMany(static frameworks => frameworks)
+            .Where(known.Add)
+            .Order(StringComparer.Ordinal));
+        return result;
+    }
+
+    private static IEnumerable<ProjectEvaluationFailure> AssetsFailures(
+        ProjectInstance project)
+    {
+        var assetsPath = project.GetPropertyValue("ProjectAssetsFile");
+        if (string.IsNullOrWhiteSpace(assetsPath))
+        {
+            return [];
+        }
+
+        var fullAssetsPath = Path.IsPathRooted(assetsPath)
+            ? Path.GetFullPath(assetsPath)
+            : Path.GetFullPath(
+                assetsPath,
+                Path.GetDirectoryName(project.FullPath)!);
+        if (!File.Exists(fullAssetsPath))
+        {
+            return [MissingAssetsFailure()];
+        }
+
+        try
+        {
+            using var stream = File.OpenRead(fullAssetsPath);
+            using var assets = JsonDocument.Parse(stream);
+            if (assets.RootElement.ValueKind is not JsonValueKind.Object
+                || !assets.RootElement.TryGetProperty("targets", out var targets)
+                || targets.ValueKind is not JsonValueKind.Object)
+            {
+                return [InvalidAssetsFailure()];
+            }
+
+            var framework = Optional(project.GetPropertyValue(
+                "TargetFramework"));
+            if (framework is null)
+            {
+                return [];
+            }
+
+            var runtimeIdentifier = Optional(project.GetPropertyValue(
+                "RuntimeIdentifier"));
+            var target = runtimeIdentifier is null
+                ? framework
+                : $"{framework}/{runtimeIdentifier}";
+            if (!targets.TryGetProperty(target, out var targetValue))
+            {
+                return [MissingAssetsFailure()];
+            }
+
+            return targetValue.ValueKind is JsonValueKind.Object
+                ? []
+                : [InvalidAssetsFailure()];
+        }
+        catch (FileNotFoundException)
+        {
+            return [MissingAssetsFailure()];
+        }
+        catch (DirectoryNotFoundException)
+        {
+            return [MissingAssetsFailure()];
+        }
+        catch (Exception exception)
+            when (exception is JsonException
+                  or IOException
+                  or UnauthorizedAccessException)
+        {
+            return [InvalidAssetsFailure()];
+        }
+    }
+
+    private static ProjectEvaluationFailure MissingAssetsFailure() =>
+        new(ProjectEvaluationFailureReason.MissingAssets);
+
+    private static ProjectEvaluationFailure InvalidAssetsFailure() =>
+        new(
+            ProjectEvaluationFailureReason.InvalidAssetsFile,
+            "assets.invalid");
 
     private static IEnumerable<AppliedMsBuildProperty> AppliedProperties(
         IReadOnlyDictionary<string, string> properties) =>
