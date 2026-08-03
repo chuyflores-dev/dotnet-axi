@@ -710,7 +710,7 @@ public sealed class MsBuildProjectGraphEvaluatorTests
     }
 
     [Fact]
-    public void Host_runner_timeout_bounds_post_exit_drains_and_kills_surviving_children()
+    public async Task Host_runner_timeout_bounds_post_exit_drains_and_kills_surviving_children()
     {
         var blockingOutput = new CancellationAwareTextReader();
         var process = new StubHostProcess(
@@ -728,7 +728,8 @@ public sealed class MsBuildProjectGraphEvaluatorTests
         Assert.Equal(-1, result.ExitCode);
         Assert.Empty(result.StandardOutput);
         Assert.Empty(result.StandardError);
-        Assert.True(blockingOutput.CancellationObserved);
+        await blockingOutput.CancellationObserved.WaitAsync(
+            TimeSpan.FromSeconds(5));
         Assert.True(process.KillCalled);
         Assert.True(process.EntireProcessTree);
         Assert.False(process.ChildAlive);
@@ -1616,7 +1617,10 @@ public sealed class MsBuildProjectGraphEvaluatorTests
 
     private sealed class CancellationAwareTextReader : TextReader
     {
-        public bool CancellationObserved { get; private set; }
+        private readonly TaskCompletionSource _cancellationObserved = new(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public Task CancellationObserved => _cancellationObserved.Task;
 
         public override async ValueTask<int> ReadAsync(
             Memory<char> buffer,
@@ -1629,7 +1633,7 @@ public sealed class MsBuildProjectGraphEvaluatorTests
             }
             catch (OperationCanceledException)
             {
-                CancellationObserved = true;
+                _cancellationObserved.TrySetResult();
                 throw;
             }
         }

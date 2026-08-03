@@ -352,30 +352,33 @@ internal sealed class PathDotNetHostRunner : IDotNetHostRunner
         }
         catch (OperationCanceledException) when (execution.IsCancellationRequested)
         {
-            TerminateProcessTree(process);
-            execution.Cancel();
-            await ObserveAsync(completion).ConfigureAwait(false);
-            cancellationToken.ThrowIfCancellationRequested();
-            return FailedResult();
+            return await TerminateAndFailAsync(
+                    process,
+                    execution,
+                    completion,
+                    cancellationToken)
+                .ConfigureAwait(false);
         }
         catch (HostOutputLimitExceededException)
         {
-            TerminateProcessTree(process);
-            execution.Cancel();
-            await ObserveAsync(completion).ConfigureAwait(false);
-            cancellationToken.ThrowIfCancellationRequested();
-            return FailedResult();
+            return await TerminateAndFailAsync(
+                    process,
+                    execution,
+                    completion,
+                    cancellationToken)
+                .ConfigureAwait(false);
         }
         catch (Exception exception)
             when (exception is InvalidOperationException
                   or IOException
                   or UnauthorizedAccessException)
         {
-            TerminateProcessTree(process);
-            execution.Cancel();
-            await ObserveAsync(completion).ConfigureAwait(false);
-            cancellationToken.ThrowIfCancellationRequested();
-            return FailedResult();
+            return await TerminateAndFailAsync(
+                    process,
+                    execution,
+                    completion,
+                    cancellationToken)
+                .ConfigureAwait(false);
         }
     }
 
@@ -469,9 +472,23 @@ internal sealed class PathDotNetHostRunner : IDotNetHostRunner
         }
         catch (Exception)
         {
-            // The process failure is already translated, but every child task
-            // must reach and have its terminal state observed before disposal.
+            // The process failure is already translated. Bounded wrappers are
+            // terminal here, while ignored-cancellation operations remain
+            // fault-observed by BoundOperation without extending the timeout.
         }
+    }
+
+    private static async Task<DotNetHostResult> TerminateAndFailAsync(
+        IDotNetHostProcess process,
+        CancellationTokenSource execution,
+        Task completion,
+        CancellationToken cancellationToken)
+    {
+        TerminateProcessTree(process);
+        execution.Cancel();
+        await ObserveAsync(completion).ConfigureAwait(false);
+        cancellationToken.ThrowIfCancellationRequested();
+        return FailedResult();
     }
 
     private static void TerminateProcessTree(IDotNetHostProcess process)
