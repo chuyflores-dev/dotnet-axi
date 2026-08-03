@@ -84,9 +84,14 @@ public sealed record WorkspacePathResolution
 
 public sealed class WorkspacePathResolver
 {
+    private const int MaximumLinkExpansions = 64;
+
     private readonly string _workspaceRoot;
     private readonly string _currentDirectory;
     private readonly string _resolvedWorkspaceRoot;
+    private readonly string _resolvedCurrentDirectory;
+    private readonly IReadOnlySet<string> _workspaceRootLinks;
+    private readonly IReadOnlySet<string> _currentDirectoryLinks;
 
     public WorkspacePathResolver(
         string workspaceRoot,
@@ -95,9 +100,34 @@ public sealed class WorkspacePathResolver
         ArgumentException.ThrowIfNullOrWhiteSpace(workspaceRoot);
         ArgumentException.ThrowIfNullOrWhiteSpace(currentDirectory);
 
-        _workspaceRoot = Path.GetFullPath(workspaceRoot);
-        _currentDirectory = Path.GetFullPath(currentDirectory);
-        _resolvedWorkspaceRoot = ResolveEntryLinkTarget(_workspaceRoot);
+        var processDirectory = Path.GetFullPath(
+            Directory.GetCurrentDirectory());
+        var resolvedProcessDirectory = ResolvePhysicalPath(
+            processDirectory,
+            processDirectory,
+            []);
+        var nativeWorkspaceRoot = ToNativeInputPath(workspaceRoot);
+        var nativeCurrentDirectory = ToNativeInputPath(currentDirectory);
+        _workspaceRoot = Path.GetFullPath(
+            nativeWorkspaceRoot,
+            processDirectory);
+        _currentDirectory = Path.GetFullPath(
+            nativeCurrentDirectory,
+            processDirectory);
+
+        var resolvedWorkspaceRoot = ResolvePhysicalPath(
+            nativeWorkspaceRoot,
+            resolvedProcessDirectory.Path,
+            resolvedProcessDirectory.FollowedLinks);
+        _resolvedWorkspaceRoot = resolvedWorkspaceRoot.Path;
+        _workspaceRootLinks = resolvedWorkspaceRoot.FollowedLinks;
+
+        var resolvedCurrentDirectory = ResolvePhysicalPath(
+            nativeCurrentDirectory,
+            resolvedProcessDirectory.Path,
+            resolvedProcessDirectory.FollowedLinks);
+        _resolvedCurrentDirectory = resolvedCurrentDirectory.Path;
+        _currentDirectoryLinks = resolvedCurrentDirectory.FollowedLinks;
     }
 
     public WorkspacePathResolution ResolveInput(
@@ -114,10 +144,12 @@ public sealed class WorkspacePathResolver
         }
 
         var nativePath = ToNativeInputPath(path);
-        var fullPath = Path.IsPathRooted(nativePath)
-            ? Path.GetFullPath(nativePath)
-            : Path.GetFullPath(nativePath, _currentDirectory);
-        var resolution = Resolve(fullPath);
+        var fullPath = Path.GetFullPath(nativePath, _currentDirectory);
+        var resolvedPath = ResolvePhysicalPath(
+            nativePath,
+            _resolvedCurrentDirectory,
+            _currentDirectoryLinks);
+        var resolution = Resolve(fullPath, resolvedPath);
         if (scope is WorkspacePathScope.Workspace
             && resolution.IsExternal)
         {
@@ -135,8 +167,13 @@ public sealed class WorkspacePathResolver
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
 
-        var fullPath = OutputFullPath(path);
-        return Resolve(fullPath);
+        var nativePath = ToNativeInputPath(path);
+        var fullPath = OutputFullPath(nativePath);
+        var resolvedPath = ResolvePhysicalPath(
+            nativePath,
+            _resolvedWorkspaceRoot,
+            _workspaceRootLinks);
+        return Resolve(fullPath, resolvedPath);
     }
 
     internal string NormalizeContainedOutput(string path)
@@ -184,39 +221,52 @@ public sealed class WorkspacePathResolver
             .Replace(Path.AltDirectorySeparatorChar, '/');
     }
 
-    private WorkspacePathResolution Resolve(string fullPath)
+    private WorkspacePathResolution Resolve(
+        string fullPath,
+        PhysicalPathResolution physicalPath)
     {
         var lexical = RelativeIdentity(_workspaceRoot, fullPath);
-        if (lexical.IsExternal)
-        {
-            var canonicalLexical = RelativeIdentity(
-                _resolvedWorkspaceRoot,
-                fullPath);
-            if (!canonicalLexical.IsExternal)
-            {
-                lexical = canonicalLexical;
-            }
-        }
-
-        var resolvedFullPath = lexical.IsExternal
-            ? fullPath
-            : ResolveContainedLinkTargets(
-                _resolvedWorkspaceRoot,
-                lexical.Path);
         var resolved = RelativeIdentity(
             _resolvedWorkspaceRoot,
-            resolvedFullPath);
+            physicalPath.Path);
+        if (lexical.IsExternal
+            && !resolved.IsExternal
+            && UsesOnlyWorkspaceAliases(physicalPath.FollowedLinks))
+        {
+            lexical = resolved;
+        }
+
         var escapesThroughSymbolicLink =
             !lexical.IsExternal && resolved.IsExternal;
         var outputPath = escapesThroughSymbolicLink
             ? resolved.Path
             : lexical.Path;
+        var outputFullPath = escapesThroughSymbolicLink
+            ? physicalPath.Path
+            : fullPath;
 
         return new WorkspacePathResolution(
-            fullPath,
+            outputFullPath,
             outputPath,
             lexical.IsExternal || resolved.IsExternal,
             escapesThroughSymbolicLink);
+    }
+
+    private bool UsesOnlyWorkspaceAliases(
+        IEnumerable<string> followedLinks)
+    {
+        foreach (var link in followedLinks)
+        {
+            if (_workspaceRootLinks.Contains(link)
+                || !RelativeIdentity(_resolvedWorkspaceRoot, link).IsExternal)
+            {
+                continue;
+            }
+
+            return false;
+        }
+
+        return true;
     }
 
     private static (string Path, bool IsExternal) RelativeIdentity(
@@ -245,34 +295,38 @@ public sealed class WorkspacePathResolver
             .Replace('\\', Path.DirectorySeparatorChar)
             .Replace('/', Path.DirectorySeparatorChar);
 
-    private string OutputFullPath(string path) =>
-        Path.IsPathRooted(path)
-            ? Path.GetFullPath(path)
-            : Path.GetFullPath(ToNativeInputPath(path), _workspaceRoot);
+    private string OutputFullPath(string nativePath) =>
+        Path.GetFullPath(nativePath, _workspaceRoot);
 
-    private static string ResolveEntryLinkTarget(string path)
+    private static PhysicalPathResolution ResolvePhysicalPath(
+        string path,
+        string basePath,
+        IEnumerable<string> baseLinks)
     {
-        var fullPath = Path.GetFullPath(path);
-        FileSystemInfo? entry = Directory.Exists(fullPath)
-            ? new DirectoryInfo(fullPath)
-            : File.Exists(fullPath)
-                ? new FileInfo(fullPath)
-                : null;
-        if (entry is null || entry.LinkTarget is null)
+        var nativePath = ToNativeInputPath(path);
+        var followedLinks = new HashSet<string>(PathComparer());
+        if (!Path.IsPathRooted(nativePath))
         {
-            return fullPath;
+            followedLinks.UnionWith(baseLinks);
         }
 
-        return entry.ResolveLinkTarget(returnFinalTarget: true)?.FullName
-            ?? fullPath;
+        var state = new PhysicalPathState(followedLinks);
+        var resolvedPath = ResolvePhysicalPath(
+            nativePath,
+            Path.GetFullPath(basePath),
+            state);
+        return new PhysicalPathResolution(
+            resolvedPath,
+            new HashSet<string>(state.FollowedLinks, PathComparer()));
     }
 
-    private static string ResolveContainedLinkTargets(
-        string rootPath,
-        string relativePath)
+    private static string ResolvePhysicalPath(
+        string path,
+        string basePath,
+        PhysicalPathState state)
     {
-        var current = rootPath;
-        var segments = ToNativeInputPath(relativePath).Split(
+        var (currentPath, remainder) = ResolutionStart(path, basePath);
+        var segments = remainder.Split(
             [Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar],
             StringSplitOptions.RemoveEmptyEntries);
         foreach (var segment in segments)
@@ -282,10 +336,92 @@ public sealed class WorkspacePathResolver
                 continue;
             }
 
-            var candidate = Path.Combine(current, segment);
-            current = ResolveEntryLinkTarget(candidate);
+            if (segment is "..")
+            {
+                currentPath = Directory.GetParent(currentPath)?.FullName
+                    ?? Path.GetPathRoot(currentPath)!;
+                continue;
+            }
+
+            var candidate = Path.Combine(currentPath, segment);
+            var linkTarget = ReadLinkTarget(candidate);
+            if (linkTarget is null)
+            {
+                currentPath = candidate;
+                continue;
+            }
+
+            state.LinkExpansions++;
+            if (state.LinkExpansions > MaximumLinkExpansions)
+            {
+                throw new IOException(
+                    $"Path '{path}' contains too many symbolic-link expansions.");
+            }
+
+            state.FollowedLinks.Add(Path.GetFullPath(candidate));
+            currentPath = ResolvePhysicalPath(
+                ToNativeInputPath(linkTarget),
+                currentPath,
+                state);
         }
 
-        return Path.GetFullPath(current);
+        return Path.GetFullPath(currentPath);
+    }
+
+    private static (string CurrentPath, string Remainder) ResolutionStart(
+        string path,
+        string basePath)
+    {
+        if (Path.IsPathFullyQualified(path))
+        {
+            var root = Path.GetPathRoot(path)!;
+            return (Path.GetFullPath(root), path[root.Length..]);
+        }
+
+        if (!Path.IsPathRooted(path))
+        {
+            return (basePath, path);
+        }
+
+        var pathRoot = Path.GetPathRoot(path)!;
+        if (OperatingSystem.IsWindows()
+            && pathRoot.EndsWith(':'))
+        {
+            var baseRoot = Path.GetPathRoot(basePath)!
+                .TrimEnd(Path.DirectorySeparatorChar);
+            var driveBase = pathRoot.Equals(
+                baseRoot,
+                StringComparison.OrdinalIgnoreCase)
+                    ? basePath
+                    : Path.GetFullPath($"{pathRoot}.");
+            return (driveBase, path[pathRoot.Length..]);
+        }
+
+        return (
+            Path.GetPathRoot(basePath)!,
+            path[pathRoot.Length..]);
+    }
+
+    private static string? ReadLinkTarget(string path)
+    {
+        var fileTarget = new FileInfo(path).LinkTarget;
+        return fileTarget ?? new DirectoryInfo(path).LinkTarget;
+    }
+
+    private static StringComparer PathComparer() =>
+        OperatingSystem.IsWindows()
+            ? StringComparer.OrdinalIgnoreCase
+            : StringComparer.Ordinal;
+
+    private sealed record PhysicalPathResolution(
+        string Path,
+        IReadOnlySet<string> FollowedLinks);
+
+    private sealed class PhysicalPathState(
+        HashSet<string> followedLinks)
+    {
+        public HashSet<string> FollowedLinks { get; } = followedLinks;
+
+        public int LinkExpansions { get; set; }
     }
 }

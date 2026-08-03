@@ -121,6 +121,44 @@ public sealed class WorkspacePathResolverTests
     }
 
     [Fact]
+    public async Task Parent_segments_are_applied_after_symbolic_link_targets()
+    {
+        await using var fixture = await CreateFixtureAsync();
+        var externalSubdirectory = Path.Combine(
+            fixture.ExternalPath,
+            "subdirectory");
+        Directory.CreateDirectory(externalSubdirectory);
+        var linkPath = Path.Combine(
+            fixture.WorkspacePath,
+            "external-link");
+        if (!TryCreateDirectorySymbolicLink(
+                linkPath,
+                externalSubdirectory))
+        {
+            return;
+        }
+
+        var resolver = new WorkspacePathResolver(
+            fixture.WorkspacePath,
+            fixture.WorkspacePath);
+        const string inputPath = "external-link/../Outside😀.cs";
+
+        var error = Assert.Throws<WorkspacePathScopeException>(
+            () => resolver.ResolveInput(inputPath));
+        var resolved = resolver.ResolveInput(
+            inputPath,
+            WorkspacePathScope.Explicit);
+
+        Assert.Equal(
+            WorkspacePathScopeViolation.SymbolicLinkEscape,
+            error.Violation);
+        Assert.Equal("../external/Outside😀.cs", error.Path);
+        Assert.Equal("../external/Outside😀.cs", resolved.Path);
+        Assert.True(resolved.IsExternal);
+        Assert.True(resolved.EscapesThroughSymbolicLink);
+    }
+
+    [Fact]
     public async Task A_symbolic_link_workspace_root_keeps_physical_paths_internal()
     {
         await using var fixture = await CreateFixtureAsync();
@@ -146,6 +184,81 @@ public sealed class WorkspacePathResolverTests
         Assert.Equal("src/Unicode/Café😀.cs", resolved.Path);
         Assert.False(resolved.IsExternal);
         Assert.False(resolved.EscapesThroughSymbolicLink);
+    }
+
+    [Fact]
+    public async Task A_symbolic_link_workspace_ancestor_keeps_physical_paths_internal()
+    {
+        await using var fixture = await CreateFixtureAsync();
+        var physicalParent = Path.Combine(
+            fixture.RootPath,
+            "physical-parent");
+        var physicalWorkspace = Path.Combine(physicalParent, "workspace");
+        Directory.CreateDirectory(physicalWorkspace);
+        var sourcePath = Path.Combine(physicalWorkspace, "File.cs");
+        await File.WriteAllTextAsync(sourcePath, string.Empty);
+        var parentAlias = Path.Combine(fixture.RootPath, "parent-alias");
+        if (!TryCreateDirectorySymbolicLink(parentAlias, physicalParent))
+        {
+            return;
+        }
+
+        var workspaceAlias = Path.Combine(parentAlias, "workspace");
+        var resolver = new WorkspacePathResolver(
+            workspaceAlias,
+            workspaceAlias);
+
+        var resolved = resolver.NormalizeOutput(sourcePath);
+
+        Assert.Equal("File.cs", resolved.Path);
+        Assert.False(resolved.IsExternal);
+        Assert.False(resolved.EscapesThroughSymbolicLink);
+    }
+
+    [Fact]
+    public async Task A_dangling_directory_link_escape_requires_explicit_scope()
+    {
+        await using var fixture = await CreateFixtureAsync();
+        var target = Path.Combine(
+            fixture.ExternalPath,
+            "missing-directory");
+        var linkPath = Path.Combine(
+            fixture.WorkspacePath,
+            "dangling-directory");
+        if (!TryCreateDirectorySymbolicLink(linkPath, target))
+        {
+            return;
+        }
+
+        AssertDanglingEscape(
+            new WorkspacePathResolver(
+                fixture.WorkspacePath,
+                fixture.WorkspacePath),
+            "dangling-directory",
+            "../external/missing-directory");
+    }
+
+    [Fact]
+    public async Task A_dangling_file_link_escape_requires_explicit_scope()
+    {
+        await using var fixture = await CreateFixtureAsync();
+        var target = Path.Combine(
+            fixture.ExternalPath,
+            "missing-file.cs");
+        var linkPath = Path.Combine(
+            fixture.WorkspacePath,
+            "dangling-file.cs");
+        if (!TryCreateFileSymbolicLink(linkPath, target))
+        {
+            return;
+        }
+
+        AssertDanglingEscape(
+            new WorkspacePathResolver(
+                fixture.WorkspacePath,
+                fixture.WorkspacePath),
+            "dangling-file.cs",
+            "../external/missing-file.cs");
     }
 
     [Fact]
@@ -230,5 +343,43 @@ public sealed class WorkspacePathResolverTests
         {
             return false;
         }
+    }
+
+    private static bool TryCreateFileSymbolicLink(
+        string path,
+        string target)
+    {
+        try
+        {
+            File.CreateSymbolicLink(path, target);
+            return true;
+        }
+        catch (Exception exception)
+            when (exception is IOException
+                or UnauthorizedAccessException
+                or PlatformNotSupportedException)
+        {
+            return false;
+        }
+    }
+
+    private static void AssertDanglingEscape(
+        WorkspacePathResolver resolver,
+        string inputPath,
+        string expectedPath)
+    {
+        var error = Assert.Throws<WorkspacePathScopeException>(
+            () => resolver.ResolveInput(inputPath));
+        var resolved = resolver.ResolveInput(
+            inputPath,
+            WorkspacePathScope.Explicit);
+
+        Assert.Equal(
+            WorkspacePathScopeViolation.SymbolicLinkEscape,
+            error.Violation);
+        Assert.Equal(expectedPath, error.Path);
+        Assert.Equal(expectedPath, resolved.Path);
+        Assert.True(resolved.IsExternal);
+        Assert.True(resolved.EscapesThroughSymbolicLink);
     }
 }
