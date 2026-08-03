@@ -1,0 +1,6 @@
+<Project>
+  <PropertyGroup>
+    <Language>C#</Language>
+    <TargetFramework>net10.0</TargetFramework>
+  </PropertyGroup>
+</Project>

@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Legacy/Legacy.csproj" />
+    <Project Path="src/Multi/Multi.csproj" />
+    <Project Path="src/Supported/Supported.csproj" />
+    <Project Path="src/Unrestored/Unrestored.csproj" />
+    <Project Path="src/VisualBasic/VisualBasic.vbproj" />
+  </Folder>
+</Solution>

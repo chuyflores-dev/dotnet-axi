@@ -1,0 +1,50 @@
+{
+  "schema": "dotnet-axi/fixture/v1",
+  "name": "project-graph-coverage",
+  "seed": 2207,
+  "sdk": {
+    "version": "10.0.302",
+    "rollForward": "latestPatch",
+    "allowPrerelease": false
+  },
+  "capabilities": [
+    "framework:multi-targeting",
+    "language:csharp",
+    "project:sdk-style",
+    "restore:assets-missing",
+    "solution:slnx",
+    "workspace:multi-project"
+  ],
+  "files": [
+    {
+      "path": "Coverage.slnx",
+      "template": "templates/Coverage.slnx",
+      "expandTokens": false
+    },
+    {
+      "path": "src/Legacy/Legacy.csproj",
+      "template": "templates/Legacy.csproj",
+      "expandTokens": false
+    },
+    {
+      "path": "src/Multi/Multi.csproj",
+      "template": "templates/Multi.csproj",
+      "expandTokens": false
+    },
+    {
+      "path": "src/Supported/Supported.csproj",
+      "template": "templates/Supported.csproj",
+      "expandTokens": false
+    },
+    {
+      "path": "src/Unrestored/Unrestored.csproj",
+      "template": "templates/Unrestored.csproj",
+      "expandTokens": false
+    },
+    {
+      "path": "src/VisualBasic/VisualBasic.vbproj",
+      "template": "templates/VisualBasic.vbproj",
+      "expandTokens": false
+    }
+  ]
+}
