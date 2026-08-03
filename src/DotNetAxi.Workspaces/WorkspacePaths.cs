@@ -437,10 +437,67 @@ public sealed class WorkspacePathResolver
         return fileTarget ?? new DirectoryInfo(path).LinkTarget;
     }
 
-    private static StringComparer PathComparer() =>
+    internal static string NormalizeRelativeIdentity(
+        string path,
+        string parameterName)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(path, parameterName);
+        if (path.Contains('\0'))
+        {
+            throw new ArgumentException(
+                "The path cannot contain null characters.",
+                parameterName);
+        }
+
+        var normalized = path.Replace('\\', '/');
+        if (normalized[0] is '/'
+            || HasWindowsDriveDesignator(normalized))
+        {
+            throw new ArgumentException(
+                "The path must be a normalized relative workspace identity.",
+                parameterName);
+        }
+
+        var segments = new List<string>();
+        foreach (var segment in normalized.Split(
+                     '/',
+                     StringSplitOptions.RemoveEmptyEntries))
+        {
+            if (segment is ".")
+            {
+                continue;
+            }
+
+            if (segment is ".."
+                && segments.Count > 0
+                && segments[^1] is not "..")
+            {
+                segments.RemoveAt(segments.Count - 1);
+                continue;
+            }
+
+            segments.Add(segment);
+        }
+
+        if (segments.Count == 0)
+        {
+            throw new ArgumentException(
+                "The path must identify an item relative to the workspace.",
+                parameterName);
+        }
+
+        return string.Join('/', segments);
+    }
+
+    internal static StringComparer PathComparer() =>
         OperatingSystem.IsWindows()
             ? StringComparer.OrdinalIgnoreCase
             : StringComparer.Ordinal;
+
+    private static bool HasWindowsDriveDesignator(string path) =>
+        path.Length >= 2
+        && char.IsAsciiLetter(path[0])
+        && path[1] is ':';
 
     private sealed record PhysicalPathResolution(
         string Path,

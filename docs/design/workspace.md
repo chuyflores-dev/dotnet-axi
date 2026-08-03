@@ -109,8 +109,11 @@ observed input that can affect the result, including:
   imports.
 - `global.json`, selected SDK/MSBuild/Roslyn versions, configuration, target
   framework, runtime identifier, and explicit MSBuild properties.
-- NuGet lock/assets files, generated-source inputs, and generator/analyzer
-  identities when those components execute.
+- The selected solution or project kind and canonical workspace-relative path,
+  without the selector provenance that led to the same selection.
+- `NuGet.config`, NuGet lock/assets files, metadata-reference bytes,
+  generated-source inputs, and generator/analyzer identities when those
+  components execute.
 - Relevant Git conflict and working-tree state.
 
 Results MUST disclose captured scope. A snapshot ID MUST NOT claim to represent

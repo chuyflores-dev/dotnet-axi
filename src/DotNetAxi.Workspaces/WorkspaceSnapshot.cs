@@ -12,8 +12,10 @@ public enum WorkspaceSnapshotFileKind
     Project,
     MsBuildImport,
     GlobalJson,
+    NuGetConfiguration,
     NuGetAssets,
     NuGetLock,
+    MetadataReference,
     GeneratedSourceInput,
 }
 
@@ -61,6 +63,41 @@ public sealed class WorkspaceSnapshotFileInput
     public string Path { get; }
 
     internal ReadOnlySpan<byte> Content => _content;
+
+    internal ReadOnlySpan<byte> PathBytes => _pathBytes;
+}
+
+public sealed class WorkspaceSnapshotEntryPointInput
+{
+    private readonly byte[] _pathBytes;
+
+    public WorkspaceSnapshotEntryPointInput(
+        WorkspaceEntryPointKind kind,
+        string path)
+    {
+        if (!Enum.IsDefined(kind))
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(kind),
+                kind,
+                "The workspace entry-point kind is not defined.");
+        }
+
+        Kind = kind;
+        Path = WorkspaceSnapshotEncoding.NormalizePath(path, nameof(path));
+        _pathBytes = WorkspaceSnapshotEncoding.Encode(Path, nameof(path));
+    }
+
+    public WorkspaceSnapshotEntryPointInput(WorkspaceSelection selection)
+        : this(
+            (selection ?? throw new ArgumentNullException(nameof(selection))).Kind,
+            selection.Path)
+    {
+    }
+
+    public WorkspaceEntryPointKind Kind { get; }
+
+    public string Path { get; }
 
     internal ReadOnlySpan<byte> PathBytes => _pathBytes;
 }
@@ -121,15 +158,19 @@ public sealed class WorkspaceSnapshotCapture
 {
     public WorkspaceSnapshotCapture(
         IEnumerable<WorkspaceSnapshotFileInput> files,
-        IEnumerable<WorkspaceSnapshotValueInput> values)
+        IEnumerable<WorkspaceSnapshotValueInput> values,
+        WorkspaceSnapshotEntryPointInput? selectedEntryPoint = null)
     {
         Files = Copy(files, nameof(files));
         Values = Copy(values, nameof(values));
+        SelectedEntryPoint = selectedEntryPoint;
     }
 
     public IReadOnlyList<WorkspaceSnapshotFileInput> Files { get; }
 
     public IReadOnlyList<WorkspaceSnapshotValueInput> Values { get; }
+
+    public WorkspaceSnapshotEntryPointInput? SelectedEntryPoint { get; }
 
     private static IReadOnlyList<T> Copy<T>(
         IEnumerable<T> values,
@@ -160,19 +201,27 @@ public sealed record WorkspaceSnapshotValueScope(
     string? ScopePath,
     string ContentHash);
 
+public sealed record WorkspaceSnapshotEntryPointScope(
+    WorkspaceEntryPointKind Kind,
+    string Path);
+
 public sealed class WorkspaceSnapshotScope
 {
     internal WorkspaceSnapshotScope(
         IEnumerable<WorkspaceSnapshotFileScope> files,
-        IEnumerable<WorkspaceSnapshotValueScope> values)
+        IEnumerable<WorkspaceSnapshotValueScope> values,
+        WorkspaceSnapshotEntryPointScope? selectedEntryPoint)
     {
         Files = Array.AsReadOnly(files.ToArray());
         Values = Array.AsReadOnly(values.ToArray());
+        SelectedEntryPoint = selectedEntryPoint;
     }
 
     public IReadOnlyList<WorkspaceSnapshotFileScope> Files { get; }
 
     public IReadOnlyList<WorkspaceSnapshotValueScope> Values { get; }
+
+    public WorkspaceSnapshotEntryPointScope? SelectedEntryPoint { get; }
 }
 
 public sealed class WorkspaceSnapshot
@@ -211,8 +260,5 @@ internal static class WorkspaceSnapshotEncoding
     }
 
     public static string NormalizePath(string path, string parameterName)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(path, parameterName);
-        return path.Replace('\\', '/');
-    }
+        => WorkspacePathResolver.NormalizeRelativeIdentity(path, parameterName);
 }

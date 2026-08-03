@@ -8,7 +8,9 @@ public sealed class WorkspaceSnapshotCapturer
     private static readonly byte[] SnapshotDomain =
         "dotnet-axi/workspace-snapshot"u8.ToArray();
 
-    private static readonly byte[] FormatVersion = "v1"u8.ToArray();
+    private static readonly byte[] FormatVersion = "v2"u8.ToArray();
+    private static readonly byte[] EntryPointDomain =
+        "selected-entry-point"u8.ToArray();
     private static readonly byte[] FileDomain = "file"u8.ToArray();
     private static readonly byte[] ValueDomain = "value"u8.ToArray();
 
@@ -41,9 +43,23 @@ public sealed class WorkspaceSnapshotCapturer
         RejectDuplicateFiles(files);
         RejectDuplicateValues(values);
 
+        var entryPoint = capture.SelectedEntryPoint is null
+            ? null
+            : new EntryPointEntry(
+                capture.SelectedEntryPoint,
+                EntryPointKindToken(capture.SelectedEntryPoint.Kind));
+
         using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
         AppendFrame(hash, SnapshotDomain);
         AppendFrame(hash, FormatVersion);
+        AppendCount(hash, entryPoint is null ? 0 : 1);
+        if (entryPoint is not null)
+        {
+            AppendFrame(hash, EntryPointDomain);
+            AppendFrame(hash, entryPoint.KindTokenBytes);
+            AppendFrame(hash, entryPoint.Input.PathBytes);
+        }
+
         AppendCount(hash, files.Length);
         foreach (var file in files)
         {
@@ -73,16 +89,30 @@ public sealed class WorkspaceSnapshotCapturer
                 entry.Input.Kind,
                 entry.Input.Name,
                 entry.Input.ScopePath,
-                ContentHash(entry.Input.ValueBytes))));
+                ContentHash(entry.Input.ValueBytes))),
+            entryPoint is null
+                ? null
+                : new WorkspaceSnapshotEntryPointScope(
+                    entryPoint.Input.Kind,
+                    entryPoint.Input.Path));
         return new WorkspaceSnapshot(identity, scope);
     }
 
     private static void RejectDuplicateFiles(IEnumerable<FileEntry> files)
     {
-        var seen = new HashSet<(WorkspaceSnapshotFileKind Kind, string Path)>();
+        var seen = new Dictionary<
+            WorkspaceSnapshotFileKind,
+            HashSet<string>>();
         foreach (var file in files)
         {
-            if (!seen.Add((file.Input.Kind, file.Input.Path)))
+            if (!seen.TryGetValue(file.Input.Kind, out var paths))
+            {
+                paths = new HashSet<string>(
+                    WorkspacePathResolver.PathComparer());
+                seen.Add(file.Input.Kind, paths);
+            }
+
+            if (!paths.Add(file.Input.Path))
             {
                 throw new ArgumentException(
                     $"The snapshot contains duplicate {file.Input.Kind} file input '{file.Input.Path}'.",
@@ -93,16 +123,20 @@ public sealed class WorkspaceSnapshotCapturer
 
     private static void RejectDuplicateValues(IEnumerable<ValueEntry> values)
     {
-        var seen = new HashSet<(
-            WorkspaceSnapshotValueKind Kind,
-            string? ScopePath,
-            string Name)>();
+        var seen = new Dictionary<
+            (WorkspaceSnapshotValueKind Kind, string Name),
+            HashSet<string?>>();
         foreach (var value in values)
         {
-            if (!seen.Add((
-                    value.Input.Kind,
-                    value.Input.ScopePath,
-                    value.Input.Name)))
+            var key = (value.Input.Kind, value.Input.Name);
+            if (!seen.TryGetValue(key, out var scopePaths))
+            {
+                scopePaths = new HashSet<string?>(
+                    WorkspacePathResolver.PathComparer());
+                seen.Add(key, scopePaths);
+            }
+
+            if (!scopePaths.Add(value.Input.ScopePath))
             {
                 throw new ArgumentException(
                     $"The snapshot contains duplicate {value.Input.Kind} value input '{value.Input.Name}'.",
@@ -163,16 +197,31 @@ public sealed class WorkspaceSnapshotCapturer
                 "workspace/msbuild-import",
             WorkspaceSnapshotFileKind.GlobalJson =>
                 "workspace/global-json",
+            WorkspaceSnapshotFileKind.NuGetConfiguration =>
+                "dependencies/nuget-configuration",
             WorkspaceSnapshotFileKind.NuGetAssets =>
                 "dependencies/nuget-assets",
             WorkspaceSnapshotFileKind.NuGetLock =>
                 "dependencies/nuget-lock",
+            WorkspaceSnapshotFileKind.MetadataReference =>
+                "compilation/metadata-reference",
             WorkspaceSnapshotFileKind.GeneratedSourceInput =>
                 "generation/source-input",
             _ => throw new ArgumentOutOfRangeException(
                 nameof(kind),
                 kind,
                 "The workspace snapshot file kind is not defined."),
+        };
+
+    private static string EntryPointKindToken(WorkspaceEntryPointKind kind) =>
+        kind switch
+        {
+            WorkspaceEntryPointKind.Solution => "workspace/solution",
+            WorkspaceEntryPointKind.Project => "workspace/project",
+            _ => throw new ArgumentOutOfRangeException(
+                nameof(kind),
+                kind,
+                "The workspace entry-point kind is not defined."),
         };
 
     private static string ValueKindToken(WorkspaceSnapshotValueKind kind) =>
@@ -222,6 +271,23 @@ public sealed class WorkspaceSnapshotCapturer
         public WorkspaceSnapshotFileInput Input { get; }
 
         public string KindToken { get; }
+
+        public byte[] KindTokenBytes { get; }
+    }
+
+    private sealed class EntryPointEntry
+    {
+        public EntryPointEntry(
+            WorkspaceSnapshotEntryPointInput input,
+            string kindToken)
+        {
+            Input = input;
+            KindTokenBytes = WorkspaceSnapshotEncoding.Encode(
+                kindToken,
+                nameof(kindToken));
+        }
+
+        public WorkspaceSnapshotEntryPointInput Input { get; }
 
         public byte[] KindTokenBytes { get; }
     }
