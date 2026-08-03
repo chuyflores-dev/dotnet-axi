@@ -144,7 +144,7 @@ public sealed class WorktreeStateInspector
             state: null,
             failure);
 
-    private async Task<GitProcessResult> RunGitAsync(
+    internal async Task<GitProcessResult> RunGitAsync(
         string workingDirectory,
         IReadOnlyList<string> arguments,
         CancellationToken cancellationToken,
@@ -584,7 +584,7 @@ public sealed class WorktreeStateInspector
         GitHeadState Head,
         IReadOnlyList<GitWorktreeEntry> Entries);
 
-    private sealed record GitProcessResult(
+    internal sealed record GitProcessResult(
         string? StandardOutput,
         int? ExitCode,
         WorktreeInspectionFailure? Failure)
