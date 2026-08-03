@@ -73,6 +73,89 @@ public sealed class MsBuildProjectGraphEvaluatorTests
     }
 
     [Fact]
+    public async Task Explicit_framework_is_rejected_when_the_configuration_declares_none()
+    {
+        await using var fixture = await ProjectGraphFixtureAsync("coverage");
+        await File.WriteAllTextAsync(
+            Path.Combine(
+                fixture.WorkspacePath,
+                "src",
+                "Supported",
+                "Supported.csproj"),
+            """
+            <Project Sdk="Microsoft.NET.Sdk">
+              <PropertyGroup Condition="'$(Configuration)' == 'Debug'">
+                <TargetFramework>net10.0</TargetFramework>
+              </PropertyGroup>
+            </Project>
+            """);
+        var discovery = _discoverer.Discover(fixture.WorkspacePath);
+        var selection = _selector.Select(
+            discovery,
+            new WorkspaceSelectionRequest(project: "Supported"));
+
+        var error = Assert.Throws<ProjectGraphUsageException>(() =>
+            _evaluator.Evaluate(
+                discovery,
+                selection,
+                new ProjectGraphEvaluationOptions(
+                    configuration: "Release",
+                    framework: "net10.0")));
+
+        var declaration = Assert.Single(error.Declarations);
+        Assert.Equal("src/Supported/Supported.csproj", declaration.Project);
+        Assert.Empty(declaration.Frameworks);
+        Assert.Contains("(none)", error.Correction, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Solution_framework_validation_ignores_reference_specific_overrides()
+    {
+        await using var fixture = await ProjectGraphFixtureAsync("coverage");
+        await File.WriteAllTextAsync(
+            Path.Combine(fixture.WorkspacePath, "Coverage.slnx"),
+            """
+            <Solution>
+              <Project Path="src/Multi/Multi.csproj" />
+              <Project Path="src/Supported/Supported.csproj" />
+            </Solution>
+            """);
+        await File.WriteAllTextAsync(
+            Path.Combine(
+                fixture.WorkspacePath,
+                "src",
+                "Multi",
+                "Multi.csproj"),
+            """
+            <Project Sdk="Microsoft.NET.Sdk">
+              <PropertyGroup>
+                <TargetFrameworks>net9.0;net10.0</TargetFrameworks>
+              </PropertyGroup>
+
+              <ItemGroup>
+                <ProjectReference
+                  Include="../Supported/Supported.csproj"
+                  SetTargetFramework="TargetFramework=net9.0" />
+              </ItemGroup>
+            </Project>
+            """);
+        var discovery = _discoverer.Discover(fixture.WorkspacePath);
+        var selection = _selector.Select(
+            discovery,
+            new WorkspaceSelectionRequest(solution: "Coverage.slnx"));
+
+        var error = Assert.Throws<ProjectGraphUsageException>(() =>
+            _evaluator.Evaluate(
+                discovery,
+                selection,
+                new ProjectGraphEvaluationOptions(framework: "net9.0")));
+
+        var declaration = Assert.Single(error.Declarations);
+        Assert.Equal("src/Supported/Supported.csproj", declaration.Project);
+        Assert.Equal(["net10.0"], declaration.Frameworks);
+    }
+
+    [Fact]
     public async Task Selected_project_honors_configuration_framework_and_properties()
     {
         await using var fixture = await EvaluationFixtureAsync();

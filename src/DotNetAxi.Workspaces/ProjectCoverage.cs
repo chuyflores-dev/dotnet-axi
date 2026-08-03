@@ -316,6 +316,19 @@ public sealed class ProjectCoverageReporter
                 ProjectCoverageIssueReason.UnsupportedLanguage);
         }
 
+        if (evidence.IsSdkStyle is true
+            && !Path.GetExtension(evidence.Project).Equals(
+                ".csproj",
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return new ClassifiedVariant(
+                evidence,
+                framework,
+                isMultiTargeted,
+                ProjectVariantCoverageState.Unsupported,
+                ProjectCoverageIssueReason.UnsupportedProjectShape);
+        }
+
         var onlyMissingAssets = evidence.Failures.Count > 0
                                 && evidence.Failures.All(
                                     static failure => failure.Reason

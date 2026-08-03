@@ -217,6 +217,55 @@ public sealed class ProjectCoverageReporterTests
     }
 
     [Fact]
+    public async Task Unsupported_project_shape_precedes_missing_assets_and_retains_both_issues()
+    {
+        await using var fixture = await ProjectGraphFixtureAsync("coverage");
+        var projectDirectory = Path.Combine(
+            fixture.WorkspacePath,
+            "src",
+            "Custom");
+        Directory.CreateDirectory(projectDirectory);
+        await File.WriteAllTextAsync(
+            Path.Combine(projectDirectory, "Custom.proj"),
+            """
+            <Project Sdk="Microsoft.NET.Sdk">
+              <PropertyGroup>
+                <Language>C#</Language>
+                <TargetFramework>net10.0</TargetFramework>
+              </PropertyGroup>
+            </Project>
+            """);
+        var discovery = _discoverer.Discover(fixture.WorkspacePath);
+        var selection = new WorkspaceSelection(
+            WorkspaceEntryPointKind.Project,
+            "src/Custom/Custom.proj",
+            WorkspaceSelectionSource.ExplicitProject);
+
+        var graph = _evaluator.Evaluate(discovery, selection);
+        var report = _reporter.Report(
+            graph,
+            ProjectFrameworkCoverageMode.Complete);
+
+        AssertCoverage(
+            report.Coverage,
+            considered: 1,
+            analyzed: 0,
+            remaining: 0,
+            excluded: 1,
+            failed: 0);
+        var custom = Assert.Single(report.Variants);
+        Assert.Equal(ProjectVariantCoverageState.Unsupported, custom.State);
+        Assert.False(custom.IsSelected);
+        Assert.Equal(
+            [
+                ProjectCoverageIssueReason.UnsupportedProjectShape,
+                ProjectCoverageIssueReason.MissingAssets,
+            ],
+            custom.Issues.Select(static issue => issue.Reason));
+        Assert.False(Directory.Exists(Path.Combine(projectDirectory, "obj")));
+    }
+
+    [Fact]
     public async Task Malformed_assets_are_a_stable_broken_coverage_reason()
     {
         await using var fixture = await ProjectGraphFixtureAsync("coverage");
