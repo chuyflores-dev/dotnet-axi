@@ -1,0 +1,84 @@
+{
+  "schema": "dotnet-axi/fixture/v1",
+  "name": "changed-scope-git-graph",
+  "seed": 2204,
+  "sdk": {
+    "version": "10.0.302",
+    "rollForward": "latestPatch",
+    "allowPrerelease": false
+  },
+  "capabilities": [
+    "framework:net10.0",
+    "git:branches",
+    "git:commits",
+    "git:deleted",
+    "git:renamed",
+    "git:staged",
+    "git:unstaged",
+    "git:untracked",
+    "language:csharp",
+    "project:sdk-style",
+    "workspace:single-project"
+  ],
+  "scenario": {
+    "state": "git-worktree",
+    "intentionalFailure": false,
+    "expectedCoverage": "complete",
+    "remainingCoverage": [
+      "changed-files"
+    ],
+    "reason": "changed-scope-graph"
+  },
+  "git": {
+    "changes": [
+      {
+        "kind": "staged",
+        "path": "src/Committed.cs",
+        "template": "templates/Committed.after.cs",
+        "expandTokens": false
+      }
+    ]
+  },
+  "build": {
+    "target": "Workspace.csproj",
+    "expectedOutcome": "success",
+    "requiredOutput": []
+  },
+  "files": [
+    {
+      "path": "Workspace.csproj",
+      "template": "templates/Workspace.csproj",
+      "expandTokens": false
+    },
+    {
+      "path": "src/AmbientStaged.cs",
+      "template": "templates/AmbientStaged.before.cs",
+      "expandTokens": false
+    },
+    {
+      "path": "src/AmbientUnstaged.cs",
+      "template": "templates/AmbientUnstaged.before.cs",
+      "expandTokens": false
+    },
+    {
+      "path": "src/BaseOnly.cs",
+      "template": "templates/BaseOnly.before.cs",
+      "expandTokens": false
+    },
+    {
+      "path": "src/Committed.cs",
+      "template": "templates/Committed.before.cs",
+      "expandTokens": false
+    },
+    {
+      "path": "src/Deleted.cs",
+      "template": "templates/Deleted.cs",
+      "expandTokens": false
+    },
+    {
+      "path": "src/RenamedBefore.cs",
+      "template": "templates/RenamedBefore.cs",
+      "expandTokens": false
+    }
+  ]
+}
