@@ -173,6 +173,22 @@ They receive a controlled working directory, bounded output capture,
 cancellation, timeout, and process-tree termination. User-controlled source
 text is never interpolated into a shell command.
 
+Process results distinguish a missing or inaccessible working directory from
+an executable start failure. A termination request is not termination evidence:
+the terminated lifecycle requires bounded confirmation that the owned process
+or containment has exited; otherwise the lifecycle is termination-failed.
+Expected stream and containment failures are returned as typed runner outcomes
+with any available exit evidence and bounded output.
+
+Windows containment uses a job object and does not complete until the job has
+no active processes. Linux and macOS launch a new process group, retain the
+unreaped leader identity while terminating and observing its members, and do
+not report terminated until the owned group and output handles are clear.
+Portable POSIX process groups are not a security sandbox: repository code that
+deliberately creates a new session or process group can leave that authority.
+Callers requiring enforcement against hostile repository code must supply an
+operating-system sandbox; the runner does not claim to prevent that escape.
+
 The tool does not echo complete environments, credentials, tokens,
 authorization headers, or known secret-bearing arguments. Structured output
 redacts detected secrets without claiming arbitrary repository logs are
