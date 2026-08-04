@@ -3,7 +3,9 @@ param(
     [Parameter(Mandatory)]
     [string] $PackageDirectory,
 
-    [string] $ExpectedVersion
+    [string] $ExpectedVersion,
+
+    [string] $ExpectedCommit
 )
 
 Set-StrictMode -Version Latest
@@ -581,6 +583,13 @@ try {
         [string]::IsNullOrWhiteSpace(
             [string] $metadata.repository.commit)) {
         throw "Package repository metadata is incomplete."
+    }
+    if (-not [string]::IsNullOrWhiteSpace($ExpectedCommit) -and
+        [string] $metadata.repository.commit -cne $ExpectedCommit) {
+        throw (
+            "Package repository commit is " +
+            "'$([string] $metadata.repository.commit)', expected " +
+            "'$ExpectedCommit'.")
     }
 
     $assemblyNames = @(

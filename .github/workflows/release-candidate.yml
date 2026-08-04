@@ -1,0 +1,313 @@
+name: Release candidate
+
+on:
+  workflow_dispatch:
+    inputs:
+      commit:
+        description: Exact 40-character commit SHA to verify
+        required: true
+        type: string
+      version:
+        description: Exact candidate SemVer to build and verify
+        required: true
+        type: string
+  workflow_call:
+    inputs:
+      commit:
+        description: Exact 40-character commit SHA to verify
+        required: true
+        type: string
+      version:
+        description: Exact candidate SemVer to build and verify
+        required: true
+        type: string
+    outputs:
+      artifact-name:
+        description: Verified candidate artifact name
+        value: ${{ jobs.complete-candidate.outputs.artifact-name }}
+      artifact-digest:
+        description: Verified candidate artifact digest
+        value: ${{ jobs.complete-candidate.outputs.artifact-digest }}
+      candidate-commit:
+        description: Verified candidate commit
+        value: ${{ jobs.complete-candidate.outputs.candidate-commit }}
+      candidate-version:
+        description: Verified candidate version
+        value: ${{ jobs.complete-candidate.outputs.candidate-version }}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-candidate-${{ inputs.commit }}-${{ inputs.version }}
+  cancel-in-progress: false
+
+jobs:
+  build-candidate:
+    runs-on: ubuntu-latest
+    outputs:
+      staging-artifact: ${{ steps.names.outputs.staging-artifact }}
+
+    steps:
+      - name: Check out exact candidate
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ inputs.commit }}
+
+      - name: Install .NET SDK
+        uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+
+      - name: Validate candidate inputs
+        shell: pwsh
+        env:
+          CANDIDATE_COMMIT: ${{ inputs.commit }}
+          CANDIDATE_VERSION: ${{ inputs.version }}
+        run: >-
+          ./eng/assert-release-candidate-inputs.ps1
+          -CandidateCommit $env:CANDIDATE_COMMIT
+          -CandidateVersion $env:CANDIDATE_VERSION
+          -RequireClean
+
+      - name: Name candidate artifacts
+        id: names
+        shell: pwsh
+        env:
+          CANDIDATE_COMMIT: ${{ inputs.commit }}
+          CANDIDATE_VERSION: ${{ inputs.version }}
+        run: |
+          $name = "release-candidate-staging-$env:CANDIDATE_VERSION-$env:CANDIDATE_COMMIT"
+          "staging-artifact=$name" >> $env:GITHUB_OUTPUT
+
+      - name: Restore build tools
+        run: dotnet tool restore
+
+      - name: Resolve exact candidate version
+        shell: pwsh
+        env:
+          CANDIDATE_VERSION: ${{ inputs.version }}
+        run: |
+          $resolved = ./eng/resolve-build-version.ps1 `
+            -VersionOverride $env:CANDIDATE_VERSION
+          if ($resolved -cne $env:CANDIDATE_VERSION) {
+            throw "Resolved version '$resolved' disagrees with requested version '$env:CANDIDATE_VERSION'."
+          }
+          "DotNetAxiBuildVersion=$resolved" >> $env:GITHUB_ENV
+
+      - name: Restore
+        run: dotnet restore dotnet-axi.slnx
+
+      - name: Verify version policy
+        shell: pwsh
+        run: ./eng/verify-versioning.ps1
+
+      - name: Build
+        run: >-
+          dotnet build dotnet-axi.slnx
+          --configuration Release
+          --no-restore
+
+      - name: Test
+        run: >-
+          dotnet test dotnet-axi.slnx
+          --configuration Release
+          --no-build
+
+      - name: Pack exact candidate
+        run: >-
+          dotnet pack src/DotNetAxi.Cli/DotNetAxi.Cli.csproj
+          --configuration Release
+          --no-build
+          --output artifacts/release-candidate
+
+      - name: Run complete package verifier
+        shell: pwsh
+        env:
+          CANDIDATE_COMMIT: ${{ inputs.commit }}
+          CANDIDATE_VERSION: ${{ inputs.version }}
+        run: >-
+          ./eng/verify-tool-package.ps1
+          -PackageDirectory artifacts/release-candidate
+          -ExpectedVersion $env:CANDIDATE_VERSION
+          -ExpectedCommit $env:CANDIDATE_COMMIT
+
+      - name: Record package evidence and checksums
+        shell: pwsh
+        env:
+          CANDIDATE_COMMIT: ${{ inputs.commit }}
+          CANDIDATE_VERSION: ${{ inputs.version }}
+        run: >-
+          ./eng/new-release-candidate-package-evidence.ps1
+          -PackageDirectory artifacts/release-candidate
+          -ExpectedCommit $env:CANDIDATE_COMMIT
+          -ExpectedVersion $env:CANDIDATE_VERSION
+
+      - name: Confirm repository was not changed
+        shell: pwsh
+        env:
+          CANDIDATE_COMMIT: ${{ inputs.commit }}
+          CANDIDATE_VERSION: ${{ inputs.version }}
+        run: >-
+          ./eng/assert-release-candidate-inputs.ps1
+          -CandidateCommit $env:CANDIDATE_COMMIT
+          -CandidateVersion $env:CANDIDATE_VERSION
+          -RequireClean
+
+      - name: Stage verified candidate for platform jobs
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ steps.names.outputs.staging-artifact }}
+          path: |
+            artifacts/release-candidate/*.nupkg
+            artifacts/release-candidate/*.snupkg
+            artifacts/release-candidate/checksums.sha256
+            artifacts/release-candidate/package-evidence.json
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 1
+
+  platform-smoke:
+    needs: build-candidate
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - macos-latest
+          - windows-latest
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Check out exact candidate
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ inputs.commit }}
+
+      - name: Install .NET SDK
+        uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+
+      - name: Download verified candidate
+        uses: actions/download-artifact@v8
+        with:
+          name: ${{ needs.build-candidate.outputs.staging-artifact }}
+          path: artifacts/release-candidate
+
+      - name: Verify global, local, and dnx version parity
+        shell: pwsh
+        env:
+          CANDIDATE_COMMIT: ${{ inputs.commit }}
+          CANDIDATE_VERSION: ${{ inputs.version }}
+          RUNNER_OPERATING_SYSTEM: ${{ runner.os }}
+        run: >-
+          ./eng/verify-release-candidate-platform.ps1
+          -PackageDirectory artifacts/release-candidate
+          -ExpectedCommit $env:CANDIDATE_COMMIT
+          -ExpectedVersion $env:CANDIDATE_VERSION
+          -RunnerOs $env:RUNNER_OPERATING_SYSTEM
+          -EvidencePath "artifacts/platform-evidence/$env:RUNNER_OPERATING_SYSTEM.json"
+
+      - name: Confirm repository was not changed
+        shell: pwsh
+        env:
+          CANDIDATE_COMMIT: ${{ inputs.commit }}
+          CANDIDATE_VERSION: ${{ inputs.version }}
+        run: >-
+          ./eng/assert-release-candidate-inputs.ps1
+          -CandidateCommit $env:CANDIDATE_COMMIT
+          -CandidateVersion $env:CANDIDATE_VERSION
+          -RequireClean
+
+      - name: Stage platform evidence
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-candidate-platform-${{ inputs.version }}-${{ inputs.commit }}-${{ runner.os }}
+          path: artifacts/platform-evidence/${{ runner.os }}.json
+          if-no-files-found: error
+          retention-days: 1
+
+  complete-candidate:
+    needs:
+      - build-candidate
+      - platform-smoke
+    runs-on: ubuntu-latest
+    outputs:
+      artifact-name: ${{ steps.names.outputs.artifact-name }}
+      artifact-digest: ${{ steps.upload.outputs.artifact-digest }}
+      candidate-commit: ${{ inputs.commit }}
+      candidate-version: ${{ inputs.version }}
+
+    steps:
+      - name: Check out exact candidate
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ inputs.commit }}
+
+      - name: Download verified candidate
+        uses: actions/download-artifact@v8
+        with:
+          name: ${{ needs.build-candidate.outputs.staging-artifact }}
+          path: artifacts/release-candidate
+
+      - name: Download platform evidence
+        uses: actions/download-artifact@v8
+        with:
+          pattern: release-candidate-platform-${{ inputs.version }}-${{ inputs.commit }}-*
+          path: artifacts/platform-evidence
+          merge-multiple: true
+
+      - name: Complete candidate evidence
+        shell: pwsh
+        env:
+          CANDIDATE_COMMIT: ${{ inputs.commit }}
+          CANDIDATE_VERSION: ${{ inputs.version }}
+        run: >-
+          ./eng/complete-release-candidate-evidence.ps1
+          -PackageDirectory artifacts/release-candidate
+          -PlatformEvidenceDirectory artifacts/platform-evidence
+          -ExpectedCommit $env:CANDIDATE_COMMIT
+          -ExpectedVersion $env:CANDIDATE_VERSION
+          -OutputPath artifacts/release-candidate/release-candidate-evidence.json
+
+      - name: Name verified candidate
+        id: names
+        shell: pwsh
+        env:
+          CANDIDATE_COMMIT: ${{ inputs.commit }}
+          CANDIDATE_VERSION: ${{ inputs.version }}
+        run: |
+          $name = "release-candidate-$env:CANDIDATE_VERSION-$env:CANDIDATE_COMMIT"
+          "artifact-name=$name" >> $env:GITHUB_OUTPUT
+
+      - name: Confirm repository was not changed
+        shell: pwsh
+        env:
+          CANDIDATE_COMMIT: ${{ inputs.commit }}
+          CANDIDATE_VERSION: ${{ inputs.version }}
+        run: >-
+          ./eng/assert-release-candidate-inputs.ps1
+          -CandidateCommit $env:CANDIDATE_COMMIT
+          -CandidateVersion $env:CANDIDATE_VERSION
+          -RequireClean
+
+      - name: Retain verified release candidate
+        id: upload
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ steps.names.outputs.artifact-name }}
+          path: |
+            artifacts/release-candidate/*.nupkg
+            artifacts/release-candidate/*.snupkg
+            artifacts/release-candidate/checksums.sha256
+            artifacts/release-candidate/release-candidate-evidence.json
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14
