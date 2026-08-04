@@ -27,8 +27,6 @@ durable baseline, or run paid benchmarks on pull-request CI.
   sandbox, permissions, loaded instructions, and network policy.
 - Baseline and candidate conditions use isolated equivalent workspaces and
   differ only by the declared `dotnet-axi` skill/tool exposure.
-- The first measured series covers applicable source-discovery tasks and
-  publishes condition-blinded outcomes plus complete reproducibility metadata.
 
 ## Verification
 

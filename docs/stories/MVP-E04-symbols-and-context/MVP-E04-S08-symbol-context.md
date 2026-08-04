@@ -2,8 +2,8 @@
 
 ## Outcome
 
-`context symbol` composes requested declaration and relationship evidence once
-within a caller-selected budget.
+`context symbol` composes declaration, owner, document, and outline evidence
+once within a caller-selected budget.
 
 ## Design
 
@@ -13,19 +13,21 @@ within a caller-selected budget.
 ## Boundary
 
 The command presents tool evidence and provenance; it does not synthesize
-natural-language conclusions.
+natural-language conclusions. Relationship sections become available with
+`MVP-E05` and are not part of this story.
 
 ## Acceptance
 
-- Requested sections preserve identity, source location, snapshot, resolution,
-  coverage, confidence, and provenance.
+- Requested declaration, owner, document, and outline sections preserve
+  identity, source location, snapshot, resolution, coverage, confidence, and
+  provenance.
 - Repeated declarations or spans are emitted once and referenced rather than
   duplicated.
 
 ## Verification
 
-- Composite fixtures cover declarations, callers, callees, tests, partial
-  scope, deduplication, and truncation.
+- Composite fixtures cover declarations, owner variants, documents, outlines,
+  partial scope, deduplication, and truncation.
 
 ## Dependencies
 
@@ -33,6 +35,3 @@ natural-language conclusions.
 - `MVP-E04-S06`
 - `MVP-E04-S07`
 - `MVP-E04-S09`
-- `MVP-E05-S02`
-- `MVP-E05-S06`
-- `MVP-E05-S07`
