@@ -244,13 +244,9 @@ git:
 analysis:
   status: not_loaded
   compiler_errors: unknown
-suggestions[3]:
+suggestions[1]:
   - command: dnaxi
-    arguments[3]: search,symbol,<name>
-  - command: dnaxi
-    arguments[2]: analyze,changed
-  - command: dnaxi
-    arguments[3]: validate,"--profile",fast
+    arguments[1]: "--help"
 ```
 
 ### Structural search

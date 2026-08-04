@@ -31,23 +31,7 @@ public sealed class ContextualSuggestionGoldenTests
                 "home",
                 scenario,
                 ContextualSuggestions.Compose(
-                    [
-                        Template(40, Literal("help")),
-                        Template(
-                            10,
-                            Literal("search"),
-                            Literal("symbol"),
-                            Placeholder("name")),
-                        Template(
-                            30,
-                            Literal("validate"),
-                            Literal("--profile"),
-                            Literal("fast")),
-                        Template(
-                            20,
-                            Literal("analyze"),
-                            Literal("changed")),
-                    ],
+                    [Template(10, Literal("--help"))],
                     WorkspaceSelectors.Empty)),
             "empty" => Success(
                 "search symbol",
