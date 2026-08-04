@@ -41,6 +41,7 @@ None.
 - [MVP-E01-S09 — Explain query plans](MVP-E01-S09-query-planning.md)
 - [MVP-E01-S10 — Report the CLI version](MVP-E01-S10-version-output.md)
 - [MVP-E01-S11 — Suggest contextual follow-ups](MVP-E01-S11-contextual-suggestions.md)
+- [MVP-E01-S12 — Recommend only available commands](MVP-E01-S12-available-home-suggestions.md)
 
 ## Complete when
 

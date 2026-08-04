@@ -177,6 +177,11 @@ the caller must supply, and omit suggestions when the response is
 self-contained. Suggestions carry an executable and an ordered argument array;
 callers invoke that array directly without parsing shell-specific quoting.
 
+Every emitted suggestion MUST resolve to a command or root option registered
+by that installed CLI version. A release with no capability subcommands emits
+only `dnaxi --help` from the home view; planned commands are never presented as
+executable suggestions.
+
 Capabilities express suggestions as literal command tokens, observed runtime
 values, or named placeholders. The shared composer adds `dnaxi`, appends fixed
 workspace selectors in canonical order, removes duplicates, orders by explicit

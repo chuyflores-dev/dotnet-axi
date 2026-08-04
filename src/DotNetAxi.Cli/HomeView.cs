@@ -54,31 +54,8 @@ internal sealed class HomeCommandHandler : ICommandHandler<HomeRequest>
 {
     private const string Unknown = "unknown";
 
-    private static readonly SuggestionTemplate SearchSuggestion = new(
-        priority: 10,
-        [
-            SuggestionToken.Literal("search"),
-            SuggestionToken.Literal("symbol"),
-            SuggestionToken.Placeholder("name"),
-        ]);
-
-    private static readonly SuggestionTemplate ChangedAnalysisSuggestion = new(
-        priority: 20,
-        [
-            SuggestionToken.Literal("analyze"),
-            SuggestionToken.Literal("changed"),
-        ]);
-
-    private static readonly SuggestionTemplate ValidationSuggestion = new(
-        priority: 30,
-        [
-            SuggestionToken.Literal("validate"),
-            SuggestionToken.Literal("--profile"),
-            SuggestionToken.Literal("fast"),
-        ]);
-
     private static readonly SuggestionTemplate HelpSuggestion = new(
-        priority: 40,
+        priority: 10,
         [SuggestionToken.Literal("--help")]);
 
     private readonly HomeInvocationContext _context;
@@ -116,10 +93,7 @@ internal sealed class HomeCommandHandler : ICommandHandler<HomeRequest>
             .InspectAsync(workspace, cancellationToken)
             .ConfigureAwait(false);
         var git = CreateGitPayload(worktree);
-        var suggestions = CreateSuggestions(
-            workspace,
-            worktree,
-            selection.SuggestionSelectors);
+        var suggestions = CreateSuggestions();
 
         return CommandResult<HomePayload>.Success(
             "home",
@@ -156,12 +130,10 @@ internal sealed class HomeCommandHandler : ICommandHandler<HomeRequest>
             {
                 WorkspaceEntryPointKind.Solution => new HomeSelection(
                     selection.Path,
-                    Project: null,
-                    WorkspaceSelectors.Empty),
+                    Project: null),
                 WorkspaceEntryPointKind.Project => new HomeSelection(
                     Solution: null,
-                    selection.Path,
-                    WorkspaceSelectors.Empty),
+                    selection.Path),
                 _ => throw new ArgumentOutOfRangeException(
                     nameof(workspace),
                     selection.Kind,
@@ -172,33 +144,23 @@ internal sealed class HomeCommandHandler : ICommandHandler<HomeRequest>
         {
             var candidate = exception.CandidatePaths.FirstOrDefault();
             var candidateKind = CandidateKind(workspace, candidate);
-            var selector = candidate is null
-                ? null
-                : SelectorPath(workspace, candidate);
             if (candidateKind is WorkspaceEntryPointKind.Solution)
             {
                 return new HomeSelection(
                     Unknown,
-                    Project: null,
-                    selector is null
-                        ? WorkspaceSelectors.Empty
-                        : new WorkspaceSelectors(solution: selector));
+                    Project: null);
             }
 
             if (candidateKind is WorkspaceEntryPointKind.Project)
             {
                 return new HomeSelection(
                     Solution: null,
-                    Unknown,
-                    selector is null
-                        ? WorkspaceSelectors.Empty
-                        : new WorkspaceSelectors(project: selector));
+                    Unknown);
             }
 
             return new HomeSelection(
                 Unknown,
-                Project: null,
-                WorkspaceSelectors.Empty);
+                Project: null);
         }
     }
 
@@ -225,14 +187,6 @@ internal sealed class HomeCommandHandler : ICommandHandler<HomeRequest>
                 : null;
     }
 
-    private static string SelectorPath(
-        WorkspaceDiscoveryResult workspace,
-        string candidate) =>
-        new WorkspacePathResolver(
-            workspace.RootPath,
-            workspace.CurrentDirectory)
-            .ToInputPath(candidate);
-
     private static HomeGitPayload CreateGitPayload(
         WorktreeStateResult result)
     {
@@ -255,30 +209,10 @@ internal sealed class HomeCommandHandler : ICommandHandler<HomeRequest>
         return new HomeGitPayload(branch, result.State.Entries.Count);
     }
 
-    private static IReadOnlyList<ResultSuggestion> CreateSuggestions(
-        WorkspaceDiscoveryResult workspace,
-        WorktreeStateResult worktree,
-        WorkspaceSelectors selectors)
-    {
-        if (workspace.Solutions.Count == 0 && workspace.Projects.Count == 0)
-        {
-            return ContextualSuggestions.Compose(
-                [HelpSuggestion],
-                WorkspaceSelectors.Empty);
-        }
-
-        var templates = new List<SuggestionTemplate>
-        {
-            SearchSuggestion,
-        };
-        if (worktree.Outcome is WorktreeInspectionOutcome.Available)
-        {
-            templates.Add(ChangedAnalysisSuggestion);
-        }
-
-        templates.Add(ValidationSuggestion);
-        return ContextualSuggestions.Compose(templates, selectors);
-    }
+    private static IReadOnlyList<ResultSuggestion> CreateSuggestions() =>
+        ContextualSuggestions.Compose(
+            [HelpSuggestion],
+            WorkspaceSelectors.Empty);
 
     private static string DisplayPath(
         string path,
@@ -319,8 +253,7 @@ internal sealed class HomeCommandHandler : ICommandHandler<HomeRequest>
 
     private sealed record HomeSelection(
         string? Solution,
-        string? Project,
-        WorkspaceSelectors SuggestionSelectors);
+        string? Project);
 
     private sealed record HomePayload(
         string Bin,

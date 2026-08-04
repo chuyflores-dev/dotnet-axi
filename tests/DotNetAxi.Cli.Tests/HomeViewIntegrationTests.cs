@@ -32,10 +32,7 @@ public sealed class HomeViewIntegrationTests
         Assert.Contains(
             "git:\n  branch: main\n  changed_files: 5\n",
             result.StandardOutput);
-        Assert.Contains(
-            "arguments[2]: analyze,changed",
-            result.StandardOutput);
-        Assert.Contains("suggestions[3]:", result.StandardOutput);
+        AssertOnlyAvailableSuggestion(result.StandardOutput);
     }
 
     [Fact]
@@ -59,8 +56,7 @@ public sealed class HomeViewIntegrationTests
         Assert.Contains(
             "git:\n  branch: unknown\n  changed_files: unknown\n",
             result.StandardOutput);
-        Assert.DoesNotContain("analyze,changed", result.StandardOutput);
-        Assert.Contains("suggestions[2]:", result.StandardOutput);
+        AssertOnlyAvailableSuggestion(result.StandardOutput);
     }
 
     [Fact]
@@ -79,16 +75,11 @@ public sealed class HomeViewIntegrationTests
         Assert.Contains(
             "workspace:\n  root: ~/workspace\n  solution: unknown\n  projects: 1\n  csharp_files: 0\n",
             result.StandardOutput);
-        Assert.Contains(
-            "search,symbol,<name>,\"--solution\",First.slnx",
-            result.StandardOutput);
-        Assert.DoesNotContain("Second.slnx", result.StandardOutput);
-        Assert.DoesNotContain("analyze,changed", result.StandardOutput);
-        Assert.Contains("suggestions[2]:", result.StandardOutput);
+        AssertOnlyAvailableSuggestion(result.StandardOutput);
     }
 
     [Fact]
-    public async Task Ambiguous_workspace_selector_is_valid_from_a_nested_directory()
+    public async Task Nested_ambiguous_workspace_recommends_only_registered_help()
     {
         await using var fixture = await _fixtures.CreateAsync(
             CatalogManifestPath("ambiguous-solution"));
@@ -96,12 +87,8 @@ public sealed class HomeViewIntegrationTests
             fixture.WorkspacePath,
             "src",
             "App");
-        const string emittedSelector = "../../First.slnx";
 
         var result = await InvokeHomeAsync(fixture, nestedDirectory);
-        var selected = new WorkspaceEntryPointSelector().Select(
-            new WorkspaceDiscoverer().Discover(nestedDirectory),
-            new WorkspaceSelectionRequest(solution: emittedSelector));
 
         Assert.Equal(0, result.ExitCode);
         Assert.Equal(string.Empty, result.StandardError);
@@ -109,14 +96,11 @@ public sealed class HomeViewIntegrationTests
         Assert.Contains(
             "workspace:\n  root: ~/workspace\n  solution: unknown\n",
             result.StandardOutput);
-        Assert.Contains(
-            $"search,symbol,<name>,\"--solution\",{emittedSelector}",
-            result.StandardOutput);
-        Assert.Equal("First.slnx", selected.Path);
+        AssertOnlyAvailableSuggestion(result.StandardOutput);
     }
 
     [Fact]
-    public async Task Ambiguous_workspace_selector_is_valid_from_a_symlinked_directory()
+    public async Task Symlinked_ambiguous_workspace_recommends_only_registered_help()
     {
         await using var fixture = await _fixtures.CreateAsync(
             CatalogManifestPath("ambiguous-solution"));
@@ -130,20 +114,15 @@ public sealed class HomeViewIntegrationTests
             return;
         }
 
-        const string emittedSelector = "../../First.slnx";
-        var discovery = new WorkspaceDiscoverer().Discover(linkedDirectory);
-
         var result = await InvokeHomeAsync(fixture, linkedDirectory);
-        var selected = new WorkspaceEntryPointSelector().Select(
-            discovery,
-            new WorkspaceSelectionRequest(solution: emittedSelector));
 
         Assert.Equal(0, result.ExitCode);
         Assert.Equal(string.Empty, result.StandardError);
+        AssertEnvelope(result.StandardOutput);
         Assert.Contains(
-            $"search,symbol,<name>,\"--solution\",{emittedSelector}",
+            "workspace:\n  root: ~/workspace\n  solution: unknown\n",
             result.StandardOutput);
-        Assert.Equal("First.slnx", selected.Path);
+        AssertOnlyAvailableSuggestion(result.StandardOutput);
     }
 
     [Fact]
@@ -175,10 +154,8 @@ public sealed class HomeViewIntegrationTests
             "workspace:\n  root: ~/external/mixed\n  project: unknown\n",
             result.StandardOutput);
         Assert.DoesNotContain("solution: unknown", result.StandardOutput);
-        Assert.Contains(
-            "search,symbol,<name>,\"--project\",First.csproj",
-            result.StandardOutput);
         Assert.DoesNotContain("--solution", result.StandardOutput);
+        AssertOnlyAvailableSuggestion(result.StandardOutput);
     }
 
     [Fact]
@@ -200,8 +177,7 @@ public sealed class HomeViewIntegrationTests
         Assert.Contains(
             "git:\n  branch: unknown\n  changed_files: unknown\n",
             result.StandardOutput);
-        Assert.Contains("suggestions[1]:", result.StandardOutput);
-        Assert.Contains("arguments[1]: \"--help\"", result.StandardOutput);
+        AssertOnlyAvailableSuggestion(result.StandardOutput);
     }
 
     [Fact]
@@ -325,6 +301,16 @@ public sealed class HomeViewIntegrationTests
         Assert.Contains(
             "analysis:\n  status: not_loaded\n  compiler_errors: unknown\n",
             output);
+    }
+
+    private static void AssertOnlyAvailableSuggestion(string output)
+    {
+        Assert.Contains(
+            "suggestions[1]:\n  - command: dnaxi\n    arguments[1]: \"--help\"",
+            output);
+        Assert.DoesNotContain("search,symbol", output);
+        Assert.DoesNotContain("analyze,changed", output);
+        Assert.DoesNotContain("validate,\"--profile\",fast", output);
     }
 
     private static string CatalogManifestPath(string fixtureName) =>
