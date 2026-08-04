@@ -2,6 +2,8 @@ using System.Diagnostics;
 using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
+using DotNetAxi.Contracts;
+using DotNetAxi.DotNet;
 
 namespace DotNetAxi.Workspaces.Tests;
 
@@ -558,96 +560,51 @@ public sealed class WorkspaceSnapshotCapturerTests
         string order,
         TimeSpan? timeoutAfter = null)
     {
-        var startInfo = new ProcessStartInfo
-        {
-            FileName = Environment.GetEnvironmentVariable("DOTNET_HOST_PATH")
-                ?? "dotnet",
-            WorkingDirectory = AppContext.BaseDirectory,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-            CreateNoWindow = true,
-        };
-        startInfo.ArgumentList.Add(
-            typeof(WorkspaceSnapshotCapturerTests).Assembly.Location);
-        startInfo.ArgumentList.Add("snapshot-identity");
-        startInfo.ArgumentList.Add(culture);
-        startInfo.ArgumentList.Add(order);
-        startInfo.Environment["DOTNET_CLI_TELEMETRY_OPTOUT"] = "1";
-        startInfo.Environment["DOTNET_NOLOGO"] = "1";
-        startInfo.Environment["DOTNET_SKIP_FIRST_TIME_EXPERIENCE"] = "1";
-
-        using var process = new SystemDotNetHostProcessFactory().Start(startInfo);
-        Assert.NotNull(process);
-        var standardOutput = process.StandardOutput.ReadToEndAsync();
-        var standardError = process.StandardError.ReadToEndAsync();
-        var completion = CompleteFreshProcessAsync(
-            process,
-            standardOutput,
-            standardError);
         var timeoutDuration = timeoutAfter ?? TimeSpan.FromSeconds(30);
-        try
+        var configuredHost = Environment.GetEnvironmentVariable(
+            "DOTNET_HOST_PATH");
+        var host = await new DotNetHostResolver().ResolveAsync(
+            new DotNetHostResolutionRequest(
+                AppContext.BaseDirectory,
+                configuredHost is not null
+                && Path.IsPathFullyQualified(configuredHost)
+                    ? configuredHost
+                    : null));
+        Assert.True(
+            host.IsResolved,
+            $"Could not resolve dotnet host: {host.Failure?.Code}");
+        var result = await new ProcessRunner().RunAsync(
+            new ProcessRunRequest(
+                host.ExecutablePath!,
+                AppContext.BaseDirectory,
+                [
+                    typeof(WorkspaceSnapshotCapturerTests).Assembly.Location,
+                    "snapshot-identity",
+                    culture,
+                    order,
+                ],
+                new Dictionary<string, string>(StringComparer.Ordinal)
+                {
+                    ["DOTNET_CLI_TELEMETRY_OPTOUT"] = "1",
+                    ["DOTNET_NOLOGO"] = "1",
+                    ["DOTNET_SKIP_FIRST_TIME_EXPERIENCE"] = "1",
+                },
+                new ProcessOutputLimits(
+                    standardOutputCharacters: 64 * 1024,
+                    standardErrorCharacters: 64 * 1024),
+                timeoutDuration),
+            CancellationToken.None);
+        if (result.Outcome is ProcessRunOutcome.TimedOut)
         {
-            var result = await completion.WaitAsync(timeoutDuration);
-            Assert.True(
-                result.ExitCode == 0,
-                $"Snapshot process failed.\n{result.StandardError}");
-            return result.StandardOutput.Trim();
-        }
-        catch (TimeoutException exception)
-        {
-            TerminateFreshProcess(process);
-            await ObserveWithinAsync(completion, TimeSpan.FromSeconds(5));
             throw new TimeoutException(
-                $"Snapshot process timed out after {timeoutDuration} and its process tree was terminated.",
-                exception);
+                $"Snapshot process timed out after {timeoutDuration} and its process tree was terminated.");
         }
-    }
 
-    private static async Task<DotNetHostResult> CompleteFreshProcessAsync(
-        IDotNetHostProcess process,
-        Task<string> standardOutput,
-        Task<string> standardError)
-    {
-        await process.WaitForExitAsync(CancellationToken.None);
-        TerminateFreshProcess(process);
-        await Task.WhenAll(standardOutput, standardError);
-        return new DotNetHostResult(
-            process.ExitCode,
-            standardOutput.Result,
-            standardError.Result);
-    }
-
-    private static void TerminateFreshProcess(IDotNetHostProcess process)
-    {
-        try
-        {
-            process.TerminateTree();
-        }
-        catch (Exception exception)
-            when (exception is InvalidOperationException
-                  or System.ComponentModel.Win32Exception
-                  or NotSupportedException)
-        {
-            // The contained process tree already exited.
-        }
-    }
-
-    private static async Task ObserveWithinAsync(Task operation, TimeSpan timeout)
-    {
-        try
-        {
-            await operation.WaitAsync(timeout);
-        }
-        catch (Exception)
-        {
-            _ = operation.ContinueWith(
-                static completed => _ = completed.Exception,
-                CancellationToken.None,
-                TaskContinuationOptions.ExecuteSynchronously
-                | TaskContinuationOptions.OnlyOnFaulted,
-                TaskScheduler.Default);
-        }
+        Assert.True(
+            result.Outcome is ProcessRunOutcome.Completed
+            && result.Exit?.ExitCode == 0,
+            $"Snapshot process failed ({result.Outcome}).\n{result.StandardError.Text}");
+        return result.StandardOutput.Text.Trim();
     }
 }
 
