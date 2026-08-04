@@ -159,13 +159,16 @@ public sealed class CliResponseBoundaryProcessTests
     [Fact]
     public async Task Built_cli_reports_its_embedded_package_version()
     {
+        var expectedVersion = DotNetAxi.Cli.ToolVersion.Current;
         var result = await RunApplicationAsync(
             ProductionApplicationPath(),
             "--version");
 
         Assert.Equal(0, result.ExitCode);
         Assert.Contains("command: version\n", result.StandardOutput);
-        Assert.Contains("tool_version: 0.1.0-alpha.1\n", result.StandardOutput);
+        Assert.Contains(
+            $"tool_version: {expectedVersion}\n",
+            result.StandardOutput);
         Assert.Contains("output_schema: dotnet-axi/v1", result.StandardOutput);
         Assert.Equal(string.Empty, result.StandardError);
     }

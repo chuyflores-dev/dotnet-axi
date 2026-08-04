@@ -8,19 +8,26 @@ boundary between continuous verification and external package publication.
 `dotnet-axi` follows Semantic Versioning for the NuGet package and installed
 tool:
 
-- `Directory.Build.props` contains the version embedded in `dnaxi` and used by
-  `dotnet pack`.
-- A release tag is `v<package-version>` and identifies the exact release
-  commit.
+- A release tag named `v<package-version>` is the release-version authority and
+  identifies the exact release commit.
+- The repository-pinned MinVer CLI calculates the version once for CI and
+  release builds. That value is passed explicitly to MSBuild for the package,
+  assemblies, and embedded `dnaxi` version. CI checks out complete Git history
+  so tag discovery is deterministic.
 - The GitHub Release and NuGet package use that same version.
 - Output-schema versions are independent. A pre-1.0 tool release does not
   permit an incompatible change to published schema `dotnet-axi/v1`; schema
   evolution follows the output-contract rules.
 
-Between releases, ordinary pull requests do not change the version merely to
-identify a commit. Local package artifacts are disposable and are associated
-with their Git commit by the verification environment, not by publishing
-another package version.
+Untagged CI builds use MinVer's height-bearing prerelease version in the
+current planned minor line. After a stable tag, ordinary `main` CI builds
+advance to the next minor `alpha.0` line. Local builds use a fixed
+height-free `alpha.0.local` fallback so sandboxed agents do not need Git
+metadata access merely to compile or test. All such artifacts are disposable,
+are associated with their Git commit by the verification environment, and
+must not be published. An exact version override is permitted only for
+non-publishing candidate verification; it never becomes a second version
+authority.
 
 ## Planned capability milestones
 
@@ -61,12 +68,11 @@ Before a stable milestone, deliberate prereleases may use:
 - `beta.N` after the milestone capability is complete but still stabilizing;
 - `rc.N` when only release blockers may change.
 
-Not every milestone must publish every prerelease phase. The current
-`0.1.0-alpha.1` version is suitable for local dogfooding; publishing it is a
-separate release decision.
-
-After a stable release, a dedicated version PR moves `main` to the next
-planned prerelease. Feature PRs do not perform release-version bumps.
+Not every milestone must publish every prerelease phase. Until the first
+stable tag, the configured minimum minor keeps local builds in the
+`0.2.0-alpha.0` line. Publishing any untagged build is outside the release
+process. Feature and post-release pull requests do not perform release-version
+bumps.
 
 ## Verification and publishing boundary
 
@@ -97,13 +103,15 @@ GitHub Release, and reports the resulting package URL.
 
 ## Release procedure
 
-1. Complete the target GitHub milestone and its release-gate issues.
-2. Merge a release PR that sets the exact version and final release notes.
-3. Tag that commit as `v<version>`.
+1. Complete the target capability and readiness issues, leaving the explicit
+   publication issue open.
+2. Merge a release PR containing final release notes and user-facing examples.
+3. Run the protected tag action for that commit as `v<version>`.
 4. Manually approve and run the protected release workflow for the tag.
 5. Verify installation and `dnx` execution from the public NuGet source.
 6. Publish the GitHub Release with its compatibility and quality evidence.
-7. Open a separate PR for the next planned prerelease version.
+7. Confirm untagged `main` builds resolve to the next planned prerelease line,
+   then close the publication issue and milestone.
 
 GitHub milestones use the stable target names `0.1.0` through `1.0.0`.
 Prerelease issues remain assigned to their eventual stable milestone. Project
