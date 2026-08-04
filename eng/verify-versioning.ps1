@@ -149,45 +149,103 @@ function Assert-Refusal {
     throw "$Scenario was not refused."
 }
 
+function Get-WorkflowJob {
+    param(
+        [Parameter(Mandatory)]
+        [string] $Workflow,
+
+        [Parameter(Mandatory)]
+        [string] $Name
+    )
+
+    $escapedName = [regex]::Escape($Name)
+    $match = [regex]::Match(
+        $Workflow,
+        "(?ms)^  ${escapedName}:\r?\n.*?(?=^  [A-Za-z0-9_-]+:\r?\n|\z)")
+    if (-not $match.Success) {
+        throw "Release workflow job '$Name' was not found."
+    }
+
+    return $match.Value
+}
+
 function Assert-WorkflowContracts {
     param(
         [Parameter(Mandatory)]
         [string] $Repository
     )
 
-    $workflow = [System.IO.File]::ReadAllText([System.IO.Path]::Combine(
+    $workflowDirectory = [System.IO.Path]::Combine(
         $Repository,
         ".github",
-        "workflows",
+        "workflows")
+    $workflow = [System.IO.File]::ReadAllText([System.IO.Path]::Combine(
+        $workflowDirectory,
         "release.yml"))
-    $required = [ordered]@{
-        "published-release trigger" = '(?ms)^on:\r?\n  release:\r?\n    types:\r?\n      - published\r?$'
-        "read-only permissions" = '(?m)^permissions:\r?\n  contents: read\r?$'
-        "release identity validation" = (
-            '(?ms)^          \./eng/assert-release-candidate-inputs\.ps1 `\r?\n' +
-            '            -CandidateCommit \$env:RELEASE_COMMIT `\r?\n' +
-            '            -CandidateVersion \$version `\r?\n' +
-            '            -ReleaseTag \$env:RELEASE_TAG `\r?\n' +
-            '            -MainRef refs/remotes/origin/main\r?$')
-        "candidate workflow" = '(?m)^    uses: \./\.github/workflows/release-candidate\.yml\r?$'
-        "candidate dependency" = '(?ms)^  publish-nuget:\r?\n    needs:\r?\n      - validate-release\r?\n      - verify-candidate\r?$'
-        "protected environment" = '(?ms)^    environment:\r?\n      name: release\r?$'
-        "verified artifact" = '(?m)^          name: \$\{\{ needs\.verify-candidate\.outputs\.artifact-name \}\}\r?$'
-        "missing-package refusal" = '(?m)^            if \(-not \(Test-Path -LiteralPath \$path -PathType Leaf\)\) \{\r?$'
-        "publication credential" = (
-            '(?ms)^      - name: Publish package and symbols to NuGet\r?\n' +
-            '        shell: pwsh\r?\n        env:\r?\n' +
-            '          NUGET_API_KEY: \$\{\{ secrets\.NUGET_API_KEY \}\}')
-    }
-    foreach ($contract in $required.GetEnumerator()) {
-        if ($workflow -cnotmatch $contract.Value) {
-            throw "Release workflow violates the $($contract.Key) contract."
+    $candidateWorkflow = [System.IO.File]::ReadAllText(
+        [System.IO.Path]::Combine(
+            $workflowDirectory,
+            "release-candidate.yml"))
+    $validateJob = Get-WorkflowJob $workflow "validate-release"
+    $verifyJob = Get-WorkflowJob $workflow "verify-candidate"
+    $publishJob = Get-WorkflowJob $workflow "publish-nuget"
+
+    $requiredSets = @(
+        [pscustomobject]@{
+            Text = $workflow
+            Contracts = [ordered]@{
+                "published-release trigger" = '(?ms)^on:\r?\n  release:\r?\n    types:\r?\n      - published\r?$'
+                "read-only default permissions" = '(?m)^permissions:\r?\n  contents: read\r?$'
+            }
+        },
+        [pscustomobject]@{
+            Text = $validateJob
+            Contracts = [ordered]@{
+                "release identity validation" = (
+                    '(?ms)^          \./eng/assert-release-candidate-inputs\.ps1 `\r?\n' +
+                    '            -CandidateCommit \$env:RELEASE_COMMIT `\r?\n' +
+                    '            -CandidateVersion \$version `\r?\n' +
+                    '            -ReleaseTag \$env:RELEASE_TAG `\r?\n' +
+                    '            -MainRef refs/remotes/origin/main\r?$')
+            }
+        },
+        [pscustomobject]@{
+            Text = $verifyJob
+            Contracts = [ordered]@{
+                "candidate workflow" = '(?m)^    uses: \./\.github/workflows/release-candidate\.yml\r?$'
+            }
+        },
+        [pscustomobject]@{
+            Text = $publishJob
+            Contracts = [ordered]@{
+                "candidate dependency" = '(?ms)^  publish-nuget:\r?\n    needs:\r?\n      - validate-release\r?\n      - verify-candidate\r?$'
+                "protected environment" = '(?ms)^    environment:\r?\n      name: release\r?$'
+                "publication OIDC permission" = '(?m)^    permissions:\r?\n      contents: read\r?\n      id-token: write\r?$'
+                "verified artifact" = '(?m)^          name: \$\{\{ needs\.verify-candidate\.outputs\.artifact-name \}\}\r?$'
+                "missing-package refusal" = '(?m)^            if \(-not \(Test-Path -LiteralPath \$path -PathType Leaf\)\) \{\r?$'
+                "trusted-publishing handoff" = (
+                    '(?ms)^      - name: Request short-lived NuGet credential\r?\n' +
+                    '        id: login\r?\n        uses: NuGet/login@v1\r?\n' +
+                    '        with:\r?\n          user: \$\{\{ vars\.NUGET_USER \}\}\r?\n\r?\n' +
+                    '      - name: Publish package and symbols to NuGet\r?\n' +
+                    '        shell: pwsh\r?\n        env:\r?\n' +
+                    '          NUGET_API_KEY: \$\{\{ steps\.login\.outputs\.NUGET_API_KEY \}\}')
+            }
+        }
+    )
+    foreach ($set in $requiredSets) {
+        foreach ($contract in $set.Contracts.GetEnumerator()) {
+            if ($set.Text -cnotmatch $contract.Value) {
+                throw "Release workflow violates the $($contract.Key) contract."
+            }
         }
     }
 
     $forbidden = [ordered]@{
         "automatic non-release trigger" = '(?m)^  (push|pull_request|workflow_dispatch|schedule):'
+        "broad permission grant" = '(?im)^\s*permissions:\s*write-all\b'
         "write permission" = '(?m)^\s+contents: write\r?$'
+        "secret context" = '(?i)\$\{\{\s*secrets\.'
         "duplicate skip" = '(?m)^\s+--skip-duplicate\s*$'
     }
     foreach ($contract in $forbidden.GetEnumerator()) {
@@ -198,9 +256,30 @@ function Assert-WorkflowContracts {
 
     $credentials = [regex]::Matches(
         $workflow,
-        '\$\{\{ secrets\.NUGET_API_KEY \}\}')
+        '\$\{\{ steps\.login\.outputs\.NUGET_API_KEY \}\}')
     if ($credentials.Count -ne 1) {
-        throw "Release workflow must expose one step-scoped NuGet credential."
+        throw "Release workflow must expose one short-lived NuGet credential."
+    }
+
+    $oidcPermissions = [regex]::Matches(
+        $workflow,
+        '(?m)^\s*id-token: write\s*$')
+    if ($oidcPermissions.Count -ne 1) {
+        throw "Release workflow must grant OIDC only to the publication job."
+    }
+
+    $loginActions = [regex]::Matches(
+        $workflow,
+        '(?m)^\s*uses: NuGet/login@v1\s*$')
+    if ($loginActions.Count -ne 1) {
+        throw "Release workflow must request one short-lived NuGet credential."
+    }
+
+    $nonPublishing = $validateJob + $verifyJob + $candidateWorkflow
+    if ($nonPublishing -cmatch
+        '(?im)(id-token:\s*write|NuGet/login@|NUGET_API_KEY|' +
+        'permissions:\s*write-all|\$\{\{\s*secrets\.|^\s*secrets:)') {
+        throw "Non-publishing jobs must not access publishing credentials."
     }
 }
 

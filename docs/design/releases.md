@@ -113,9 +113,12 @@ published GitHub Release.
 The `release` environment requires approval and admits only `v*` tag refs.
 NuGet trusted publishing binds its short-lived credential to this repository,
 `release.yml`, that environment, and the selected NuGet owner. A scoped,
-expiring API key is a fallback only when the selected owner cannot use trusted
-publishing. Published GitHub Releases are immutable so their version tags
-cannot later move.
+expiring API key is a fallback only when that owner cannot use trusted
+publishing. Such a key must be limited to the `dotnet-axi` package, stored only
+in the protected environment, introduced through a reviewed workflow change,
+and revoked with its environment secret immediately after publication.
+Published GitHub Releases are immutable so their version tags cannot later
+move.
 
 ## Release procedure
 

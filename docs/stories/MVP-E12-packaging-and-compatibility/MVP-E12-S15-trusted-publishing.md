@@ -29,8 +29,8 @@ or approve a release deployment.
 
 - Repository environment settings and workflow permissions match the trusted
   publisher policy without exposing secret values.
-- A release-candidate run proves that non-publishing jobs neither request nor
-  receive a NuGet credential.
+- The focused release verifier proves that non-publishing jobs neither request
+  OIDC permission nor receive a NuGet credential.
 
 ## Dependencies
 
