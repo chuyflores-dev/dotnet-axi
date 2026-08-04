@@ -189,6 +189,16 @@ public static class AgentSkillDocuments
         lines.AddRange(
         [
             string.Empty,
+            "## Worker startup boundary",
+            string.Empty,
+        ]);
+        AddBullets(lines, guidance.WorkerStartup);
+
+        lines.AddRange(
+        [
+            string.Empty,
+            $"See [Codex subagents]({guidance.SubagentsLink}).",
+            string.Empty,
             "## Noninteractive workers",
             string.Empty,
         ]);

@@ -53,8 +53,23 @@ public sealed class AgentSkillGenerationTests
         Assert.DoesNotContain("dnx dotnet-axi -- search", skill);
         Assert.DoesNotContain("dnx dotnet-axi -- analyze", skill);
         Assert.DoesNotContain("dnx dotnet-axi -- validate", skill);
-        Assert.DoesNotContain("codex exec", skill);
-        Assert.DoesNotContain("--sandbox", skill);
+        foreach (var codexWorkerToken in new[]
+                 {
+                     "codex exec",
+                     "thread.started",
+                     "subagents",
+                     "--sandbox",
+                     "--ephemeral",
+                     "--json",
+                     "--output-last-message",
+                 })
+        {
+            Assert.DoesNotContain(codexWorkerToken, skill);
+        }
+        const string shortOutputFlagPattern =
+            @"(?<![\p{L}\p{N}])-o(?=$|[\s`])";
+        Assert.Matches(shortOutputFlagPattern, "Use `-o result.txt`.");
+        Assert.DoesNotMatch(shortOutputFlagPattern, skill);
 
         Assert.Contains("writable workspace root", codex);
         Assert.Contains("protected Git metadata", codex);
@@ -62,10 +77,18 @@ public sealed class AgentSkillGenerationTests
         Assert.Contains("narrow scope", codex);
         Assert.Contains("workspace-write", codex);
         Assert.Contains("read-only", codex);
+        Assert.Contains("native Codex subagents", codex);
+        Assert.Contains("owning host or automation boundary", codex);
+        Assert.Contains("denial before `thread.started`", codex);
+        Assert.Contains("not proof that the launcher process exited", codex);
+        Assert.Contains("stop polling an event stream that never began", codex);
+        Assert.Contains("terminate, wait for, and reap that child", codex);
+        Assert.Contains("event absence or silence never authorizes a duplicate", codex);
         Assert.Contains("Retry at most once", codex);
         Assert.Contains("retry loop", codex);
         Assert.Contains(AgentGuidanceCatalog.Codex.SkillsLink, codex);
         Assert.Contains(AgentGuidanceCatalog.Codex.SandboxingLink, codex);
+        Assert.Contains(AgentGuidanceCatalog.Codex.SubagentsLink, codex);
         Assert.Contains(AgentGuidanceCatalog.Codex.NonInteractiveLink, codex);
     }
 

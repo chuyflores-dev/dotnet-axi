@@ -24,6 +24,15 @@ See [Codex worktrees](https://learn.chatgpt.com/docs/environments/git-worktrees)
 - Treat restore, dnx package download, and every other networked operation as explicit; require the host policy to allow the needed destination.
 - Treat protected Git or agent configuration metadata, read-only source, denied network, and denied process launch as host restrictions rather than proof that dotnet-axi is unsupported.
 
+## Worker startup boundary
+
+- Prefer native Codex subagents for clean-context delegation; they inherit the parent turn's sandbox and live approval overrides.
+- Start standalone `codex exec` only from an owning host or automation boundary already permitted to initialize Codex and access the selected worktree; never launch it as a sandboxed child to escape the current boundary.
+- Treat a denial before `thread.started` as no observed Codex thread identity, not proof that the launcher process exited; preserve the diagnostic and stop polling an event stream that never began.
+- Before any replacement, observe the exact launcher process and confirm exit or terminate, wait for, and reap that child; event absence or silence never authorizes a duplicate, and retry still requires a confirmed boundary change.
+
+See [Codex subagents](https://learn.chatgpt.com/docs/agent-configuration/subagents).
+
 ## Noninteractive workers
 
 - Choose the sandbox explicitly: use workspace-write for implementation and read-only for review.
