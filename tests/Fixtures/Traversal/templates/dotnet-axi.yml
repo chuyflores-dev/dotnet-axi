@@ -1,0 +1,3 @@
+search:
+  exclude:
+    - "ignored-by-the-tool-yaml.cs"
