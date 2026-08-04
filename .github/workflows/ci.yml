@@ -20,14 +20,29 @@ jobs:
     steps:
       - name: Check out source
         uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
 
       - name: Install .NET SDK
         uses: actions/setup-dotnet@v6
         with:
           global-json-file: global.json
 
+      - name: Restore build tools
+        run: dotnet tool restore
+
+      - name: Resolve tag-derived version
+        shell: pwsh
+        run: |
+          $version = ./eng/resolve-build-version.ps1
+          "DotNetAxiBuildVersion=$version" >> $env:GITHUB_ENV
+
       - name: Restore
         run: dotnet restore dotnet-axi.slnx
+
+      - name: Verify tag-derived versions
+        shell: pwsh
+        run: ./eng/verify-versioning.ps1
 
       - name: Build
         run: dotnet build dotnet-axi.slnx --configuration Release --no-restore
@@ -47,6 +62,7 @@ jobs:
         run: >-
           ./eng/verify-tool-package.ps1
           -PackageDirectory artifacts/packages
+          -ExpectedVersion $env:DotNetAxiBuildVersion
 
       - name: Install Node.js for TOON conformance
         uses: actions/setup-node@v6

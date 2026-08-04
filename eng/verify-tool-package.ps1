@@ -1,7 +1,9 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)]
-    [string] $PackageDirectory
+    [string] $PackageDirectory,
+
+    [string] $ExpectedVersion
 )
 
 Set-StrictMode -Version Latest
@@ -184,6 +186,88 @@ function Assert-PortablePdb {
         }
     }
     finally {
+        $stream.Dispose()
+    }
+}
+
+function Assert-AssemblyVersionMetadata {
+    param(
+        [Parameter(Mandatory)]
+        [System.IO.Compression.ZipArchive] $Archive,
+
+        [Parameter(Mandatory)]
+        [string] $Version
+    )
+
+    [byte[]] $assemblyBytes = Read-ZipEntryBytes `
+        -Archive $Archive `
+        -EntryName "tools/net10.0/any/dnaxi.dll"
+    $stream = [System.IO.MemoryStream]::new($assemblyBytes, $false)
+    $peReader = [System.Reflection.PortableExecutable.PEReader]::new($stream)
+    try {
+        $metadataReader = (
+            [System.Reflection.Metadata.PEReaderExtensions]::GetMetadataReader(
+                $peReader)
+        )
+        $assembly = $metadataReader.GetAssemblyDefinition()
+        $informationalVersions = @()
+        $toolVersions = @()
+
+        foreach ($handle in $assembly.GetCustomAttributes()) {
+            $attribute = $metadataReader.GetCustomAttribute($handle)
+            if ($attribute.Constructor.Kind -ne
+                [System.Reflection.Metadata.HandleKind]::MemberReference) {
+                continue
+            }
+
+            $constructor = [System.Reflection.Metadata.MemberReferenceHandle] `
+                $attribute.Constructor
+            $member = $metadataReader.GetMemberReference($constructor)
+            if ($member.Parent.Kind -ne
+                [System.Reflection.Metadata.HandleKind]::TypeReference) {
+                continue
+            }
+
+            $type = $metadataReader.GetTypeReference(
+                [System.Reflection.Metadata.TypeReferenceHandle] $member.Parent)
+            $attributeName = $metadataReader.GetString($type.Name)
+            if ($attributeName -notin @(
+                    "AssemblyInformationalVersionAttribute",
+                    "AssemblyMetadataAttribute")) {
+                continue
+            }
+
+            $blob = $metadataReader.GetBlobReader($attribute.Value)
+            if ($blob.ReadUInt16() -ne 1) {
+                throw "Assembly attribute '$attributeName' has an invalid prolog."
+            }
+
+            $first = $blob.ReadSerializedString()
+            if ($attributeName -eq "AssemblyInformationalVersionAttribute") {
+                $informationalVersions += $first
+                continue
+            }
+
+            $second = $blob.ReadSerializedString()
+            if ($first -ceq "DotNetAxi.ToolVersion") {
+                $toolVersions += $second
+            }
+        }
+
+        if ($informationalVersions.Count -ne 1 -or
+            $informationalVersions[0] -cne $Version) {
+            throw (
+                "Packaged assembly informational version is " +
+                "'$($informationalVersions -join ',')', expected '$Version'.")
+        }
+        if ($toolVersions.Count -ne 1 -or $toolVersions[0] -cne $Version) {
+            throw (
+                "Packaged assembly tool version is " +
+                "'$($toolVersions -join ',')', expected '$Version'.")
+        }
+    }
+    finally {
+        $peReader.Dispose()
         $stream.Dispose()
     }
 }
@@ -473,6 +557,11 @@ try {
     $metadata = $nuspec.package.metadata
     $version = [string] $metadata.version
 
+    if (-not [string]::IsNullOrWhiteSpace($ExpectedVersion) -and
+        $version -cne $ExpectedVersion) {
+        throw "Package version is '$version', expected '$ExpectedVersion'."
+    }
+
     if ([string] $metadata.id -ne "dotnet-axi") {
         throw "Package ID is '$($metadata.id)', expected 'dotnet-axi'."
     }
@@ -526,6 +615,10 @@ try {
             throw "Package entry '$entryName' is missing."
         }
     }
+
+    Assert-AssemblyVersionMetadata `
+        -Archive $archive `
+        -Version $version
 
     Assert-ZipEntryMatchesFile `
         -Archive $archive `
