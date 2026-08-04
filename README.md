@@ -6,10 +6,14 @@ and safely modifying .NET codebases.
 The repository and .NET tool package are named `dotnet-axi`. The installed
 command is `dnaxi`.
 
-See [REQUIREMENTS.md](REQUIREMENTS.md) for the product requirements.
+See
+[REQUIREMENTS.md](https://github.com/chuyflores-dev/dotnet-axi/blob/main/REQUIREMENTS.md)
+for the product requirements.
 Technical behavior and architecture are documented in the
-[reference index](docs/README.md). Durable delivery scope lives in
-[stories and epics](docs/stories/README.md); GitHub Issues track live status.
+[reference index](https://github.com/chuyflores-dev/dotnet-axi/blob/main/docs/README.md).
+Durable delivery scope lives in
+[stories and epics](https://github.com/chuyflores-dev/dotnet-axi/blob/main/docs/stories/README.md);
+GitHub Issues track live status.
 
 ## Install 0.2.0
 
@@ -38,8 +42,9 @@ dnx dotnet-axi@0.2.0 --verbosity quiet -- --version
 Version 0.2.0 exposes the passive workspace home view (`dnaxi`), structured
 help (`dnaxi --help`), and structured version output (`dnaxi --version`). It
 does not expose capability subcommands yet; treat the installed version's help
-as authoritative. See the [0.2.0 release notes](docs/releases/0.2.0.md) for the
-included foundations and known limitations.
+as authoritative. See the
+[0.2.0 release notes](https://github.com/chuyflores-dev/dotnet-axi/blob/main/docs/releases/0.2.0.md)
+for the included foundations and known limitations.
 
 ## Development
 
@@ -77,4 +82,5 @@ dnx dotnet-axi@0.2.0 \
 
 ## License
 
-Licensed under the [Apache License 2.0](LICENSE).
+Licensed under the
+[Apache License 2.0](https://github.com/chuyflores-dev/dotnet-axi/blob/main/LICENSE).
