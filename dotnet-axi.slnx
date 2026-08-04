@@ -21,6 +21,8 @@
     <Project Path="tests/DotNetAxi.Cli.TestApp/DotNetAxi.Cli.TestApp.csproj" />
     <Project Path="tests/DotNetAxi.Cli.Tests/DotNetAxi.Cli.Tests.csproj" />
     <Project Path="tests/DotNetAxi.Contracts.Tests/DotNetAxi.Contracts.Tests.csproj" />
+    <Project Path="tests/DotNetAxi.DotNet.ProcessTestApp/DotNetAxi.DotNet.ProcessTestApp.csproj" />
+    <Project Path="tests/DotNetAxi.DotNet.Tests/DotNetAxi.DotNet.Tests.csproj" />
     <Project Path="tests/DotNetAxi.Testing/DotNetAxi.Testing.csproj" />
     <Project Path="tests/DotNetAxi.Testing.Tests/DotNetAxi.Testing.Tests.csproj" />
     <Project Path="tests/DotNetAxi.Validation.Tests/DotNetAxi.Validation.Tests.csproj" />
