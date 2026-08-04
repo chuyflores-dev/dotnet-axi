@@ -2,10 +2,6 @@ schema: dotnet-axi/v1
 command: home
 status: success
 case: home
-suggestions[3]:
+suggestions[1]:
   - command: dnaxi
-    arguments[3]: search,symbol,<name>
-  - command: dnaxi
-    arguments[2]: analyze,changed
-  - command: dnaxi
-    arguments[3]: validate,"--profile",fast
+    arguments[1]: "--help"
