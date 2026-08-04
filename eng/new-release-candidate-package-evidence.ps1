@@ -37,30 +37,31 @@ if ([string]::IsNullOrWhiteSpace($ChecksumPath)) {
         "checksums.sha256")
 }
 
-$packages = @(
+$candidatePackageFiles = @(
     Get-ChildItem -LiteralPath $resolvedPackageDirectory -File |
-        Where-Object {
-            $_.Name -like "dotnet-axi.*.nupkg" -and
-            $_.Name -notlike "*.snupkg"
-        }
+        Where-Object { $_.Extension -iin @(".nupkg", ".snupkg") }
 )
-if ($packages.Count -ne 1) {
+if ($candidatePackageFiles.Count -ne 2) {
     throw (
-        "Expected one dotnet-axi .nupkg in '$resolvedPackageDirectory'; " +
-        "found $($packages.Count).")
+        "Expected exactly one package and one symbol package in " +
+        "'$resolvedPackageDirectory'; found " +
+        "$($candidatePackageFiles.Count) package files.")
 }
-$package = $packages[0]
-$symbolPackagePath = [System.IO.Path]::ChangeExtension(
-    $package.FullName,
-    ".snupkg")
-$symbolPackages = @(
-    Get-ChildItem -LiteralPath $resolvedPackageDirectory -File |
-        Where-Object { $_.Name -like "dotnet-axi.*.snupkg" }
-)
-if ($symbolPackages.Count -ne 1 -or
-    $symbolPackages[0].FullName -cne $symbolPackagePath) {
-    throw "Expected the symbol package '$symbolPackagePath' and no other .snupkg."
+$expectedPackagePath = [System.IO.Path]::Combine(
+    $resolvedPackageDirectory,
+    "dotnet-axi.$ExpectedVersion.nupkg")
+$expectedSymbolPackagePath = [System.IO.Path]::Combine(
+    $resolvedPackageDirectory,
+    "dotnet-axi.$ExpectedVersion.snupkg")
+foreach ($expectedPath in @(
+        $expectedPackagePath,
+        $expectedSymbolPackagePath)) {
+    if (-not (Test-Path -LiteralPath $expectedPath -PathType Leaf)) {
+        throw "Expected candidate package '$expectedPath' is missing."
+    }
 }
+$package = Get-Item -LiteralPath $expectedPackagePath
+$symbolPackagePath = $expectedSymbolPackagePath
 
 $archive = [System.IO.Compression.ZipFile]::OpenRead($package.FullName)
 try {

@@ -116,21 +116,33 @@ jobs:
           --configuration Release
           --no-build
 
+      - name: Prepare empty candidate directory
+        shell: pwsh
+        env:
+          PACKAGE_DIRECTORY: ${{ runner.temp }}/dotnet-axi-release-candidate
+        run: |
+          if (Test-Path -LiteralPath $env:PACKAGE_DIRECTORY) {
+            throw "Candidate package directory already exists."
+          }
+          [System.IO.Directory]::CreateDirectory(
+            $env:PACKAGE_DIRECTORY) | Out-Null
+
       - name: Pack exact candidate
         run: >-
           dotnet pack src/DotNetAxi.Cli/DotNetAxi.Cli.csproj
           --configuration Release
           --no-build
-          --output artifacts/release-candidate
+          --output "${{ runner.temp }}/dotnet-axi-release-candidate"
 
       - name: Run complete package verifier
         shell: pwsh
         env:
           CANDIDATE_COMMIT: ${{ inputs.commit }}
           CANDIDATE_VERSION: ${{ inputs.version }}
+          PACKAGE_DIRECTORY: ${{ runner.temp }}/dotnet-axi-release-candidate
         run: >-
           ./eng/verify-tool-package.ps1
-          -PackageDirectory artifacts/release-candidate
+          -PackageDirectory $env:PACKAGE_DIRECTORY
           -ExpectedVersion $env:CANDIDATE_VERSION
           -ExpectedCommit $env:CANDIDATE_COMMIT
 
@@ -139,9 +151,10 @@ jobs:
         env:
           CANDIDATE_COMMIT: ${{ inputs.commit }}
           CANDIDATE_VERSION: ${{ inputs.version }}
+          PACKAGE_DIRECTORY: ${{ runner.temp }}/dotnet-axi-release-candidate
         run: >-
           ./eng/new-release-candidate-package-evidence.ps1
-          -PackageDirectory artifacts/release-candidate
+          -PackageDirectory $env:PACKAGE_DIRECTORY
           -ExpectedCommit $env:CANDIDATE_COMMIT
           -ExpectedVersion $env:CANDIDATE_VERSION
 
@@ -161,10 +174,10 @@ jobs:
         with:
           name: ${{ steps.names.outputs.staging-artifact }}
           path: |
-            artifacts/release-candidate/*.nupkg
-            artifacts/release-candidate/*.snupkg
-            artifacts/release-candidate/checksums.sha256
-            artifacts/release-candidate/package-evidence.json
+            ${{ runner.temp }}/dotnet-axi-release-candidate/dotnet-axi.${{ inputs.version }}.nupkg
+            ${{ runner.temp }}/dotnet-axi-release-candidate/dotnet-axi.${{ inputs.version }}.snupkg
+            ${{ runner.temp }}/dotnet-axi-release-candidate/checksums.sha256
+            ${{ runner.temp }}/dotnet-axi-release-candidate/package-evidence.json
           if-no-files-found: error
           compression-level: 0
           retention-days: 1
@@ -304,8 +317,8 @@ jobs:
         with:
           name: ${{ steps.names.outputs.artifact-name }}
           path: |
-            artifacts/release-candidate/*.nupkg
-            artifacts/release-candidate/*.snupkg
+            artifacts/release-candidate/dotnet-axi.${{ inputs.version }}.nupkg
+            artifacts/release-candidate/dotnet-axi.${{ inputs.version }}.snupkg
             artifacts/release-candidate/checksums.sha256
             artifacts/release-candidate/release-candidate-evidence.json
           if-no-files-found: error

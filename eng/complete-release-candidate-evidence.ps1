@@ -70,13 +70,12 @@ if ($packageFiles.Count -ne 2) {
 }
 $actualPackageFiles = @(
     Get-ChildItem -LiteralPath $resolvedPackageDirectory -File |
-        Where-Object {
-            $_.Name -like "dotnet-axi.*.nupkg" -or
-            $_.Name -like "dotnet-axi.*.snupkg"
-        }
+        Where-Object { $_.Extension -iin @(".nupkg", ".snupkg") }
 )
 if ($actualPackageFiles.Count -ne 2) {
-    throw "Candidate bundle must contain one package and one symbol package."
+    throw (
+        "Candidate bundle must contain exactly one package and one symbol " +
+        "package; found $($actualPackageFiles.Count) package files.")
 }
 
 $expectedChecksumLines = [System.Collections.Generic.List[string]]::new()

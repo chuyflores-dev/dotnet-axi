@@ -334,10 +334,27 @@ function Invoke-Captured {
         [TimeSpan] $Timeout = [TimeSpan]::FromMinutes(2)
     )
 
-    $startInfo = [System.Diagnostics.ProcessStartInfo]::new()
-    $startInfo.FileName = Resolve-CommandPath `
+    $resolvedFileName = Resolve-CommandPath `
         -Command $FileName `
         -Environment $Environment
+    $startInfo = [System.Diagnostics.ProcessStartInfo]::new()
+    $isCommandScript = (
+        [System.OperatingSystem]::IsWindows() -and
+        [System.IO.Path]::GetExtension($resolvedFileName) -in
+            @(".cmd", ".bat")
+    )
+    if ($isCommandScript) {
+        $startInfo.FileName = [System.IO.Path]::Combine(
+            [System.Environment]::GetFolderPath(
+                [System.Environment+SpecialFolder]::System),
+            "cmd.exe")
+        $startInfo.ArgumentList.Add("/d")
+        $startInfo.ArgumentList.Add("/c")
+        $startInfo.ArgumentList.Add($resolvedFileName)
+    }
+    else {
+        $startInfo.FileName = $resolvedFileName
+    }
     $startInfo.UseShellExecute = $false
     $startInfo.CreateNoWindow = $true
     $startInfo.RedirectStandardOutput = $true
