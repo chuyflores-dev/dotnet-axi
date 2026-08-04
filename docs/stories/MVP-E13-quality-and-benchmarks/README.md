@@ -43,9 +43,12 @@ testing until the end.
 - [MVP-E13-S09 — Measure cold P95 performance](MVP-E13-S09-performance-harness.md)
 - [MVP-E13-S10 — Define the agent-task corpus](MVP-E13-S10-agent-task-corpus.md)
 - [MVP-E13-S11 — Build the agent benchmark runner](MVP-E13-S11-agent-benchmark-runner.md)
+- [MVP-E13-S12 — Produce release-gate evidence](MVP-E13-S12-release-gates.md)
 - [MVP-E13-S13 — Add the Codex benchmark adapter](MVP-E13-S13-codex-benchmark-adapter.md)
 - [MVP-E13-S14 — Add the Claude benchmark adapter](MVP-E13-S14-claude-benchmark-adapter.md)
-- [MVP-E13-S12 — Produce release-gate evidence](MVP-E13-S12-release-gates.md)
+- [MVP-E13-S15 — Measure 0.3.0 Codex discovery tasks](MVP-E13-S15-measure-0.3.0-codex-discovery.md)
+- [MVP-E13-S16 — Add 0.4.0 symbol-context tasks](MVP-E13-S16-symbol-context-corpus.md)
+- [MVP-E13-S17 — Measure the 0.4.0 Codex subset](MVP-E13-S17-measure-0.4.0-codex-subset.md)
 
 ## Complete when
 

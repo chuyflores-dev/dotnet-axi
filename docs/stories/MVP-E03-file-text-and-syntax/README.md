@@ -28,6 +28,7 @@ Compiler verification of candidates and symbol identity belong to `MVP-E04`.
 
 - `MVP-E01`
 - `MVP-E02`
+- `MVP-E08-S02`
 
 ## Stories
 

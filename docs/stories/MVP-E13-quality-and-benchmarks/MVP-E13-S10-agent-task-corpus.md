@@ -2,8 +2,8 @@
 
 ## Outcome
 
-A controlled task corpus represents the documented .NET discovery, semantic,
-diagnostic, validation, and targeted-change scenarios.
+A controlled initial task corpus represents the documented .NET
+source-discovery scenarios.
 
 ## Design
 
@@ -11,17 +11,18 @@ diagnostic, validation, and targeted-change scenarios.
 
 ## Boundary
 
-Mutation scenarios enter the MVP gate only when the release actually contains
-the corresponding supported mutation feature.
+Semantic, impact, diagnostic, validation, and mutation scenarios enter through
+separate milestone stories only when the release contains their corresponding
+supported capability.
 
 ## Acceptance
 
 - Each task has fixed repository state, success and safety oracles, permitted
   tools, timeout, required validation, and baseline/candidate applicability.
-- The initial corpus covers source-discovery tasks and expands only when the
-  corresponding product capability ships.
-- The complete corpus covers every MVP scenario category without embedding
-  condition-specific hidden guidance.
+- The corpus covers applicable file, text, structural, and stable syntax
+  discovery without condition-specific hidden guidance.
+- The schema supports later milestone extensions without treating unshipped
+  tasks as missing 0.3.0 evidence.
 - Deterministic oracles are used where possible; any model-judged criterion is
   explicit, blinded to the condition, and independently versioned.
 

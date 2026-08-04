@@ -43,6 +43,8 @@ do not read or retain agent transcripts.
 - [MVP-E09-S09 — Remove integrations](MVP-E09-S09-removal.md)
 - [MVP-E09-S10 — Report OpenCode as unsupported](MVP-E09-S10-opencode-capability.md)
 - [MVP-E09-S11 — Guide safe Codex worker startup](MVP-E09-S11-codex-worker-startup.md)
+- [MVP-E09-S12 — Teach source discovery in the Agent Skill](MVP-E09-S12-source-discovery-skill.md)
+- [MVP-E09-S13 — Teach symbol context in the Agent Skill](MVP-E09-S13-symbol-context-skill.md)
 
 ## Complete when
 

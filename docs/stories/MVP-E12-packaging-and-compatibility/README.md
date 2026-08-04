@@ -54,6 +54,10 @@ accelerators are outside the MVP.
 - [MVP-E12-S15 — Configure trusted NuGet publishing](MVP-E12-S15-trusted-publishing.md)
 - [MVP-E12-S16 — Prepare the 0.2.0 release candidate](MVP-E12-S16-release-candidate.md)
 - [MVP-E12-S17 — Publish and verify 0.2.0](MVP-E12-S17-publish-0.2.0.md)
+- [MVP-E12-S18 — Prepare the 0.3.0 release candidate](MVP-E12-S18-prepare-0.3.0-release-candidate.md)
+- [MVP-E12-S19 — Publish and verify 0.3.0](MVP-E12-S19-publish-0.3.0.md)
+- [MVP-E12-S20 — Prepare the 0.4.0 release candidate](MVP-E12-S20-prepare-0.4.0-release-candidate.md)
+- [MVP-E12-S21 — Publish and verify 0.4.0](MVP-E12-S21-publish-0.4.0.md)
 
 ## Complete when
 

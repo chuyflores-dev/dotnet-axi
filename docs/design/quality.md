@@ -238,6 +238,9 @@ Real-agent benchmarks are explicit, manually dispatched runs and never execute
 on every pull request. CI uses deterministic fake-agent self-tests for the
 harness. Credentials are supplied only to the selected adapter process and are
 never included in prompts, fixtures, trajectories, or published artifacts.
+Adapter readiness, corpus readiness, and a measured series are separate gates;
+a successful adapter smoke run does not satisfy a milestone's measured
+comparison.
 
 The initial Codex adapter uses supported noninteractive JSONL output and
 records the CLI version, exact model, reasoning setting, sandbox, instructions,
