@@ -21,6 +21,8 @@ story does not create `v0.2.0`, publish to NuGet, or create a GitHub Release.
   only the capability and compatibility actually verified for this milestone.
 - Release notes identify the included milestone outcomes and known limitations
   without making benchmark or full platform-matrix claims.
+- Release instructions identify the exact approved commit used by
+  `gh release create v0.2.0 --target <commit> --generate-notes`.
 - Candidate artifacts, checksums, package metadata, installation smoke tests,
   canonical checks, and CI pass for the proposed commit.
 - The package ID is still available immediately before release authorization.

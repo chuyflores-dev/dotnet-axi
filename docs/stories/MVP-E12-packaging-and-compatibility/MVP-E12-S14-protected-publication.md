@@ -1,9 +1,9 @@
-# MVP-E12-S14 — Protect External Publication
+# MVP-E12-S14 — Publish from a GitHub Release
 
 ## Outcome
 
-A manually approved workflow publishes one already-tagged, verified package
-and records the resulting release evidence.
+A published GitHub Release selects one tagged commit for verified, protected
+NuGet publication.
 
 ## Design
 
@@ -12,27 +12,27 @@ and records the resulting release evidence.
 
 ## Boundary
 
-Pull-request and `main` CI remain unable to publish. Implementing and dry-run
-testing the workflow does not authorize a NuGet push or GitHub Release.
+Pull-request and `main` CI remain unable to publish. Implementing the workflow
+or running candidate verification does not authorize a GitHub Release or a
+NuGet push.
 
 ## Acceptance
 
-- Manual input selects an existing `v<version>` tag whose commit belongs to
-  `main`; arbitrary commits and untagged versions are rejected.
-- Tests, packaging, package inspection, installation, and invocation complete
-  before the protected publishing job can start.
-- The protected job publishes the verified package and symbols only when the
-  version is absent from NuGet, then verifies public global and `dnx`
-  invocation before publishing the matching GitHub Release.
-- Permissions, credentials, artifacts, and concurrency are scoped to the
-  smallest job and release identity that need them.
+- Only a published GitHub Release with a `v<SemVer>` tag on a commit reachable
+  from `main` can select a release identity.
+- The reusable release-candidate workflow completes tests, package inspection,
+  installation, and cross-platform invocation before publication.
+- The protected job consumes that exact candidate and publishes its package
+  and symbols; an existing NuGet version fails rather than being skipped.
+- Repository access remains read-only, and only the final push step receives
+  the NuGet credential.
 
 ## Verification
 
-- A dry run exercises every pre-publication gate and retains evidence without
-  requesting credentials, pushing a package, or creating a GitHub Release.
-- Negative cases cover tag disagreement, non-main commits, duplicate package
-  versions, failed checks, and missing evidence.
+- A manually dispatched release-candidate run rehearses every non-publishing
+  package gate without requesting a credential or creating release state.
+- A focused, non-publishing CI verifier covers invalid tags, commits outside
+  `main`, failed candidate checks, and the protected push contract.
 
 ## Dependencies
 

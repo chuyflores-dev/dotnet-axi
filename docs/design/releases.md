@@ -84,10 +84,10 @@ a package in an isolated temporary store. Those jobs:
 - never receive the NuGet publishing credential; and
 - do not retain a package as an official release artifact.
 
-External publication requires an explicit release action. The future release
-workflow must be manually dispatched for an existing `v<version>` tag and use
-a protected GitHub environment that requires approval. It must refuse to
-publish unless:
+External publication begins when an authorized maintainer publishes a GitHub
+Release for `v<version>` at an exact commit from `main`. The release creates
+the tag when it does not already exist and triggers the release workflow. The
+workflow refuses to publish unless:
 
 - the tag identifies a commit on `main`;
 - tag, package, embedded tool version, and requested release version match;
@@ -97,19 +97,38 @@ publish unless:
   satisfy the target milestone; and
 - that package version has not already been published.
 
-Only the release workflow receives the NuGet credential. It publishes the
-`.nupkg` and symbol package, attaches verified artifacts and evidence to the
-GitHub Release, and reports the resulting package URL.
+The release workflow delegates verification to the reusable release-candidate
+workflow instead of rebuilding a second publication evidence system. That
+workflow remains manually runnable as a non-publishing rehearsal. It produces
+the exact package and symbol package after canonical tests, package inspection,
+and global, local, and `dnx` checks on Linux, macOS, and Windows.
+
+Only the protected publication job receives the NuGet credential, and only its
+final push step can use it. The job downloads the exact verified candidate and
+publishes its `.nupkg`; NuGet publishes the adjacent symbol package. Duplicate
+versions fail rather than being skipped. The NuGet package is the distributed
+tool, so the workflow does not copy package or evidence files onto the already
+published GitHub Release.
+
+The `release` environment requires approval and admits only `v*` tag refs.
+NuGet trusted publishing binds its short-lived credential to this repository,
+`release.yml`, that environment, and the selected NuGet owner. A scoped,
+expiring API key is a fallback only when the selected owner cannot use trusted
+publishing. Published GitHub Releases are immutable so their version tags
+cannot later move.
 
 ## Release procedure
 
-1. Complete the target capability and readiness issues, leaving the explicit
-   publication issue open.
-2. Merge a release PR containing final release notes and user-facing examples.
-3. Run the protected tag action for that commit as `v<version>`.
-4. Manually approve and run the protected release workflow for the tag.
-5. Verify installation and `dnx` execution from the public NuGet source.
-6. Publish the GitHub Release with its compatibility and quality evidence.
+1. Complete the target capability, publication, and trusted-publishing issues.
+2. Prepare and review a release-candidate pull request with final release notes
+   and user-facing examples, then run the non-publishing candidate workflow.
+3. After explicit release authorization, merge that pull request and record its
+   exact commit.
+4. Publish the release and create its tag with
+   `gh release create v<version> --target <exact-main-sha> --generate-notes`.
+5. Approve the protected `release` environment and let the release workflow
+   publish the verified package and symbols.
+6. Verify global, local, and `dnx` invocation from the public NuGet source.
 7. Confirm untagged `main` builds resolve to the next planned prerelease line,
    then close the publication issue and milestone.
 

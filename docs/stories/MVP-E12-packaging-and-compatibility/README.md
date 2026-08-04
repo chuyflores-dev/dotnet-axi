@@ -9,8 +9,8 @@ platform, SDK, and optional-engine compatibility matrix.
 
 - Global and local .NET tool packaging and invocation.
 - Version and capability reporting.
-- Tag-derived release versions, candidate verification, and protected
-  publishing.
+- Tag-derived release versions, candidate verification, and release-driven
+  trusted publishing.
 - Supported OS/RID and .NET SDK 8, 9, and 10 validation.
 - Roslyn/MSBuild host compatibility and isolated failure behavior.
 - Git, `rg`, and AST-grep discovery, version reporting, and graceful
@@ -50,7 +50,7 @@ accelerators are outside the MVP.
 - [MVP-E12-S11 — Derive versions from release tags](MVP-E12-S11-minver-versioning.md)
 - [MVP-E12-S12 — Produce release-candidate artifacts](MVP-E12-S12-release-candidate-artifacts.md)
 - [MVP-E12-S13 — Protect release-tag creation](MVP-E12-S13-protected-release-tag.md)
-- [MVP-E12-S14 — Protect external publication](MVP-E12-S14-protected-publication.md)
+- [MVP-E12-S14 — Publish from a GitHub Release](MVP-E12-S14-protected-publication.md)
 - [MVP-E12-S15 — Configure trusted NuGet publishing](MVP-E12-S15-trusted-publishing.md)
 - [MVP-E12-S16 — Prepare the 0.2.0 release candidate](MVP-E12-S16-release-candidate.md)
 - [MVP-E12-S17 — Publish and verify 0.2.0](MVP-E12-S17-publish-0.2.0.md)

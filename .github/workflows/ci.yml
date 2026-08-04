@@ -23,10 +23,6 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Verify protected release-tag controls
-        shell: pwsh
-        run: ./eng/verify-release-tag-workflow.ps1
-
       - name: Install .NET SDK
         uses: actions/setup-dotnet@v6
         with:
@@ -44,7 +40,7 @@ jobs:
       - name: Restore
         run: dotnet restore dotnet-axi.slnx
 
-      - name: Verify tag-derived versions
+      - name: Verify release versioning and publication controls
         shell: pwsh
         run: ./eng/verify-versioning.ps1
 

@@ -19,8 +19,8 @@ authorizes publication after approving the completed release candidate.
 
 - The candidate pull request is merged without unrelated changes, and its
   exact release commit receives the immutable `v0.2.0` tag.
-- Protected publication completes with the approved identity and produces the
-  matching NuGet package, symbols, GitHub Release, checksums, and evidence.
+- The published GitHub Release triggers protected publication of the matching
+  NuGet package and symbols.
 - Fresh public-source global, local, and `dnx` invocations report `0.2.0` and
   exercise the documented workspace-aware capability.
 - The `0.2.0` milestone closes only after public verification succeeds.
@@ -29,7 +29,7 @@ authorizes publication after approving the completed release candidate.
 
 - NuGet ownership, indexing, package metadata, symbols, install, update,
   uninstall, and one-shot execution are verified from clean temporary stores.
-- GitHub tag, release, package links, commit, and checksums agree.
+- GitHub tag, release, NuGet package links, commit, and version agree.
 
 ## Dependencies
 
