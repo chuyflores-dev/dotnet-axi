@@ -99,6 +99,30 @@ public sealed class BoundedCollection<T>
             truncated ? command : null);
     }
 
+    /// <summary>Creates a bounded collection from an engine observation.</summary>
+    public static BoundedCollection<T> FromObserved(
+        IEnumerable<T> items,
+        int? total,
+        bool totalKnown,
+        string? retrievalCommand = null)
+    {
+        ArgumentNullException.ThrowIfNull(items);
+        var copied = Array.AsReadOnly(items.Select(RequiredItem).ToArray());
+        if (total < 0 || (totalKnown && total is null) || (total is not null && total < copied.Count))
+        {
+            throw new ArgumentOutOfRangeException(nameof(total));
+        }
+
+        var truncated = !totalKnown || total > copied.Count;
+        var command = ContractGuards.OptionalText(retrievalCommand, nameof(retrievalCommand));
+        if (truncated && command is null)
+        {
+            throw new ArgumentException("Truncated output requires a concrete retrieval command.", nameof(retrievalCommand));
+        }
+
+        return new BoundedCollection<T>(copied, totalKnown ? total : null, truncated, truncated ? command : null);
+    }
+
     private static T RequiredItem(T item)
     {
         if (item is null)

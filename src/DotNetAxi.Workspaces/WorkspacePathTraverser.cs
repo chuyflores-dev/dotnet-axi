@@ -6,6 +6,7 @@ namespace DotNetAxi.Workspaces;
 
 public sealed class WorkspacePathTraverser : IWorkspacePathTraverser
 {
+    private readonly Action? _beforeDirectoryEntry;
     private static readonly string[] DefaultGeneratedPathPatterns =
     [
         "**/*.designer.cs",
@@ -14,9 +15,18 @@ public sealed class WorkspacePathTraverser : IWorkspacePathTraverser
         "**/*.generated.cs",
     ];
 
-    public IReadOnlyList<WorkspaceTraversalPath> Traverse(
-        WorkspaceTraversalRequest request)
+    public WorkspacePathTraverser()
     {
+    }
+
+    internal WorkspacePathTraverser(Action? beforeDirectoryEntry) =>
+        _beforeDirectoryEntry = beforeDirectoryEntry;
+
+    public IReadOnlyList<WorkspaceTraversalPath> Traverse(
+        WorkspaceTraversalRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
         ArgumentNullException.ThrowIfNull(request);
 
         var workspaceRoot = Path.GetFullPath(request.WorkspaceRoot);
@@ -66,13 +76,16 @@ public sealed class WorkspacePathTraverser : IWorkspacePathTraverser
                 includeGenerated,
                 readGitIgnore: true,
                 excludedDirectory: null,
-                paths);
+                paths,
+                cancellationToken,
+                _beforeDirectoryEntry);
         }
 
         foreach (var scope in explicitScopes.Where(scope =>
                      scope.IsExternal
                      && !IsSameOrDescendantPath(scope.FullPath, workspaceRoot)))
         {
+            cancellationToken.ThrowIfCancellationRequested();
             if (File.Exists(scope.FullPath))
             {
                 AddFile(
@@ -98,15 +111,13 @@ public sealed class WorkspacePathTraverser : IWorkspacePathTraverser
                     includeGenerated,
                     readGitIgnore: false,
                     excludedDirectory: traverseWorkspace ? workspaceRoot : null,
-                    paths);
+                    paths,
+                    cancellationToken,
+                    _beforeDirectoryEntry);
             }
         }
 
-        return Array.AsReadOnly(
-            paths
-                .Values
-                .OrderBy(static path => path.RelativePath, StringComparer.Ordinal)
-                .ToArray());
+        return OrderedPaths(paths, cancellationToken);
     }
 
     private static void EnumerateDirectory(
@@ -120,20 +131,32 @@ public sealed class WorkspacePathTraverser : IWorkspacePathTraverser
         bool includeGenerated,
         bool readGitIgnore,
         string? excludedDirectory,
-        Dictionary<string, WorkspaceTraversalPath> paths)
+        Dictionary<string, WorkspaceTraversalPath> paths,
+        CancellationToken cancellationToken,
+        Action? beforeDirectoryEntry)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         var rules = readGitIgnore
             ? inheritedRules
                 .Concat(ReadGitIgnore(directory, relativeDirectory, pathResolver))
                 .ToArray()
             : inheritedRules;
-        var entries = directory
-            .GetFileSystemInfos()
-            .OrderBy(static entry => entry.Name, StringComparer.Ordinal)
-            .ToArray();
+        var entries = new List<FileSystemInfo>();
+        foreach (var entry in directory.EnumerateFileSystemInfos())
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            beforeDirectoryEntry?.Invoke();
+            cancellationToken.ThrowIfCancellationRequested();
+            entries.Add(entry);
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+        entries.Sort(static (left, right) => StringComparer.Ordinal.Compare(left.Name, right.Name));
+        cancellationToken.ThrowIfCancellationRequested();
 
         foreach (var entry in entries)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             if (entry is DirectoryInfo child)
             {
                 if ((excludedDirectory is not null
@@ -166,7 +189,9 @@ public sealed class WorkspacePathTraverser : IWorkspacePathTraverser
                     includeGenerated,
                     readGitIgnore,
                     excludedDirectory,
-                    paths);
+                    paths,
+                    cancellationToken,
+                    beforeDirectoryEntry);
                 continue;
             }
 
@@ -183,6 +208,25 @@ public sealed class WorkspacePathTraverser : IWorkspacePathTraverser
                     paths);
             }
         }
+    }
+
+    private static IReadOnlyList<WorkspaceTraversalPath> OrderedPaths(
+        IReadOnlyDictionary<string, WorkspaceTraversalPath> paths,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var ordered = paths.Values.ToList();
+        cancellationToken.ThrowIfCancellationRequested();
+        ordered.Sort(static (left, right) => StringComparer.Ordinal.Compare(left.RelativePath, right.RelativePath));
+        cancellationToken.ThrowIfCancellationRequested();
+        var copied = new WorkspaceTraversalPath[ordered.Count];
+        for (var index = 0; index < ordered.Count; index++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            copied[index] = ordered[index];
+        }
+
+        return Array.AsReadOnly(copied);
     }
 
     private static void AddFile(

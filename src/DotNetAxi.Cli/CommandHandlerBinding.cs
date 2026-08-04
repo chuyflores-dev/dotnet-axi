@@ -1,4 +1,5 @@
 using System.CommandLine;
+using DotNetAxi.Contracts;
 
 namespace DotNetAxi.Cli;
 
@@ -17,16 +18,30 @@ public static class CommandHandlerBinding
 
         command.SetAction(async (parseResult, cancellationToken) =>
         {
-            var request = bindRequest(parseResult);
-            var handler = handlerFactory()
-                ?? throw new InvalidOperationException("The command handler factory returned null.");
-            var result = await handler
-                .HandleAsync(request, cancellationToken)
-                .ConfigureAwait(false);
+            try
+            {
+                var request = bindRequest(parseResult);
+                var handler = handlerFactory()
+                    ?? throw new InvalidOperationException("The command handler factory returned null.");
+                var result = await handler
+                    .HandleAsync(request, cancellationToken)
+                    .ConfigureAwait(false);
 
-            return await responseWriter
-                .WriteAsync(result, cancellationToken)
-                .ConfigureAwait(false);
+                return await responseWriter
+                    .WriteAsync(result, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            catch (CommandUsageException exception)
+            {
+                var result = CommandResult<UsagePayload>.Failed(
+                    CommandName.From(parseResult),
+                    [new ResultError(exception.Code, exception.Message, exception.Correction)]);
+                return await responseWriter
+                    .WriteAsync(result, CliExitCode.Usage, cancellationToken)
+                    .ConfigureAwait(false);
+            }
         });
     }
+
+    private sealed record UsagePayload;
 }
