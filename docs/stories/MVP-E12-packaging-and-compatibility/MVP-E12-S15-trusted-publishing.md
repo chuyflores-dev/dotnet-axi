@@ -16,8 +16,8 @@ or approve a release deployment.
 
 ## Acceptance
 
-- A GitHub release environment requires manual approval and restricts the refs
-  allowed to deploy.
+- Published GitHub Releases are immutable, and the protected `release`
+  environment requires manual approval for `v*` tags only.
 - The NuGet trusted-publishing policy identifies the repository, publication
   workflow, environment, and intended package owner.
 - The publication job requests only short-lived OIDC credentials immediately
@@ -29,8 +29,8 @@ or approve a release deployment.
 
 - Repository environment settings and workflow permissions match the trusted
   publisher policy without exposing secret values.
-- A dry run proves that non-publishing jobs neither request nor receive a NuGet
-  credential.
+- A release-candidate run proves that non-publishing jobs neither request nor
+  receive a NuGet credential.
 
 ## Dependencies
 

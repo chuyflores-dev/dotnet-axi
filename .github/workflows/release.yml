@@ -1,0 +1,123 @@
+name: Publish release
+
+on:
+  release:
+    types:
+      - published
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.event.release.tag_name }}
+  cancel-in-progress: false
+
+jobs:
+  validate-release:
+    runs-on: ubuntu-latest
+    outputs:
+      release-commit: ${{ steps.release.outputs.release-commit }}
+      release-version: ${{ steps.release.outputs.release-version }}
+
+    steps:
+      - name: Check out the published release
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ github.event.release.tag_name }}
+
+      - name: Validate release identity
+        id: release
+        shell: pwsh
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          RELEASE_COMMIT: ${{ github.sha }}
+        run: |
+          if (-not $env:RELEASE_TAG.StartsWith("v")) {
+            throw "Release tag must use the v<SemVer> form."
+          }
+          $version = $env:RELEASE_TAG.Substring(1)
+          ./eng/assert-release-candidate-inputs.ps1 `
+            -CandidateCommit $env:RELEASE_COMMIT `
+            -CandidateVersion $version `
+            -ReleaseTag $env:RELEASE_TAG `
+            -MainRef refs/remotes/origin/main
+
+          "release-commit=$env:RELEASE_COMMIT" >> $env:GITHUB_OUTPUT
+          "release-version=$version" >> $env:GITHUB_OUTPUT
+
+  verify-candidate:
+    needs: validate-release
+    permissions:
+      contents: read
+    uses: ./.github/workflows/release-candidate.yml
+    with:
+      commit: ${{ needs.validate-release.outputs.release-commit }}
+      version: ${{ needs.validate-release.outputs.release-version }}
+
+  publish-nuget:
+    needs:
+      - validate-release
+      - verify-candidate
+    runs-on: ubuntu-latest
+    environment:
+      name: release
+    permissions:
+      contents: read
+
+    steps:
+      - name: Check out the verified release
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+          ref: ${{ needs.validate-release.outputs.release-commit }}
+
+      - name: Install .NET SDK
+        uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+
+      - name: Download verified release candidate
+        uses: actions/download-artifact@v8
+        with:
+          name: ${{ needs.verify-candidate.outputs.artifact-name }}
+          path: artifacts/release-candidate
+
+      - name: Confirm verified candidate identity
+        shell: pwsh
+        env:
+          RELEASE_COMMIT: ${{ needs.validate-release.outputs.release-commit }}
+          RELEASE_VERSION: ${{ needs.validate-release.outputs.release-version }}
+          VERIFIED_COMMIT: ${{ needs.verify-candidate.outputs.candidate-commit }}
+          VERIFIED_VERSION: ${{ needs.verify-candidate.outputs.candidate-version }}
+          VERIFIED_DIGEST: ${{ needs.verify-candidate.outputs.artifact-digest }}
+        run: |
+          if ($env:VERIFIED_COMMIT -cne $env:RELEASE_COMMIT -or
+              $env:VERIFIED_VERSION -cne $env:RELEASE_VERSION) {
+            throw "Verified candidate identity disagrees with the release."
+          }
+          if ($env:VERIFIED_DIGEST -cnotmatch '^[0-9a-f]{64}$') {
+            throw "Verified candidate artifact digest is missing or invalid."
+          }
+          foreach ($extension in @("nupkg", "snupkg")) {
+            $path = "artifacts/release-candidate/dotnet-axi.$env:RELEASE_VERSION.$extension"
+            if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
+              throw "Verified candidate package '$path' is missing."
+            }
+          }
+
+      - name: Publish package and symbols to NuGet
+        shell: pwsh
+        env:
+          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+          RELEASE_VERSION: ${{ needs.validate-release.outputs.release-version }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:NUGET_API_KEY)) {
+            throw "The protected release job did not receive a NuGet credential."
+          }
+          dotnet nuget push `
+            "artifacts/release-candidate/dotnet-axi.$env:RELEASE_VERSION.nupkg" `
+            --source https://api.nuget.org/v3/index.json `
+            --timeout 600 `
+            --force-english-output

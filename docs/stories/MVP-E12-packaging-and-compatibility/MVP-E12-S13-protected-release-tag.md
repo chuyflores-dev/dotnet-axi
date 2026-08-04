@@ -2,8 +2,8 @@
 
 ## Outcome
 
-An explicitly approved workflow can create one validated release tag on an
-exact commit from `main`.
+An authorized GitHub Release creates one version tag on an exact commit from
+`main`, and the published release makes that tag immutable.
 
 ## Design
 
@@ -11,25 +11,26 @@ exact commit from `main`.
 
 ## Boundary
 
-The workflow supports a no-write dry run. Creating a real tag remains a
-separate release action and is not authorized by implementing this story.
+Configuring and validating the release path does not authorize creating a tag
+or publishing a GitHub Release.
 
 ## Acceptance
 
-- Inputs identify an exact version and commit; the workflow derives the tag as
-  `v<version>` rather than accepting an arbitrary ref name.
-- It refuses commits outside `main`, non-SemVer versions, existing or
-  conflicting tags, and candidates that fail release verification.
-- Only the tag-creation job receives `contents: write`, and that job is gated
-  by the protected release environment.
-- Repeated or concurrent requests cannot move or replace a release tag.
+- The release command identifies an exact commit from `main` and a
+  `v<SemVer>` tag.
+- The release workflow refuses malformed tags, commits outside `main`, and
+  tags that disagree with the release event.
+- Published GitHub Releases are immutable, so their tags cannot move or be
+  replaced.
+- Repeated publication uses the existing release identity rather than creating
+  a second tag.
 
 ## Verification
 
-- Dry-run cases cover valid input and every refusal condition without creating
-  a ref.
-- Workflow permissions and concurrency are inspected as enforceable release
-  controls.
+- Release-candidate verification exercises the non-publishing gates without
+  creating a ref.
+- Workflow identity checks and repository release settings are inspected
+  without creating a GitHub Release.
 
 ## Dependencies
 
