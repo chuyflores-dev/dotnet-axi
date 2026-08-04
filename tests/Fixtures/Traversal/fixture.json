@@ -1,0 +1,129 @@
+{
+  "schema": "dotnet-axi/fixture/v1",
+  "name": "shared-traversal",
+  "seed": 2701,
+  "sdk": {
+    "version": "10.0.302",
+    "rollForward": "latestPatch",
+    "allowPrerelease": false
+  },
+  "files": [
+    {
+      "path": ".gitignore",
+      "template": "templates/.gitignore",
+      "expandTokens": false
+    },
+    {
+      "path": ".hidden/Visible.cs",
+      "template": "templates/Source.cs",
+      "expandTokens": false
+    },
+    {
+      "path": ".ignore",
+      "template": "templates/ignore-rules.txt",
+      "expandTokens": false
+    },
+    {
+      "path": ".rgignore",
+      "template": "templates/ignore-rules.txt",
+      "expandTokens": false
+    },
+    {
+      "path": "bin/Build.cs",
+      "template": "templates/Source.cs",
+      "expandTokens": false
+    },
+    {
+      "path": "configured/Excluded.cs",
+      "template": "templates/Source.cs",
+      "expandTokens": false
+    },
+    {
+      "path": "explicit/Included.cs",
+      "template": "templates/Source.cs",
+      "expandTokens": false
+    },
+    {
+      "path": "generated/HeaderGenerated.cs",
+      "template": "templates/Generated.cs",
+      "expandTokens": false
+    },
+    {
+      "path": "generated/Form1.Designer.cs",
+      "template": "templates/Source.cs",
+      "expandTokens": false
+    },
+    {
+      "path": "generated/PatternGenerated.cs",
+      "template": "templates/Source.cs",
+      "expandTokens": false
+    },
+    {
+      "path": "generated/Suffix.g.cs",
+      "template": "templates/Source.cs",
+      "expandTokens": false
+    },
+    {
+      "path": "ignored/ByGitIgnore.cs",
+      "template": "templates/Source.cs",
+      "expandTokens": false
+    },
+    {
+      "path": "ignored-by-info.cs",
+      "template": "templates/Source.cs",
+      "expandTokens": false
+    },
+    {
+      "path": "ignored-by-global.cs",
+      "template": "templates/Source.cs",
+      "expandTokens": false
+    },
+    {
+      "path": "ignored-by-parent.cs",
+      "template": "templates/Source.cs",
+      "expandTokens": false
+    },
+    {
+      "path": "ignored-by-rg.cs",
+      "template": "templates/Source.cs",
+      "expandTokens": false
+    },
+    {
+      "path": "ignored-by-the-tool-yaml.cs",
+      "template": "templates/Source.cs",
+      "expandTokens": false
+    },
+    {
+      "path": "obj/Build.cs",
+      "template": "templates/Source.cs",
+      "expandTokens": false
+    },
+    {
+      "path": "nested/.gitignore",
+      "template": "templates/nested.gitignore",
+      "expandTokens": false
+    },
+    {
+      "path": "nested/Excluded.cs",
+      "template": "templates/Source.cs",
+      "expandTokens": false
+    },
+    {
+      "path": "src/Included.cs",
+      "template": "templates/Source.cs",
+      "expandTokens": false
+    },
+    {
+      "path": "dotnet-axi.yml",
+      "template": "templates/dotnet-axi.yml",
+      "expandTokens": false
+    }
+  ],
+  "externalFiles": [
+    {
+      "path": "External.cs",
+      "template": "templates/Source.cs",
+      "expandTokens": false
+    }
+  ]
+}
