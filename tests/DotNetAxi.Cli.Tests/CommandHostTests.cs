@@ -156,16 +156,15 @@ public sealed class CommandHostTests
             new StringWriter(),
             new StringWriter());
 
-        var operation = Assert.Single(host.Operations);
-        Assert.Equal("home", operation.Name);
-        Assert.Same(OperationPolicy.Passive, operation.Policy);
-        Assert.InRange(operation.Examples.Count, 2, 3);
-        Assert.False(operation.Policy.MayAccessNetwork);
-        Assert.False(operation.Policy.MayExecuteRepositoryCode);
-        Assert.False(operation.Policy.MayWriteArtifacts);
-        Assert.False(operation.Policy.MayWriteMetadata);
-        Assert.False(operation.Policy.MayWriteUserState);
-        Assert.False(operation.Policy.MayWriteSource);
+        Assert.Collection(host.Operations,
+            operation => Assert.Equal("home", operation.Name),
+            operation => Assert.Equal("search", operation.Name),
+            operation => Assert.Equal("search text", operation.Name));
+        Assert.All(host.Operations, operation =>
+        {
+            Assert.Same(OperationPolicy.Passive, operation.Policy);
+            Assert.InRange(operation.Examples.Count, 2, 3);
+        });
 
         host.Parse([]);
     }

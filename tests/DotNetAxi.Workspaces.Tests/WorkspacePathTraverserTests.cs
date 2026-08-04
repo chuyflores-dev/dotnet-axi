@@ -5,6 +5,38 @@ namespace DotNetAxi.Workspaces.Tests;
 
 public sealed class WorkspacePathTraverserTests
 {
+    [Fact]
+    public void Pre_cancelled_traversal_does_not_enumerate_the_workspace()
+    {
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+
+        Assert.Throws<OperationCanceledException>(() => _traverser.Traverse(new WorkspaceTraversalRequest(Directory.GetCurrentDirectory()), cancellation.Token));
+    }
+
+    [Fact]
+    public void Active_cancellation_stops_directory_enumeration_before_sorting_and_materialization()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "dotnet-axi-traversal-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try
+        {
+            File.WriteAllText(Path.Combine(root, "first.cs"), "class First { }");
+            File.WriteAllText(Path.Combine(root, "second.cs"), "class Second { }");
+            using var cancellation = new CancellationTokenSource();
+            var observedEntries = 0;
+            var traverser = new WorkspacePathTraverser(() =>
+            {
+                observedEntries++;
+                cancellation.Cancel();
+            });
+
+            Assert.Throws<OperationCanceledException>(() => traverser.Traverse(new WorkspaceTraversalRequest(root), cancellation.Token));
+            Assert.Equal(1, observedEntries);
+        }
+        finally { Directory.Delete(root, recursive: true); }
+    }
+
     private readonly RepositoryFixtureFactory _fixtures = new();
     private readonly WorkspacePathTraverser _traverser = new();
 

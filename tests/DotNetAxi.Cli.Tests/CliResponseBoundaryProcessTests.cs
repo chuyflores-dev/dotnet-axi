@@ -196,7 +196,7 @@ public sealed class CliResponseBoundaryProcessTests
             "classification: passive\n",
             result.StandardOutput);
         Assert.Contains("arguments: []\n", result.StandardOutput);
-        Assert.Contains("subcommands: []\n", result.StandardOutput);
+        Assert.Contains("search,Search the current workspace.,passive", result.StandardOutput);
         Assert.Contains(
             "dnaxi --version",
             result.StandardOutput);

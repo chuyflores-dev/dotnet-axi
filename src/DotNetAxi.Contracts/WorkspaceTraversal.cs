@@ -123,5 +123,6 @@ public sealed record WorkspaceTraversalPath
 public interface IWorkspacePathTraverser
 {
     IReadOnlyList<WorkspaceTraversalPath> Traverse(
-        WorkspaceTraversalRequest request);
+        WorkspaceTraversalRequest request,
+        CancellationToken cancellationToken = default);
 }

@@ -46,6 +46,10 @@ Literal search is the default. The command MUST support `--regex`,
 case-sensitive and insensitive modes, path/project scope, changed-file scope,
 and explicit generated-code inclusion.
 
+Before compilation is needed, `--project` resolves the selected project through
+workspace-selection precedence and restricts ordinary text search to that
+project's directory; it does not imply evaluated project-item ownership.
+
 The tool MAY use `rg` when available, but the built-in engine defines the
 stable contract and MUST remain available as a fallback.
 
