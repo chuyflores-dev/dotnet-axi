@@ -9,6 +9,8 @@
       Condition="'$(DotNetAxiBuildVersion)' == ''">0.2.0-alpha.0.local</DotNetAxiBuildVersion>
     <Version>$(DotNetAxiBuildVersion)</Version>
     <PackageVersion>$(DotNetAxiBuildVersion)</PackageVersion>
+    <InformationalVersion>$(DotNetAxiBuildVersion)</InformationalVersion>
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
     <ContinuousIntegrationBuild Condition="'$(CI)' == 'true'">true</ContinuousIntegrationBuild>
   </PropertyGroup>
 </Project>

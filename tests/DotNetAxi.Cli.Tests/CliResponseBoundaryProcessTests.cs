@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Reflection;
 
 namespace DotNetAxi.Cli.Tests;
 
@@ -160,11 +161,16 @@ public sealed class CliResponseBoundaryProcessTests
     public async Task Built_cli_reports_its_embedded_package_version()
     {
         var expectedVersion = DotNetAxi.Cli.ToolVersion.Current;
+        var informationalVersion = typeof(DotNetAxi.Cli.Program)
+            .Assembly
+            .GetCustomAttribute<AssemblyInformationalVersionAttribute>()
+            ?.InformationalVersion;
         var result = await RunApplicationAsync(
             ProductionApplicationPath(),
             "--version");
 
         Assert.Equal(0, result.ExitCode);
+        Assert.Equal(expectedVersion, informationalVersion);
         Assert.Contains("command: version\n", result.StandardOutput);
         Assert.Contains(
             $"tool_version: {expectedVersion}\n",
