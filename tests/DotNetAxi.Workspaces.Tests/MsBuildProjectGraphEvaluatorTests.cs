@@ -1,4 +1,5 @@
-using System.Diagnostics;
+using DotNetAxi.Contracts;
+using DotNetAxi.DotNet;
 using DotNetAxi.Testing;
 
 namespace DotNetAxi.Workspaces.Tests;
@@ -7,7 +8,8 @@ public sealed class MsBuildProjectGraphEvaluatorTests
 {
     private readonly WorkspaceDiscoverer _discoverer = new();
     private readonly WorkspaceEntryPointSelector _selector = new();
-    private readonly MsBuildProjectGraphEvaluator _evaluator = new();
+    private readonly MsBuildProjectGraphEvaluator _evaluator =
+        new(new DotNetHostResolver());
     private readonly RepositoryFixtureFactory _fixtures = new();
 
     [Theory]
@@ -809,7 +811,7 @@ public sealed class MsBuildProjectGraphEvaluatorTests
             discovery,
             new WorkspaceSelectionRequest(solution: "Graph.slnx"));
         var evaluator = new MsBuildProjectGraphEvaluator(
-            new MsBuildRuntimeAuthority(),
+            new DotNetHostResolver(),
             static _ => throw new IOException("Rejected solution."));
 
         var graph = evaluator.Evaluate(discovery, selection);
@@ -1048,404 +1050,24 @@ public sealed class MsBuildProjectGraphEvaluatorTests
                 is ProjectEvaluationFailureReason.CircularDependency);
     }
 
-    [Fact]
-    public async Task Host_runner_cancellation_kills_the_entire_process_tree_and_preserves_token()
-    {
-        var process = new StubHostProcess(
-            TextReader.Null,
-            TextReader.Null,
-            exitImmediately: false);
-        var factory = new StubHostProcessFactory(process);
-        var runner = HostRunner(factory, timeout: TimeSpan.FromMinutes(1));
-        using var cancellation = new CancellationTokenSource();
-        var run = Task.Run(() => runner.Run(
-            Path.GetTempPath(),
-            ["--version"],
-            cancellation.Token));
-        await factory.Started.Task.WaitAsync(TimeSpan.FromSeconds(5));
-
-        cancellation.Cancel();
-        var exception = await Assert.ThrowsAnyAsync<OperationCanceledException>(
-            async () => await run);
-
-        Assert.Equal(cancellation.Token, exception.CancellationToken);
-        Assert.True(process.KillCalled);
-        Assert.True(process.EntireProcessTree);
-        Assert.False(process.ParentAlive);
-        Assert.False(process.ChildAlive);
-        Assert.True(process.Disposed);
-    }
-
-    [Fact]
-    public async Task Host_runner_timeout_bounds_post_exit_drains_and_kills_surviving_children()
-    {
-        var blockingOutput = new CancellationAwareTextReader();
-        var process = new StubHostProcess(
-            blockingOutput,
-            TextReader.Null,
-            exitImmediately: true);
-        var factory = new StubHostProcessFactory(process);
-        var runner = HostRunner(factory, timeout: TimeSpan.Zero);
-
-        var result = runner.Run(
-            Path.GetTempPath(),
-            ["--list-sdks"],
-            CancellationToken.None);
-
-        Assert.Equal(-1, result.ExitCode);
-        Assert.Empty(result.StandardOutput);
-        Assert.Empty(result.StandardError);
-        await blockingOutput.CancellationObserved.WaitAsync(
-            TimeSpan.FromSeconds(5));
-        Assert.True(process.KillCalled);
-        Assert.True(process.EntireProcessTree);
-        Assert.False(process.ChildAlive);
-        Assert.True(process.Disposed);
-    }
-
-    [Fact]
-    public async Task Host_runner_bounds_uncooperative_process_and_read_operations()
-    {
-        var process = new UncooperativeHostProcess();
-        var factory = new StubHostProcessFactory(process);
-        var runner = HostRunner(factory, timeout: TimeSpan.Zero);
-
-        var run = Task.Run(() => runner.Run(
-            Path.GetTempPath(),
-            ["--version"],
-            CancellationToken.None));
-        var result = await run.WaitAsync(TimeSpan.FromSeconds(5));
-
-        Assert.Equal(-1, result.ExitCode);
-        Assert.Empty(result.StandardOutput);
-        Assert.Empty(result.StandardError);
-        Assert.True(process.KillCalled);
-        Assert.True(process.EntireProcessTree);
-        Assert.True(process.Disposed);
-
-        process.FailPendingOperations();
-        Assert.True(process.ExitOperation.IsFaulted);
-        Assert.True(process.Output.Operation.IsFaulted);
-    }
-
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void Host_runner_caps_output_and_kills_the_entire_process_tree_on_overflow(
-        bool overflowStandardError)
-    {
-        const int outputLimit = 32;
-        var output = new TrackingTextReader(new string('x', 4096));
-        var process = new StubHostProcess(
-            overflowStandardError ? TextReader.Null : output,
-            overflowStandardError ? output : TextReader.Null,
-            exitImmediately: false);
-        var factory = new StubHostProcessFactory(process);
-        var runner = HostRunner(
-            factory,
-            timeout: TimeSpan.FromMinutes(1),
-            outputLimit);
-
-        var result = runner.Run(
-            Path.GetTempPath(),
-            ["--version"],
-            CancellationToken.None);
-
-        Assert.Equal(-1, result.ExitCode);
-        Assert.Empty(result.StandardOutput);
-        Assert.Empty(result.StandardError);
-        Assert.InRange(output.CharactersRead, 1, outputLimit + 1);
-        Assert.True(process.KillCalled);
-        Assert.True(process.EntireProcessTree);
-        Assert.False(process.ParentAlive);
-        Assert.False(process.ChildAlive);
-        Assert.True(process.Disposed);
-    }
-
-    [Fact]
-    public void Posix_path_resolution_skips_non_executable_dotnet_candidate()
-    {
-        var firstDirectory = Path.Combine(Path.GetTempPath(), "first-dotnet");
-        var secondDirectory = Path.Combine(Path.GetTempPath(), "second-dotnet");
-        var firstCandidate = Path.GetFullPath(
-            Path.Combine(firstDirectory, "dotnet"));
-        var secondCandidate = Path.GetFullPath(
-            Path.Combine(secondDirectory, "dotnet"));
-        var pathValue = string.Join(
-            Path.PathSeparator,
-            firstDirectory,
-            secondDirectory);
-
-        var resolved = PathDotNetHostRunner.ResolveHostPath(
-            pathValue,
-            isWindows: false,
-            candidate => candidate.Equals(firstCandidate, StringComparison.Ordinal)
-                         || candidate.Equals(
-                             secondCandidate,
-                             StringComparison.Ordinal),
-            candidate => candidate.Equals(
-                secondCandidate,
-                StringComparison.Ordinal));
-
-        Assert.Equal(secondCandidate, resolved);
-    }
-
-    [Fact]
-    public void Posix_path_resolution_honors_an_empty_current_directory_component()
-    {
-        var currentDirectoryCandidate = Path.GetFullPath("dotnet");
-        var fallbackDirectory = Path.Combine(
-            Path.GetTempPath(),
-            "fallback-dotnet");
-        var fallbackCandidate = Path.Combine(fallbackDirectory, "dotnet");
-
-        var resolved = PathDotNetHostRunner.ResolveHostPath(
-            string.Concat(Path.PathSeparator, fallbackDirectory),
-            isWindows: false,
-            candidate => candidate.Equals(
-                             currentDirectoryCandidate,
-                             StringComparison.Ordinal)
-                         || candidate.Equals(
-                             fallbackCandidate,
-                             StringComparison.Ordinal),
-            static _ => true);
-
-        Assert.Equal(currentDirectoryCandidate, resolved);
-    }
-
-    [Theory]
-    [InlineData(" sdk with spaces ")]
-    [InlineData("\"quoted-sdk\"")]
-    public void Posix_path_resolution_preserves_component_text(string directory)
-    {
-        var expected = Path.GetFullPath(Path.Combine(directory, "dotnet"));
-
-        var resolved = PathDotNetHostRunner.ResolveHostPath(
-            directory,
-            isWindows: false,
-            candidate => candidate.Equals(expected, StringComparison.Ordinal),
-            static _ => true);
-
-        Assert.Equal(expected, resolved);
-    }
-
-    [Fact]
-    public void Posix_executable_authority_uses_the_callers_permission_class()
-    {
-        if (OperatingSystem.IsWindows()
-            || PosixProcessAuthority.UsesSuperUserExecutionSemantics)
-        {
-            return;
-        }
-
-        var root = Path.Combine(
-            Path.GetTempPath(),
-            $"dnaxi-executable-{Guid.NewGuid():N}");
-        var firstDirectory = Path.Combine(root, "first");
-        var secondDirectory = Path.Combine(root, "second");
-        Directory.CreateDirectory(firstDirectory);
-        Directory.CreateDirectory(secondDirectory);
-        var firstCandidate = Path.Combine(firstDirectory, "dotnet");
-        var secondCandidate = Path.Combine(secondDirectory, "dotnet");
-
-        try
-        {
-            File.WriteAllText(firstCandidate, "not executable by its owner");
-            File.WriteAllText(secondCandidate, "executable by its owner");
-            File.SetUnixFileMode(
-                firstCandidate,
-                UnixFileMode.OtherExecute);
-            File.SetUnixFileMode(
-                secondCandidate,
-                UnixFileMode.UserExecute);
-
-            Assert.False(PosixProcessAuthority.CanExecute(firstCandidate));
-            Assert.True(PosixProcessAuthority.CanExecute(secondCandidate));
-
-            var resolved = PathDotNetHostRunner.ResolveHostPath(
-                string.Join(
-                    Path.PathSeparator,
-                    firstDirectory,
-                    secondDirectory),
-                isWindows: false,
-                File.Exists,
-                PosixProcessAuthority.CanExecute);
-
-            Assert.Equal(secondCandidate, resolved);
-        }
-        finally
-        {
-            Directory.Delete(root, recursive: true);
-        }
-    }
-
-    [Fact]
-    public void Posix_contained_host_preserves_cwd_arguments_and_output()
-    {
-        if (OperatingSystem.IsWindows())
-        {
-            return;
-        }
-
-        var root = Path.Combine(
-            Path.GetTempPath(),
-            $"dnaxi-contained-success-{Guid.NewGuid():N}",
-            "working directory");
-        Directory.CreateDirectory(root);
-        File.WriteAllText(
-            Path.Combine(root, "working-directory.marker"),
-            string.Empty);
-        var script = WriteExecutableScript(
-            root,
-            "host",
-            """
-            #!/bin/sh
-            test -f working-directory.marker || exit 13
-            printf 'cwd-ok|%s\n' "$1"
-            printf 'host-error\n' >&2
-            """);
-
-        try
-        {
-            var runner = new PathDotNetHostRunner(
-                new SystemDotNetHostProcessFactory(),
-                () => script,
-                TimeSpan.FromSeconds(5),
-                4096);
-
-            var result = runner.Run(
-                root,
-                ["argument with spaces"],
-                CancellationToken.None);
-
-            Assert.Equal(0, result.ExitCode);
-            Assert.Equal(
-                "cwd-ok|argument with spaces\n",
-                result.StandardOutput);
-            Assert.Equal("host-error\n", result.StandardError);
-        }
-        finally
-        {
-            Directory.Delete(
-                Directory.GetParent(root)!.FullName,
-                recursive: true);
-        }
-    }
-
-    [Fact]
-    public async Task Posix_completion_terminates_the_owned_group_before_reaping()
-    {
-        if (OperatingSystem.IsWindows())
-        {
-            return;
-        }
-
-        var root = Path.Combine(
-            Path.GetTempPath(),
-            $"dnaxi-contained-tree-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(root);
-        var childPidPath = Path.Combine(root, "child.pid");
-        var script = WriteExecutableScript(
-            root,
-            "host",
-            """
-            #!/bin/sh
-            sleep 30 &
-            child=$!
-            printf '%s' "$child" > "$1"
-            printf 'leader-finished\n'
-            exit 0
-            """);
-        var childPid = 0;
-
-        try
-        {
-            var runner = new PathDotNetHostRunner(
-                new SystemDotNetHostProcessFactory(),
-                () => script,
-                TimeSpan.FromMilliseconds(500),
-                4096);
-            var stopwatch = Stopwatch.StartNew();
-
-            var result = runner.Run(
-                root,
-                [childPidPath],
-                CancellationToken.None);
-
-            stopwatch.Stop();
-            Assert.Equal(0, result.ExitCode);
-            Assert.True(
-                stopwatch.Elapsed < TimeSpan.FromSeconds(5),
-                $"Contained host took {stopwatch.Elapsed}.");
-            Assert.True(File.Exists(childPidPath));
-            childPid = int.Parse(
-                await File.ReadAllTextAsync(childPidPath),
-                System.Globalization.CultureInfo.InvariantCulture);
-            Assert.True(
-                await WaitForProcessExitAsync(
-                    childPid,
-                    TimeSpan.FromSeconds(5)),
-                $"Child process {childPid} survived group termination.");
-        }
-        finally
-        {
-            TerminateProcessIfRunning(childPid);
-            Directory.Delete(root, recursive: true);
-        }
-    }
-
-    [Fact]
-    public void Posix_group_lifetime_never_signals_after_the_leader_is_reaped()
-    {
-        var events = new List<string>();
-        var lifetime = new PosixOwnedProcessGroup(
-            123,
-            _ => events.Add("wait-without-reaping"),
-            _ =>
-            {
-                events.Add("reap");
-                return 7;
-            },
-            _ => events.Add("signal"));
-
-        var exitCode = lifetime.WaitForExitAndContainDescendants();
-        lifetime.Terminate();
-
-        Assert.Equal(7, exitCode);
-        Assert.Equal(
-            ["wait-without-reaping", "signal", "reap"],
-            events);
-    }
-
-    [Theory]
-    [InlineData(0, false)]
-    [InlineData(1, false)]
-    [InlineData(2, false)]
-    [InlineData(3, true)]
-    public void Posix_file_actions_never_close_standard_descriptors(
-        int fileDescriptor,
-        bool shouldClose)
-    {
-        Assert.Equal(
-            shouldClose,
-            PosixProcessAuthority.ShouldCloseChildFileDescriptor(fileDescriptor));
-    }
-
     [Theory]
     [InlineData("8.0.408")]
     [InlineData("9.0.308")]
     [InlineData("10.0.302")]
-    public void Sdk_selector_uses_host_selected_version_and_exact_inventory_instance(
+    public void Sdk_selector_uses_the_exact_host_selected_sdk_context(
         string selectedVersion)
     {
         var sdkBase = Path.Combine(Path.GetTempPath(), "dotnet-sdk inventory");
-        var runner = new StubDotNetHostRunner(
-            new DotNetHostResult(0, $"{selectedVersion}\n", string.Empty),
-            new DotNetHostResult(
-                0,
-                $"8.0.408 [{sdkBase}]\n9.0.308 [{sdkBase}]\n10.0.302 [{sdkBase}]\n",
-                string.Empty));
-        var selector = new DotNetSdkSelector(runner);
+        var sdkPath = Path.GetFullPath(Path.Combine(sdkBase, selectedVersion));
+        var resolver = new StubDotNetHostResolver(new DotNetHostResolution(
+            Path.Combine(sdkBase, "dotnet"),
+            new SelectedDotNetSdk(
+                selectedVersion,
+                sdkPath,
+                Path.Combine(sdkPath, "Microsoft.Build.dll"),
+                DotNetHostCompatibility.Supported),
+            null));
+        var selector = new DotNetSdkSelector(resolver);
         var workspace = Path.Combine(Path.GetTempPath(), "sdk-selection-workspace");
 
         var selection = selector.Select(workspace, CancellationToken.None);
@@ -1455,12 +1077,64 @@ public sealed class MsBuildProjectGraphEvaluatorTests
         Assert.Equal(
             Path.GetFullPath(Path.Combine(sdkBase, selectedVersion)),
             selection.Sdk?.SdkPath);
+        Assert.Equal(workspace, resolver.Request?.WorkspaceRoot);
+    }
+
+    [Fact]
+    public async Task Sdk_resolution_cancellation_propagates_through_graph_with_the_caller_token()
+    {
+        await using var fixture = await EvaluationFixtureAsync();
+        var discovery = _discoverer.Discover(fixture.WorkspacePath);
+        var selection = _selector.Select(
+            discovery,
+            new WorkspaceSelectionRequest(project: "App"));
+        using var cancellation = new CancellationTokenSource();
+        var resolver = new CancellingDotNetHostResolver();
+        var authority = new MsBuildRuntimeAuthority(
+            new DotNetSdkSelector(resolver),
+            new StubMsBuildRuntimeRegistrar(
+                isRegistered: false,
+                loadedMsBuildPath: null));
+        var evaluator = new MsBuildProjectGraphEvaluator(authority);
+
+        var exception = Assert.ThrowsAny<OperationCanceledException>(() =>
+            evaluator.Evaluate(
+                discovery,
+                selection,
+                cancellationToken: cancellation.Token));
+
+        Assert.Equal(cancellation.Token, exception.CancellationToken);
+        Assert.Equal(cancellation.Token, resolver.CancellationToken);
+    }
+
+    [Fact]
+    public void Mismatched_msbuild_assembly_is_a_typed_authority_failure()
+    {
+        var sdkPath = Path.Combine(Path.GetTempPath(), "selected-sdk", "10.0.302");
+        var resolver = new StubDotNetHostResolver(new DotNetHostResolution(
+            Path.Combine(Path.GetTempPath(), "dotnet"),
+            new SelectedDotNetSdk(
+                "10.0.302",
+                sdkPath,
+                typeof(MsBuildProjectGraphEvaluatorTests).Assembly.Location,
+                DotNetHostCompatibility.Supported),
+            null));
+        var authority = new MsBuildRuntimeAuthority(
+            new DotNetSdkSelector(resolver),
+            new StubMsBuildRuntimeRegistrar(
+                isRegistered: false,
+                loadedMsBuildPath: null));
+
+        var result = authority.ResolveAndRegister(
+            Path.GetTempPath(),
+            CancellationToken.None);
+
+        Assert.False(result.IsAvailable);
         Assert.Equal(
-            ["--version", "--list-sdks"],
-            runner.Calls.Select(static call => Assert.Single(call.Arguments)));
-        Assert.All(
-            runner.Calls,
-            call => Assert.Equal(workspace, call.WorkingDirectory));
+            new ProjectEvaluationFailure(
+                ProjectEvaluationFailureReason.MsBuildIncompatible,
+                "msbuild.contract_mismatch"),
+            result.Failure);
     }
 
     [Fact]
@@ -1513,19 +1187,6 @@ public sealed class MsBuildProjectGraphEvaluatorTests
                 "msbuild.registration_mismatch"),
             result.Failure);
         Assert.Equal(0, registrar.RegistrationCalls);
-    }
-
-    [Theory]
-    [InlineData("plain", "plain")]
-    [InlineData("", "\"\"")]
-    [InlineData("two words", "\"two words\"")]
-    [InlineData("a\"b", "\"a\\\"b\"")]
-    [InlineData("two words\\", "\"two words\\\\\"")]
-    public void Windows_arguments_are_quoted_for_create_process(
-        string value,
-        string expected)
-    {
-        Assert.Equal(expected, WindowsJobProcess.QuoteWindowsArgument(value));
     }
 
     [Fact]
@@ -1711,76 +1372,6 @@ public sealed class MsBuildProjectGraphEvaluatorTests
         }
     }
 
-    [System.Runtime.Versioning.UnsupportedOSPlatform("windows")]
-    private static string WriteExecutableScript(
-        string directory,
-        string fileName,
-        string content)
-    {
-        var path = Path.Combine(directory, fileName);
-        File.WriteAllText(path, content.ReplaceLineEndings("\n"));
-        File.SetUnixFileMode(
-            path,
-            UnixFileMode.UserRead
-            | UnixFileMode.UserWrite
-            | UnixFileMode.UserExecute);
-        return path;
-    }
-
-    private static async Task<bool> WaitForProcessExitAsync(
-        int processId,
-        TimeSpan timeout)
-    {
-        var stopwatch = Stopwatch.StartNew();
-        while (stopwatch.Elapsed < timeout)
-        {
-            try
-            {
-                using var process = Process.GetProcessById(processId);
-                if (process.HasExited)
-                {
-                    return true;
-                }
-            }
-            catch (ArgumentException)
-            {
-                return true;
-            }
-            catch (InvalidOperationException)
-            {
-                return true;
-            }
-
-            await Task.Delay(TimeSpan.FromMilliseconds(50));
-        }
-
-        return false;
-    }
-
-    private static void TerminateProcessIfRunning(int processId)
-    {
-        if (processId <= 0)
-        {
-            return;
-        }
-
-        try
-        {
-            using var process = Process.GetProcessById(processId);
-            if (!process.HasExited)
-            {
-                process.Kill();
-            }
-        }
-        catch (Exception exception)
-            when (exception is ArgumentException
-                  or InvalidOperationException
-                  or System.ComponentModel.Win32Exception)
-        {
-            // The child already exited or cannot be observed further.
-        }
-    }
-
     private static string PropertyValue(
         EvaluatedProjectGraph graph,
         string name) =>
@@ -1789,16 +1380,6 @@ public sealed class MsBuildProjectGraphEvaluatorTests
             property => property.Name.Equals(
                 name,
                 StringComparison.OrdinalIgnoreCase)).Value;
-
-    private static PathDotNetHostRunner HostRunner(
-        IDotNetHostProcessFactory processFactory,
-        TimeSpan timeout,
-        int outputLimit = 64 * 1024) =>
-        new(
-            processFactory,
-            static () => "test-dotnet",
-            timeout,
-            outputLimit);
 
     private sealed class StubRuntimeAuthority(ProjectEvaluationFailure failure)
         : IMsBuildRuntimeAuthority
@@ -1825,198 +1406,34 @@ public sealed class MsBuildProjectGraphEvaluatorTests
         }
     }
 
-    private sealed class StubDotNetHostRunner(
-        params DotNetHostResult[] results) : IDotNetHostRunner
+    private sealed class StubDotNetHostResolver(DotNetHostResolution result)
+        : IDotNetHostResolver
     {
-        private readonly Queue<DotNetHostResult> _results = new(results);
+        public DotNetHostResolutionRequest? Request { get; private set; }
 
-        public List<DotNetHostCall> Calls { get; } = [];
-
-        public DotNetHostResult Run(
-            string workingDirectory,
-            IReadOnlyList<string> arguments,
-            CancellationToken cancellationToken)
-        {
-            Calls.Add(new DotNetHostCall(workingDirectory, [.. arguments]));
-            return _results.Dequeue();
-        }
-    }
-
-    private sealed record DotNetHostCall(
-        string WorkingDirectory,
-        IReadOnlyList<string> Arguments);
-
-    private sealed class StubHostProcessFactory(IDotNetHostProcess process)
-        : IDotNetHostProcessFactory
-    {
-        public TaskCompletionSource Started { get; } = new(
-            TaskCreationOptions.RunContinuationsAsynchronously);
-
-        public IDotNetHostProcess Start(ProcessStartInfo startInfo)
-        {
-            Started.TrySetResult();
-            return process;
-        }
-    }
-
-    private sealed class StubHostProcess(
-        TextReader standardOutput,
-        TextReader standardError,
-        bool exitImmediately) : IDotNetHostProcess
-    {
-        private readonly TaskCompletionSource _exit = CompletedExit(
-            exitImmediately);
-
-        public TextReader StandardOutput { get; } = standardOutput;
-
-        public TextReader StandardError { get; } = standardError;
-
-        public int ExitCode => 0;
-
-        public bool ParentAlive { get; private set; } = !exitImmediately;
-
-        public bool ChildAlive { get; private set; } = true;
-
-        public bool KillCalled { get; private set; }
-
-        public bool EntireProcessTree { get; private set; }
-
-        public bool Disposed { get; private set; }
-
-        public Task WaitForExitAsync(CancellationToken cancellationToken) =>
-            _exit.Task.WaitAsync(cancellationToken);
-
-        public void TerminateTree()
-        {
-            KillCalled = true;
-            EntireProcessTree = true;
-            ParentAlive = false;
-            ChildAlive = false;
-
-            _exit.TrySetResult();
-        }
-
-        public void Dispose()
-        {
-            Disposed = true;
-        }
-
-        private static TaskCompletionSource CompletedExit(bool completed)
-        {
-            var exit = new TaskCompletionSource(
-                TaskCreationOptions.RunContinuationsAsynchronously);
-            if (completed)
-            {
-                exit.SetResult();
-            }
-
-            return exit;
-        }
-    }
-
-    private sealed class UncooperativeHostProcess : IDotNetHostProcess
-    {
-        private readonly TaskCompletionSource _exit = new(
-            TaskCreationOptions.RunContinuationsAsynchronously);
-
-        public UncooperativeTextReader Output { get; } = new();
-
-        public TextReader StandardOutput => Output;
-
-        public TextReader StandardError => TextReader.Null;
-
-        public int ExitCode => 0;
-
-        public bool KillCalled { get; private set; }
-
-        public bool EntireProcessTree { get; private set; }
-
-        public bool Disposed { get; private set; }
-
-        public Task ExitOperation => _exit.Task;
-
-        public Task WaitForExitAsync(CancellationToken cancellationToken) =>
-            _exit.Task;
-
-        public void TerminateTree()
-        {
-            KillCalled = true;
-            EntireProcessTree = true;
-        }
-
-        public void Dispose()
-        {
-            Disposed = true;
-        }
-
-        public void FailPendingOperations()
-        {
-            _exit.TrySetException(new IOException("Late exit failure."));
-            Output.Fail();
-        }
-    }
-
-    private sealed class UncooperativeTextReader : TextReader
-    {
-        private readonly TaskCompletionSource<int> _read = new(
-            TaskCreationOptions.RunContinuationsAsynchronously);
-
-        public Task<int> Operation => _read.Task;
-
-        public override ValueTask<int> ReadAsync(
-            Memory<char> buffer,
-            CancellationToken cancellationToken = default) =>
-            new(_read.Task);
-
-        public void Fail() =>
-            _read.TrySetException(new IOException("Late read failure."));
-    }
-
-    private sealed class TrackingTextReader(string value) : TextReader
-    {
-        private int _offset;
-
-        public int CharactersRead { get; private set; }
-
-        public override ValueTask<int> ReadAsync(
-            Memory<char> buffer,
+        public ValueTask<DotNetHostResolution> ResolveAsync(
+            DotNetHostResolutionRequest request,
             CancellationToken cancellationToken = default)
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            var count = Math.Min(buffer.Length, value.Length - _offset);
-            if (count == 0)
-            {
-                return ValueTask.FromResult(0);
-            }
-
-            value.AsMemory(_offset, count).CopyTo(buffer);
-            _offset += count;
-            CharactersRead += count;
-            return ValueTask.FromResult(count);
+            Request = request;
+            return ValueTask.FromResult(result);
         }
     }
 
-    private sealed class CancellationAwareTextReader : TextReader
+    private sealed class CancellingDotNetHostResolver : IDotNetHostResolver
     {
-        private readonly TaskCompletionSource _cancellationObserved = new(
-            TaskCreationOptions.RunContinuationsAsynchronously);
+        public CancellationToken CancellationToken { get; private set; }
 
-        public Task CancellationObserved => _cancellationObserved.Task;
-
-        public override async ValueTask<int> ReadAsync(
-            Memory<char> buffer,
+        public ValueTask<DotNetHostResolution> ResolveAsync(
+            DotNetHostResolutionRequest request,
             CancellationToken cancellationToken = default)
         {
-            try
-            {
-                await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
-                return 0;
-            }
-            catch (OperationCanceledException)
-            {
-                _cancellationObserved.TrySetResult();
-                throw;
-            }
+            CancellationToken = cancellationToken;
+            return ValueTask.FromException<DotNetHostResolution>(
+                new OperationCanceledException(
+                    "Fixture cancellation.",
+                    cancellationToken));
         }
     }
+
 }

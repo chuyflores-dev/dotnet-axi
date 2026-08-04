@@ -1,4 +1,5 @@
 using DotNetAxi.Contracts;
+using DotNetAxi.DotNet;
 using DotNetAxi.Testing;
 
 namespace DotNetAxi.Workspaces.Tests;
@@ -12,7 +13,8 @@ public sealed class ProjectCoverageReporterTests
 
     private readonly WorkspaceDiscoverer _discoverer = new();
     private readonly WorkspaceEntryPointSelector _selector = new();
-    private readonly MsBuildProjectGraphEvaluator _evaluator = new();
+    private readonly MsBuildProjectGraphEvaluator _evaluator =
+        new(new DotNetHostResolver());
     private readonly ProjectCoverageReporter _reporter = new();
     private readonly RepositoryFixtureFactory _fixtures = new();
 

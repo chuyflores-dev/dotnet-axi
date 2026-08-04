@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.Json;
 using System.Xml;
 using System.Xml.Linq;
+using DotNetAxi.Contracts;
 using Microsoft.Build.Evaluation;
 using Microsoft.Build.Exceptions;
 using Microsoft.Build.Execution;
@@ -233,8 +234,19 @@ public sealed class MsBuildProjectGraphEvaluator
     private readonly IMsBuildRuntimeAuthority _runtimeAuthority;
     private readonly Action<string>? _beforeGraphEvaluation;
 
-    public MsBuildProjectGraphEvaluator()
-        : this(new MsBuildRuntimeAuthority(), beforeGraphEvaluation: null)
+    public MsBuildProjectGraphEvaluator(IDotNetHostResolver hostResolver)
+        : this(
+            new MsBuildRuntimeAuthority(new DotNetSdkSelector(hostResolver)),
+            beforeGraphEvaluation: null)
+    {
+    }
+
+    internal MsBuildProjectGraphEvaluator(
+        IDotNetHostResolver hostResolver,
+        Action<string>? beforeGraphEvaluation)
+        : this(
+            new MsBuildRuntimeAuthority(new DotNetSdkSelector(hostResolver)),
+            beforeGraphEvaluation)
     {
     }
 

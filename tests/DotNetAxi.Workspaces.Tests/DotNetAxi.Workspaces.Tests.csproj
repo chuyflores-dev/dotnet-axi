@@ -20,6 +20,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="../../src/DotNetAxi.DotNet/DotNetAxi.DotNet.csproj" />
     <ProjectReference Include="../../src/DotNetAxi.Workspaces/DotNetAxi.Workspaces.csproj" />
     <ProjectReference Include="../DotNetAxi.Testing/DotNetAxi.Testing.csproj" />
   </ItemGroup>
