@@ -42,6 +42,7 @@ do not read or retain agent transcripts.
 - [MVP-E09-S08 — Repair integrations](MVP-E09-S08-repair.md)
 - [MVP-E09-S09 — Remove integrations](MVP-E09-S09-removal.md)
 - [MVP-E09-S10 — Report OpenCode as unsupported](MVP-E09-S10-opencode-capability.md)
+- [MVP-E09-S11 — Guide safe Codex worker startup](MVP-E09-S11-codex-worker-startup.md)
 
 ## Complete when
 

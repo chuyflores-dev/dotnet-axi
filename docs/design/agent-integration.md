@@ -153,6 +153,12 @@ Codex guidance follows these rules:
 - For automated Codex workers, choose the sandbox explicitly: use `workspace-write` only for implementation and `read-only` for review.
   Prefer ephemeral JSONL execution, capture the final response separately, and bound event-stream silence and total runtime.
   Codex documents these controls in [non-interactive mode](https://learn.chatgpt.com/docs/non-interactive-mode).
+- Prefer Codex [subagents](https://learn.chatgpt.com/docs/agent-configuration/subagents) for clean-context delegation inside an active Codex turn because they inherit the parent turn's sandbox and live approval overrides.
+  Treat standalone `codex exec` as an owning automation boundary, not a sandbox escape: start it only where the host already permits Codex initialization and access to the selected worktree.
+  Do not probe a restricted sandbox with a nested launch and then repeat the same worker outside it.
+- A denial before the first `thread.started` event means that no Codex thread identity was observed; it does not prove that the launcher process exited.
+  Preserve the original diagnostic, stop polling a stream that never began, and observe the exact launcher process.
+  Before any replacement, confirm exit or terminate, wait for, and reap that child; event absence or silence never authorizes a duplicate, and retry still requires a confirmed host-boundary change.
 
 ## Agent-facing composition
 

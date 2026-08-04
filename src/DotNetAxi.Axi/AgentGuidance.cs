@@ -109,6 +109,7 @@ public sealed class CodexAgentGuidance
         IEnumerable<string> boundaries,
         IEnumerable<string> worktrees,
         IEnumerable<string> networkAndMetadata,
+        IEnumerable<string> workerStartup,
         IEnumerable<string> nonInteractive,
         IEnumerable<string> recovery,
         string skillsLink,
@@ -116,6 +117,7 @@ public sealed class CodexAgentGuidance
         string sandboxingLink,
         string approvalsLink,
         string worktreesLink,
+        string subagentsLink,
         string nonInteractiveLink)
     {
         Boundaries = Copy(boundaries, nameof(boundaries));
@@ -123,6 +125,7 @@ public sealed class CodexAgentGuidance
         NetworkAndMetadata = Copy(
             networkAndMetadata,
             nameof(networkAndMetadata));
+        WorkerStartup = Copy(workerStartup, nameof(workerStartup));
         NonInteractive = Copy(nonInteractive, nameof(nonInteractive));
         Recovery = Copy(recovery, nameof(recovery));
         SkillsLink = RequiredText(skillsLink, nameof(skillsLink));
@@ -132,6 +135,7 @@ public sealed class CodexAgentGuidance
         SandboxingLink = RequiredText(sandboxingLink, nameof(sandboxingLink));
         ApprovalsLink = RequiredText(approvalsLink, nameof(approvalsLink));
         WorktreesLink = RequiredText(worktreesLink, nameof(worktreesLink));
+        SubagentsLink = RequiredText(subagentsLink, nameof(subagentsLink));
         NonInteractiveLink = RequiredText(
             nonInteractiveLink,
             nameof(nonInteractiveLink));
@@ -142,6 +146,8 @@ public sealed class CodexAgentGuidance
     public IReadOnlyList<string> Worktrees { get; }
 
     public IReadOnlyList<string> NetworkAndMetadata { get; }
+
+    public IReadOnlyList<string> WorkerStartup { get; }
 
     public IReadOnlyList<string> NonInteractive { get; }
 
@@ -156,6 +162,8 @@ public sealed class CodexAgentGuidance
     public string ApprovalsLink { get; }
 
     public string WorktreesLink { get; }
+
+    public string SubagentsLink { get; }
 
     public string NonInteractiveLink { get; }
 
@@ -218,6 +226,13 @@ public static class AgentGuidanceCatalog
             "Treat restore, dnx package download, and every other networked operation as explicit; require the host policy to allow the needed destination.",
             "Treat protected Git or agent configuration metadata, read-only source, denied network, and denied process launch as host restrictions rather than proof that dotnet-axi is unsupported.",
         ],
+        workerStartup:
+        [
+            "Prefer native Codex subagents for clean-context delegation; they inherit the parent turn's sandbox and live approval overrides.",
+            "Start standalone `codex exec` only from an owning host or automation boundary already permitted to initialize Codex and access the selected worktree; never launch it as a sandboxed child to escape the current boundary.",
+            "Treat a denial before `thread.started` as no observed Codex thread identity, not proof that the launcher process exited; preserve the diagnostic and stop polling an event stream that never began.",
+            "Before any replacement, observe the exact launcher process and confirm exit or terminate, wait for, and reap that child; event absence or silence never authorizes a duplicate, and retry still requires a confirmed boundary change.",
+        ],
         nonInteractive:
         [
             "Choose the sandbox explicitly: use workspace-write for implementation and read-only for review.",
@@ -238,6 +253,8 @@ public static class AgentGuidanceCatalog
             "https://learn.chatgpt.com/docs/agent-approvals-security",
         worktreesLink:
             "https://learn.chatgpt.com/docs/environments/git-worktrees",
+        subagentsLink:
+            "https://learn.chatgpt.com/docs/agent-configuration/subagents",
         nonInteractiveLink:
             "https://learn.chatgpt.com/docs/non-interactive-mode");
 
