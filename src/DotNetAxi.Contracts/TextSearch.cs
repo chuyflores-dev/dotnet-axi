@@ -1,7 +1,7 @@
 namespace DotNetAxi.Contracts;
 
-/// <summary>Literal text-search inputs shared by the CLI and built-in engine.</summary>
-public sealed record TextSearchRequest
+/// <summary>Text-search inputs shared by the CLI and built-in engines.</summary>
+public record TextSearchRequest
 {
     public TextSearchRequest(
         string query,
@@ -42,6 +42,43 @@ public sealed record TextSearchRequest
     public int SkippedDetailLimit { get; }
 }
 
+/// <summary>Regular-expression text-search inputs with bounded per-file matching.</summary>
+public sealed record RegexTextSearchRequest : TextSearchRequest
+{
+    private static readonly TimeSpan MaximumPerFileTimeout =
+        TimeSpan.FromMilliseconds(int.MaxValue - 1D);
+
+    public RegexTextSearchRequest(
+        string query,
+        WorkspaceTraversalRequest traversal,
+        TimeSpan perFileTimeout,
+        bool caseSensitive = false,
+        int limit = 100,
+        int previewLength = 160,
+        int skippedDetailLimit = 50)
+        : base(
+            query,
+            traversal,
+            caseSensitive,
+            limit,
+            previewLength,
+            skippedDetailLimit)
+    {
+        if (perFileTimeout <= TimeSpan.Zero
+            || perFileTimeout > MaximumPerFileTimeout)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(perFileTimeout),
+                perFileTimeout,
+                "The regular-expression per-file timeout must be positive and bounded.");
+        }
+
+        PerFileTimeout = perFileTimeout;
+    }
+
+    public TimeSpan PerFileTimeout { get; }
+}
+
 public sealed record TextSearchMatch
 {
     public TextSearchMatch(
@@ -73,7 +110,8 @@ public sealed record TextSearchResult
         bool skipTotalsKnown = true,
         int? skippedFileTotal = null,
         int skippedUnsupportedEncoding = 0,
-        int skippedUnreadable = 0)
+        int skippedUnreadable = 0,
+        IEnumerable<TextSearchError>? errors = null)
     {
         ArgumentNullException.ThrowIfNull(matches);
         Matches = ContractGuards.Copy(matches);
@@ -97,6 +135,7 @@ public sealed record TextSearchResult
         Snapshot = ContractGuards.RequiredText(snapshot, nameof(snapshot));
         SkippedFiles = ContractGuards.Copy(skippedFiles);
         Observations = ContractGuards.Copy(observations);
+        Errors = ContractGuards.Copy(errors);
         SkipTotalsKnown = skipTotalsKnown;
         if (skippedFileTotal < SkippedFiles.Count ||
             (skipTotalsKnown && skippedFileTotal is null))
@@ -117,8 +156,53 @@ public sealed record TextSearchResult
     public string Snapshot { get; }
     public IReadOnlyList<TextSearchSkippedFile> SkippedFiles { get; }
     public IReadOnlyList<TextSearchFileObservation> Observations { get; }
+    public IReadOnlyList<TextSearchError> Errors { get; }
     public bool SkipTotalsKnown { get; }
     public int? SkippedFileTotal { get; }
+}
+
+/// <summary>A safe, structured failure produced while evaluating a text query.</summary>
+public sealed record TextSearchError
+{
+    public TextSearchError(
+        TextSearchErrorKind kind,
+        string query,
+        string? path = null)
+    {
+        Kind = Enum.IsDefined(kind)
+            ? kind
+            : throw new ArgumentOutOfRangeException(nameof(kind));
+        Query = ContractGuards.RequiredText(query, nameof(query));
+        Path = path is null
+            ? null
+            : ContractGuards.RequiredText(path, nameof(path));
+
+        if (kind is TextSearchErrorKind.InvalidRegularExpression
+            && Path is not null)
+        {
+            throw new ArgumentException(
+                "Invalid regular-expression outcomes do not identify a file.",
+                nameof(path));
+        }
+
+        if (kind is TextSearchErrorKind.RegularExpressionTimeout
+            && Path is null)
+        {
+            throw new ArgumentNullException(
+                nameof(path),
+                "Regular-expression timeout outcomes must identify a file.");
+        }
+    }
+
+    public TextSearchErrorKind Kind { get; }
+    public string Query { get; }
+    public string? Path { get; }
+}
+
+public enum TextSearchErrorKind
+{
+    InvalidRegularExpression,
+    RegularExpressionTimeout,
 }
 
 public sealed record TextSearchSkippedFile(string Path, string Reason)
@@ -143,6 +227,7 @@ public enum TextSearchFileStatus
     Undecodable,
     UnsupportedEncoding,
     Unreadable,
+    RegularExpressionTimeout,
     LimitReached,
 }
 
@@ -152,5 +237,14 @@ public interface ILiteralTextSearcher
 
     Task<TextSearchResult> SearchAsync(
         TextSearchRequest request,
+        CancellationToken cancellationToken = default);
+}
+
+public interface IRegexTextSearcher
+{
+    TextSearchResult Search(RegexTextSearchRequest request);
+
+    Task<TextSearchResult> SearchAsync(
+        RegexTextSearchRequest request,
         CancellationToken cancellationToken = default);
 }
