@@ -331,16 +331,12 @@ Git MAY be absent in non-Git workspaces; Git-only features then return
 capability errors.
 
 - Text search always has a built-in implementation; `rg` MAY accelerate it.
-- Core syntax queries always have a Roslyn implementation; AST-grep SHOULD
-  accelerate and expand structural search.
-- Direct Tree-sitter embedding is deferred until benchmarks justify it.
+- Core C# syntax queries use the in-process Roslyn implementation.
+- External structural-search engines and direct Tree-sitter embedding are
+  deferred until benchmark evidence justifies them.
 
 Missing optional accelerators return concise capability information without
 breaking unrelated commands.
-
-AST-grep MAY be user-installed, bundled as a platform sidecar, or provisioned
-by an explicit setup action. Distribution choice does not change the adapter
-contract or make it a universal prerequisite.
 
 Version and home output report `dotnet-axi` version, output schema, selected
 SDK, relevant Roslyn/MSBuild compatibility, Git availability, and optional
@@ -359,9 +355,9 @@ returns a structured compatibility error; it does not continue with mismatched
 MSBuild assemblies and authoritative claims.
 
 Build-time package versions are pinned. Release evidence records runtime
-versions tested for .NET SDK, MSBuild, Roslyn, Git, `rg`, AST-grep, and its C#
-grammar. Unsupported optional engines degrade to built-in behavior where
-possible.
+versions tested for .NET SDK, MSBuild, Roslyn, Git, `rg`, supported operating
+systems, and runtime identifiers. Unsupported optional engines degrade to
+built-in behavior where possible.
 
 ## Internal components
 
@@ -402,8 +398,9 @@ public interface IDotNetCommandRunner;
 public interface IValidationCheck;
 ```
 
-The initial structural adapter invokes AST-grep as an external process. Direct
-Tree-sitter integration MAY later implement the same contract.
+The MVP structural-query implementation uses in-process Roslyn syntax. An
+external structural engine MAY be considered later only behind stable
+product-owned semantics and supporting benchmark evidence.
 
 Only the CLI/output layer depends on TOON. Business logic operates on typed
 result objects.

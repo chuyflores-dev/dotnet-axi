@@ -2,8 +2,8 @@
 
 ## Outcome
 
-Tool-owned syntax queries can parse selected C# files through a stable Roslyn
-syntax engine when AST-grep is absent or unsuitable.
+Tool-owned syntax queries parse selected C# files through the authoritative
+Roslyn syntax engine.
 
 ## Design
 

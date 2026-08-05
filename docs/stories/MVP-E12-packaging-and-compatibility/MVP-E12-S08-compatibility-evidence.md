@@ -2,8 +2,8 @@
 
 ## Outcome
 
-Each release records the exact tool, SDK, MSBuild, Roslyn, Git, `rg`, AST-grep,
-C# grammar, OS, and RID versions it tested.
+Each release records the exact tool, SDK, MSBuild, Roslyn, Git, `rg`, OS, and
+RID versions it tested.
 
 ## Design
 

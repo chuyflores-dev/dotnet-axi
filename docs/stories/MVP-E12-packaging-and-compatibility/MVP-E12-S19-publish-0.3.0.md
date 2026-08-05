@@ -21,8 +21,8 @@ authorizes publication after approving the completed release candidate.
 - The published GitHub Release triggers protected publication of the matching
   package and symbols.
 - Fresh public-source global, local, and `dnx` invocations report `0.3.0` and
-  exercise one file, text, structural, and stable syntax query with documented
-  optional-engine behavior.
+  exercise one file, text, and stable syntax query with documented optional
+  text-engine behavior.
 - Benchmark links and claims match the approved candidate evidence, and the
   `0.3.0` milestone closes only after public verification succeeds.
 

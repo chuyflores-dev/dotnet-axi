@@ -19,9 +19,9 @@ story does not create `v0.3.0`, publish to NuGet, or create a GitHub Release.
 ## Acceptance
 
 - Installation, global, local, and `dnx` examples name `0.3.0` and expose only
-  the file, text, structural, and stable syntax behavior actually verified.
-- Release notes describe optional-engine fallback and known limitations and
-  scope every benchmark statement to the exact Codex model and harness.
+  the file, text, and stable syntax behavior actually verified.
+- Release notes describe optional text-engine fallback and known limitations
+  and scope every benchmark statement to the exact Codex model and harness.
 - The first measured discovery comparison is complete; a result below the
   improvement threshold remains visible and is not rewritten as a claim.
 - Candidate artifacts, checksums, metadata, installation smoke tests,

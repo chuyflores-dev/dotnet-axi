@@ -17,7 +17,7 @@ progress logs, or document-version metadata.
 | Epics, stories, and work-item conventions | [Stories and epics](stories/README.md) |
 | Design principles, authorities, evidence model, and progressive analysis | [Foundations](design/foundations.md) |
 | Repository, solution, project, framework, and worktree discovery | [Workspace](design/workspace.md) |
-| File, text, structural, symbol, show, outline, and context commands | [Search and context](design/search-and-context.md) |
+| File, text, syntax, symbol, show, outline, and context commands | [Search and context](design/search-and-context.md) |
 | Project/code graphs and compiler-semantic relationships | [Semantics and graph](design/semantics-and-graph.md) |
 | Compiler analysis, analyzers, validation, and SDK execution | [Analysis and execution](design/analysis-and-execution.md) |
 | Safe source and project modifications | [Modifications](design/modifications.md) |

@@ -29,7 +29,7 @@ description: Use dotnet-axi to obtain deterministic structured evidence for .NET
 Apply this flow only when the invoked version reports the relevant capability.
 
 - Use text search for literals.
-- Use structural search for syntax shape.
+- Use stable syntax queries for syntax shape.
 - Use Roslyn operations for exact identity.
 - Inspect impact before public changes.
 - Request bounded context.

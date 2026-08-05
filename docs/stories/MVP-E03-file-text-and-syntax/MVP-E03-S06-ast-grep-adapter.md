@@ -1,9 +1,9 @@
-# MVP-E03-S06 — Adapt AST-grep
+# MVP-E03-S06 — Defer AST-grep Beyond MVP
 
 ## Outcome
 
-The structural engine can invoke a compatible AST-grep process and translate
-its JSON into stable internal candidates.
+The MVP uses in-process Roslyn syntax for C# syntax discovery and has no
+AST-grep runtime, adapter, or distribution contract.
 
 ## Design
 
@@ -12,21 +12,24 @@ its JSON into stable internal candidates.
 
 ## Boundary
 
-Raw backend JSON, coordinates, diagnostics, exit codes, and rewrite behavior
-never escape the adapter.
+Raw AST-grep patterns, process invocation, JSON translation, version support,
+grammar compatibility, and sidecar distribution are outside the MVP. A future
+adapter requires benchmark evidence and a stable product-owned contract.
 
 ## Acceptance
 
-- Version/capability checks, argument-list invocation, cancellation, shared
-  traversal, coordinate conversion, and no-match translation are enforced.
-- Missing or incompatible AST-grep returns an actionable capability result.
+- The production solution contains no AST-grep adapter, executable dependency,
+  capability surface, or adapter-only test project.
+- MVP requirements, design references, and dependent stories identify Roslyn
+  syntax as the sole C# syntax engine.
+- General backend-specific pattern and rule syntax is not exposed by the MVP.
 
 ## Verification
 
-- Adapter contract tests use supported, missing, incompatible, malformed, and
-  cancelled backend fixtures.
+- Canonical restore, build, and test pass without AST-grep installed.
+- A repository reference audit finds no MVP AST-grep contract outside this
+  explicit deferral work item.
 
 ## Dependencies
 
-- `MVP-E03-S01`
-- `MVP-E08-S02`
+- None.

@@ -19,7 +19,7 @@ a separate release action.
 
 - Package metadata declares `Apache-2.0`; the entry point, target framework,
   dependency pins, symbols, and reproducible build inputs are explicit.
-- Installing the package does not require Git, `rg`, AST-grep, a daemon, or a
+- Installing the package does not require Git, `rg`, a daemon, or a
   repository index.
 
 ## Verification

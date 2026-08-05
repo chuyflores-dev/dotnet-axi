@@ -25,7 +25,6 @@ references:
 - [AXI — Agent eXperience Interface, commit `d5aa171`](https://github.com/kunchenguid/axi/tree/d5aa171665bb784d0f1b05150aaeb0f3e1b52b2f)
 - [AXI Skill, commit `d5aa171`](https://github.com/kunchenguid/axi/blob/d5aa171665bb784d0f1b05150aaeb0f3e1b52b2f/.agents/skills/axi/SKILL.md)
 - [TOON Specification v4.1](https://github.com/toon-format/spec/blob/v4.1.0/SPEC.md)
-- [AST-grep documentation](https://ast-grep.github.io/)
 - [Tree-sitter documentation](https://tree-sitter.github.io/tree-sitter/)
 - [Roslyn workspace APIs](https://learn.microsoft.com/en-us/dotnet/api/microsoft.codeanalysis.workspace)
 - [Roslyn SymbolFinder APIs](https://learn.microsoft.com/en-us/dotnet/api/microsoft.codeanalysis.findsymbols.symbolfinder)
@@ -64,7 +63,7 @@ natural-language interpretation and iterative reasoning.
 ### No mandatory full index
 
 The tool MUST NOT require a complete repository index before answering
-commands. File, text, structural, and candidate-scoped symbol searches MUST be
+commands. File, text, syntax, and candidate-scoped symbol searches MUST be
 available on first use.
 
 ### Current worktree authority
@@ -84,7 +83,7 @@ Caches and retained session state are disposable derived data.
 
 ### Semantic and SDK authorities
 
-Text and AST-grep search MAY discover candidates, but Roslyn MUST decide exact
+Text and syntax search MAY discover candidates, but Roslyn MUST decide exact
 symbol identity, references, types, overloads, implementations, inheritance,
 compiler diagnostics, code fixes, refactorings, and safe cross-file changes.
 
@@ -103,7 +102,7 @@ Primary consumers are:
 
 - Coding agents locating behavior, verifying relationships, retrieving bounded
   context, running checks, and proving completion.
-- Developers investigating unfamiliar solutions, structural patterns,
+- Developers investigating unfamiliar solutions, syntax shapes,
   architecture violations, validation scope, and refactorings.
 - CI systems validating changed or complete scope, enforcing architecture
   rules, exporting structured artifacts, and relying on stable exit behavior.
@@ -165,8 +164,8 @@ Claude Code / Codex / OpenCode / Developer / CI
       +------------------+--------------------+
       |                  |                    |
       v                  v                    v
- Text discovery    Structural discovery    Roslyn
- built-in/rg       AST-grep adapter         syntax + semantics
+ Text discovery    Structural queries      Roslyn
+ built-in/rg       Roslyn syntax            syntax + semantics
       |                  |                    |
       +------------------+----------+---------+
                                     |
@@ -184,8 +183,8 @@ Claude Code / Codex / OpenCode / Developer / CI
 |---|---|---:|
 | Built-in catalog | Repository, solution, project, and source discovery | No |
 | Text engine | Literal and regular-expression search | No |
-| Structural engine | AST-shaped candidate discovery | No |
-| Roslyn syntax engine | C# syntax and fallback structural queries | No; selected files only |
+| Structural query layer | Stable tool-owned C# syntax candidates | No |
+| Roslyn syntax engine | C# parsing and structural queries | No; selected files only |
 | Roslyn semantic engine | Exact symbols, relationships, diagnostics, and changes | Selected projects |
 | MSBuild ProjectGraph | Evaluated project dependencies | No Roslyn compilation |
 | `dotnet` CLI | SDK operations | Operation-dependent |
@@ -210,9 +209,9 @@ source paths. The home view MUST NOT evaluate the full MSBuild project graph.
 
 ### Level 1 — Text and syntax discovery
 
-Perform file-name search, literal/regex search, AST-grep search, selected-file
-Roslyn parsing, declarations/outlines, and on-demand project-graph evaluation.
-No Roslyn compilation is required.
+Perform file-name search, literal/regex search, stable Roslyn syntax queries,
+declarations/outlines, and on-demand project-graph evaluation. No Roslyn
+compilation is required.
 
 ### Level 2 — Candidate-scoped semantics
 

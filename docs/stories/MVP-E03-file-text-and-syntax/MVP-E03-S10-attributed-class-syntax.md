@@ -18,15 +18,14 @@ compiler symbol.
 
 - Qualified, suffixed, multiple, targeted, and malformed attribute syntax is
   handled consistently.
-- Roslyn fallback and supported AST-grep execution produce equivalent
-  normalized candidates.
+- Roslyn produces deterministic normalized candidates for every supported
+  attribute shape.
 
 ## Verification
 
-- Paired-engine fixtures cover attribute forms, class kinds, filters,
+- Roslyn fixtures cover attribute forms, class kinds, filters,
   generated-code scope, false candidates, and empty results.
 
 ## Dependencies
 
-- `MVP-E03-S06`
 - `MVP-E03-S08`

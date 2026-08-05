@@ -115,7 +115,7 @@ When the invoked version exposes the relevant capability, guidance SHOULD
 teach agents to:
 
 - Use text search for literals.
-- Use structural search for syntax shape.
+- Use stable syntax queries for syntax shape.
 - Use Roslyn operations for exact identity.
 - Inspect impact before public changes.
 - Request bounded context.
@@ -165,7 +165,7 @@ Codex guidance follows these rules:
 Results include the minimum evidence needed for the next decision: source
 location, entity identity, resolution, scope coverage, and applicable
 confidence or uncertainty. They MUST NOT make authoritative natural-language
-claims beyond Roslyn, MSBuild, AST-grep, Git, analyzer, test, or SDK evidence.
+claims beyond Roslyn, MSBuild, Git, analyzer, test, or SDK evidence.
 
 Cheap and broadly required summaries SHOULD be precomputed, including totals,
 verified/rejected counts, affected projects, test/validation status,
@@ -174,7 +174,7 @@ truncation size, and remaining coverage.
 Bounded composite commands SHOULD cover predictable tasks where composition
 reduces errors or round trips:
 
-- Structural discovery plus Roslyn verification.
+- Syntax discovery plus Roslyn verification.
 - Symbol context plus selected callers, callees, and tests.
 - Changed-file analysis plus affected-project validation.
 - Mutation planning plus completeness checks.

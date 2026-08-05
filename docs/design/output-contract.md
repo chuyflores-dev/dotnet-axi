@@ -249,11 +249,11 @@ suggestions[1]:
     arguments[1]: "--help"
 ```
 
-### Structural search
+### Syntax search
 
 ```toon
 schema: dotnet-axi/v1
-command: search structural
+command: search syntax invocation
 status: success
 snapshot: ws_7c2f5a1d
 resolution: syntax
@@ -263,21 +263,21 @@ scope:
   paths_scanned: 18400
 count: 3
 matches[3]{id,file,line,construct}:
-  ast_01,src/Orders/OrderRepository.cs,84,invocation
-  ast_02,src/Payments/PaymentRepository.cs,112,invocation
-  ast_03,tests/DbFixture.cs,39,invocation
+  syn_01,src/Orders/OrderRepository.cs,84,invocation
+  syn_02,src/Payments/PaymentRepository.cs,112,invocation
+  syn_03,tests/DbFixture.cs,39,invocation
 suggestions[2]:
   - command: dnaxi
     arguments[3]: show,document,<path>
   - command: dnaxi
-    arguments[6]: search,structural,"--pattern",<pattern>,"--verify-as",invocation
+    arguments[6]: search,syntax,invocation,"--name",SaveChangesAsync,"--verify"
 ```
 
 ### Verified partial search
 
 ```toon
 schema: dotnet-axi/v1
-command: search structural
+command: search syntax invocation
 status: partial
 snapshot: ws_7c2f5a1d
 resolution: semantic

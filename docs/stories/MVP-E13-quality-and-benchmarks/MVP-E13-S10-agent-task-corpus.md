@@ -19,7 +19,7 @@ supported capability.
 
 - Each task has fixed repository state, success and safety oracles, permitted
   tools, timeout, required validation, and baseline/candidate applicability.
-- The corpus covers applicable file, text, structural, and stable syntax
+- The corpus covers applicable file, text, and stable syntax
   discovery without condition-specific hidden guidance.
 - The schema supports later milestone extensions without treating unshipped
   tasks as missing 0.3.0 evidence.

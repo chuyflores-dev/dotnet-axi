@@ -2,8 +2,8 @@
 
 ## Outcome
 
-Every child `dotnet`, `rg`, and AST-grep process receives safe argument,
-environment, working-directory, capture, cancellation, and termination policy.
+Every child `dotnet` and `rg` process receives safe argument, environment,
+working-directory, capture, cancellation, and termination policy.
 
 ## Design
 
