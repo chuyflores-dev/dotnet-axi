@@ -154,7 +154,7 @@ internal static class CliApplication
             [
                 "dnaxi search syntax invocation --name SaveChangesAsync",
                 "dnaxi search syntax class --attribute Authorize",
-                "dnaxi search syntax object-creation --type HttpClient",
+                "dnaxi search syntax catch --type Exception --empty",
             ]);
 
         var invocationCommand = new Command(
@@ -292,6 +292,57 @@ internal static class CliApplication
                 result.GetValue(objectCreationFields) ?? [],
                 result.GetValue(objectCreationPath) ?? []),
             static () => new ObjectCreationSyntaxCommandHandler(),
+            host.ResponseWriter);
+
+        var catchCommand = new Command(
+            "catch",
+            "Find C# catch-clause syntax; --type excludes untyped catches and --empty "
+                + "matches bodies with no parsed statements.");
+        var catchType = new Option<string?>("--type")
+        {
+            Description = "Match the exact ordinal terminal exception type name.",
+        };
+        var catchEmpty = new Option<bool>("--empty")
+        {
+            Description = "Return only catches whose block has no parsed statements.",
+        };
+        var catchIncludeGenerated = new Option<bool>("--include-generated");
+        var catchLimit = new Option<int>("--limit")
+        {
+            DefaultValueFactory = static _ => 100,
+        };
+        var catchFull = new Option<bool>("--full");
+        var catchFields = new Option<string[]>("--fields")
+        {
+            AllowMultipleArgumentsPerToken = true,
+        };
+        var catchPath = new Option<string[]>("--path")
+        {
+            AllowMultipleArgumentsPerToken = false,
+        };
+        catchCommand.Options.Add(catchType);
+        catchCommand.Options.Add(catchEmpty);
+        catchCommand.Options.Add(catchIncludeGenerated);
+        catchCommand.Options.Add(catchLimit);
+        catchCommand.Options.Add(catchFull);
+        catchCommand.Options.Add(catchFields);
+        catchCommand.Options.Add(catchPath);
+        host.RegisterCommand(syntaxCommand, catchCommand, OperationPolicy.Passive,
+            [
+                "dnaxi search syntax catch",
+                "dnaxi search syntax catch --type Exception --empty --path src",
+            ]);
+        catchCommand.BindHandler(
+            result => CatchSyntaxCommandRequest.Create(
+                result.GetValue(catchType),
+                result.GetValue(catchEmpty),
+                result.GetValue(catchIncludeGenerated),
+                result.GetValue(catchLimit),
+                result.Tokens.Any(token => token.Value == "--limit"),
+                result.GetValue(catchFull),
+                result.GetValue(catchFields) ?? [],
+                result.GetValue(catchPath) ?? []),
+            static () => new CatchSyntaxCommandHandler(),
             host.ResponseWriter);
 
         return host;
