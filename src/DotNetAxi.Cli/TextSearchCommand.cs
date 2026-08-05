@@ -40,6 +40,8 @@ internal sealed record TextSearchCommandRequest(
 internal sealed class TextSearchCommandHandler : ICommandHandler<TextSearchCommandRequest>
 {
     private const int DefaultLimit = 100;
+    private static readonly TimeSpan DefaultRegexPerFileTimeout =
+        TimeSpan.FromSeconds(1);
 
     public async ValueTask<ICommandResult> HandleAsync(TextSearchCommandRequest request, CancellationToken cancellationToken)
     {
@@ -47,11 +49,6 @@ internal sealed class TextSearchCommandHandler : ICommandHandler<TextSearchComma
         ValidateRequest(request);
         var includeSkipDetails = request.Fields.Contains("skip_details", StringComparer.Ordinal);
         var fields = TextSearchFields.Select(request.Fields.Where(field => field != "skip_details"));
-        if (request.Regex)
-        {
-            return CommandResult<TextSearchPayload>.Failed("search text",
-                [new ResultError("search.regex_not_supported", "Regular-expression text search is not available yet.", "Remove --regex to run a literal search.")]);
-        }
 
         cancellationToken.ThrowIfCancellationRequested();
         var workspace = new WorkspaceDiscoverer().Discover(Directory.GetCurrentDirectory());
@@ -112,14 +109,54 @@ internal sealed class TextSearchCommandHandler : ICommandHandler<TextSearchComma
                 .ToHashSet(StringComparer.Ordinal);
         }
 
-        var result = await new LiteralTextSearcher(scoped).SearchAsync(new TextSearchRequest(
-            request.Query, traversal, request.CaseSensitive, request.Full ? int.MaxValue : request.Limit,
-            skippedDetailLimit: request.Full && includeSkipDetails ? int.MaxValue : 50), cancellationToken).ConfigureAwait(false);
+        var limit = request.Full ? int.MaxValue : request.Limit;
+        var skippedDetailLimit = request.Full && includeSkipDetails
+            ? int.MaxValue
+            : 50;
+        TextSearchResult result;
+        if (request.Regex)
+        {
+            result = await new RegexTextSearcher(scoped).SearchAsync(
+                new RegexTextSearchRequest(
+                    request.Query,
+                    traversal,
+                    DefaultRegexPerFileTimeout,
+                    request.CaseSensitive,
+                    limit,
+                    skippedDetailLimit: skippedDetailLimit),
+                cancellationToken).ConfigureAwait(false);
+        }
+        else
+        {
+            result = await new LiteralTextSearcher(scoped).SearchAsync(
+                new TextSearchRequest(
+                    request.Query,
+                    traversal,
+                    request.CaseSensitive,
+                    limit,
+                    skippedDetailLimit: skippedDetailLimit),
+                cancellationToken).ConfigureAwait(false);
+        }
+
+        var resultErrors = result.Errors.Select(ToResultError).ToArray();
+        if (result.Errors.Any(error =>
+                error.Kind is TextSearchErrorKind.InvalidRegularExpression))
+        {
+            return CommandResult<TextSearchPayload>.Failed(
+                "search text",
+                resultErrors);
+        }
+
         var changedCoverage = changedScope is null ? null : BuildChangedCoverage(changedScope, result,
             declaredScopes, projectDirectory, allSelectable, currentSelectable);
         var coverage = changedCoverage?.Coverage ?? (result.TotalKnown
             ? new EvidenceCoverage(CoverageLevel.Complete)
-            : new EvidenceCoverage(CoverageLevel.Partial, partialReason: "Collection stopped at the requested result limit."));
+            : new EvidenceCoverage(
+                CoverageLevel.Partial,
+                partialReason: result.Errors.Any(error =>
+                    error.Kind is TextSearchErrorKind.RegularExpressionTimeout)
+                    ? "One or more files exceeded the regular-expression timeout."
+                    : "Collection stopped at the requested result limit."));
         var evidence = new Evidence(result.Snapshot, EvidenceResolution.Text, coverage, EvidenceConfidence.Verified,
             new EvidenceScope(workspace.RootPath, request.Changed ? "changed paths" : "workspace paths",
                 projects: selectedProject is null ? null : [selectedProject]));
@@ -128,12 +165,16 @@ internal sealed class TextSearchCommandHandler : ICommandHandler<TextSearchComma
         var payload = TextSearchPayload.From(result, bounded, changedScope, changedCoverage?.Observations ?? [], includeSkipDetails, RetrievalCommand(request));
         return coverage.Level is CoverageLevel.Complete
             ? CommandResult<TextSearchPayload>.Success("search text", payload, evidence)
-            : CommandResult<TextSearchPayload>.Partial("search text", payload, evidence);
+            : CommandResult<TextSearchPayload>.Partial(
+                "search text",
+                payload,
+                evidence,
+                errors: resultErrors);
     }
 
     private static void ValidateRequest(TextSearchCommandRequest request)
     {
-        if (string.IsNullOrWhiteSpace(request.Query)) throw Usage("usage.text_query_required", "The text query cannot be blank.", "Provide a non-blank literal query.");
+        if (string.IsNullOrWhiteSpace(request.Query)) throw Usage("usage.text_query_required", "The text query cannot be blank.", "Provide a non-blank text query.");
         if (request.Limit < 0 || (request.Full && request.LimitSpecified)) throw Usage("usage.text_limit", "The --limit value is invalid for this invocation.", "Use a non-negative --limit, or use --full without --limit.");
         if (!request.Changed && (request.Base is not null || request.Head is not null)) throw Usage("usage.changed_selector_requires_changed", "--base and --head require --changed.", "Add --changed or remove --base and --head.");
         if (request.Project is not null && string.IsNullOrWhiteSpace(request.Project)) throw Usage("usage.text_project", "The --project value cannot be blank.", "Provide a project selector or remove --project.");
@@ -173,6 +214,7 @@ internal sealed class TextSearchCommandHandler : ICommandHandler<TextSearchComma
                 TextSearchFileStatus.Analyzed => new(path, "analyzed", "searched"),
                 TextSearchFileStatus.LimitReached => new(path, "remaining", "collection_stopped_at_limit"),
                 TextSearchFileStatus.Unreadable => new(path, "failed", "unreadable"),
+                TextSearchFileStatus.RegularExpressionTimeout => new(path, "failed", "regular_expression_timeout"),
                 TextSearchFileStatus.Binary => new(path, "excluded", "binary"),
                 TextSearchFileStatus.Undecodable => new(path, "excluded", "undecodable"),
                 TextSearchFileStatus.UnsupportedEncoding => new(path, "excluded", "unsupported_encoding"),
@@ -192,6 +234,23 @@ internal sealed class TextSearchCommandHandler : ICommandHandler<TextSearchComma
     private static bool MatchesScopes(string path, IReadOnlyList<string> scopes) => scopes.Count == 0 || scopes.Any(scope => scope == "." || path == scope || path.StartsWith(scope.TrimEnd('/') + "/", StringComparison.Ordinal));
     private static bool MatchesProject(string path, string? directory) => string.IsNullOrEmpty(directory) || path.StartsWith(directory.TrimEnd('/') + "/", StringComparison.Ordinal);
     private static CommandUsageException Usage(string code, string message, string correction) => new(code, message, correction);
+
+    private static ResultError ToResultError(TextSearchError error) =>
+        error.Kind switch
+        {
+            TextSearchErrorKind.InvalidRegularExpression => new ResultError(
+                "search.regex_invalid",
+                $"The regular-expression query `{error.Query}` is invalid.",
+                "Correct the query so it uses valid .NET regular-expression syntax."),
+            TextSearchErrorKind.RegularExpressionTimeout => new ResultError(
+                "search.regex_timeout",
+                $"The regular-expression query `{error.Query}` timed out while searching `{error.Path}`.",
+                "Narrow the expression or file scope and run the search again."),
+            _ => throw new ArgumentOutOfRangeException(
+                nameof(error),
+                error.Kind,
+                "The text-search error kind is not defined."),
+        };
 
     private static string RetrievalCommand(TextSearchCommandRequest request)
     {

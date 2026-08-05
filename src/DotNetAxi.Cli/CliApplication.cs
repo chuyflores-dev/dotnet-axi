@@ -90,11 +90,16 @@ internal static class CliApplication
             static () => new FileSearchCommandHandler(),
             host.ResponseWriter);
 
-        var textCommand = new Command("text", "Find literal text in eligible workspace files.");
+        var textCommand = new Command(
+            "text",
+            "Find literal or regular-expression text in eligible workspace files.");
         var query = new Argument<string>("query");
         var caseSensitive = new Option<bool>("--case-sensitive");
         var includeGenerated = new Option<bool>("--include-generated");
-        var regex = new Option<bool>("--regex");
+        var regex = new Option<bool>("--regex")
+        {
+            Description = "Interpret the query using the .NET regular-expression language.",
+        };
         var limit = new Option<int>("--limit") { DefaultValueFactory = static _ => 100 };
         var full = new Option<bool>("--full");
         var fields = new Option<string[]>("--fields") { AllowMultipleArgumentsPerToken = true };
@@ -116,7 +121,10 @@ internal static class CliApplication
         textCommand.Options.Add(baseReference);
         textCommand.Options.Add(head);
         host.RegisterCommand(searchCommand, textCommand, OperationPolicy.Passive,
-            ["dnaxi search text TODO --path src", "dnaxi search text TODO --case-sensitive"]);
+            [
+                "dnaxi search text TODO --path src",
+                "dnaxi search text 'TODO|FIXME' --regex",
+            ]);
         textCommand.BindHandler(
             result => TextSearchCommandRequest.Create(
                 result.GetValue(query)!,

@@ -2,6 +2,114 @@ namespace DotNetAxi.Cli.Tests;
 
 public sealed class TextSearchCommandTests
 {
+    [Fact]
+    public async Task Regex_search_uses_dotnet_patterns_and_command_case_mode()
+    {
+        var workspace = CreateWorkspace();
+        try
+        {
+            await File.WriteAllTextAsync(
+                Path.Combine(workspace, "pattern.cs"),
+                "before\nFOOFOO");
+            const string query = @"(?<word>foo)\k<word>";
+
+            var insensitive = await RunAsync(
+                workspace,
+                "search", "text", query, "--regex", "--full");
+            var sensitive = await RunAsync(
+                workspace,
+                "search", "text", query, "--regex", "--case-sensitive", "--full");
+
+            Assert.Equal(0, insensitive.ExitCode);
+            Assert.Contains("pattern.cs", insensitive.Output);
+            Assert.Contains("FOOFOO", insensitive.Output);
+            Assert.Contains("total: 1", insensitive.Output);
+            Assert.Equal(0, sensitive.ExitCode);
+            Assert.Contains("total: 0", sensitive.Output);
+            Assert.DoesNotContain("pattern.cs", sensitive.Output);
+        }
+        finally
+        {
+            Directory.Delete(workspace, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task Invalid_regex_is_a_structured_query_error_without_exception_details()
+    {
+        var workspace = CreateWorkspace();
+        try
+        {
+            var result = await RunAsync(
+                workspace,
+                "search", "text", "[invalid", "--regex");
+
+            Assert.Equal(1, result.ExitCode);
+            Assert.Contains("status: failed", result.Output);
+            Assert.Contains("code: search.regex_invalid", result.Output);
+            Assert.Contains("query `[invalid`", result.Output);
+            Assert.DoesNotContain("internal.unhandled", result.Output);
+            Assert.DoesNotContain("RegexParseException", result.Output);
+            Assert.DoesNotContain("System.Text.RegularExpressions", result.Output);
+        }
+        finally
+        {
+            Directory.Delete(workspace, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task Regex_timeout_is_structured_and_scanning_continues_in_the_cli()
+    {
+        var workspace = CreateWorkspace();
+        try
+        {
+            var catastrophicInput = new string('a', 100_000) + "!";
+            await File.WriteAllTextAsync(
+                Path.Combine(workspace, "a-catastrophic.txt"),
+                catastrophicInput);
+            await File.WriteAllTextAsync(
+                Path.Combine(workspace, "z-later.txt"),
+                "aaaa");
+            const string query = "^(a+)+$";
+
+            var result = await RunAsync(
+                workspace,
+                "search", "text", query, "--regex", "--full");
+
+            Assert.Equal(0, result.ExitCode);
+            Assert.Contains("status: partial", result.Output);
+            Assert.Contains("code: search.regex_timeout", result.Output);
+            Assert.Contains($"query `{query}`", result.Output);
+            Assert.Contains("a-catastrophic.txt", result.Output);
+            Assert.Contains("z-later.txt", result.Output);
+            Assert.Contains(
+                "Narrow the expression or file scope and run the search again.",
+                result.Output);
+            Assert.DoesNotContain(new string('a', 128), result.Output);
+            Assert.DoesNotContain("RegexMatchTimeoutException", result.Output);
+            Assert.DoesNotContain("System.Text.RegularExpressions", result.Output);
+        }
+        finally
+        {
+            Directory.Delete(workspace, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task Text_help_documents_regex_semantics_and_remains_passive()
+    {
+        var output = new StringWriter();
+        var host = CliApplication.Create(output, new StringWriter());
+
+        var exit = await host.InvokeAsync(["search", "text", "--help"]);
+
+        Assert.Equal(0, exit);
+        Assert.Contains("regular-expression text", output.ToString());
+        Assert.Contains(".NET regular-expression language", output.ToString());
+        Assert.Contains("--regex", output.ToString());
+    }
+
     [Theory]
     [InlineData("search", "text", "needle", "--full", "--limit", "100")]
     [InlineData("search", "text", "needle", "--path", "")]
