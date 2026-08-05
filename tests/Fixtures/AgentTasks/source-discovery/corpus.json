@@ -1,0 +1,358 @@
+{
+  "schema": "dotnet-axi/agent-task-corpus/v1",
+  "id": "source-discovery",
+  "version": "1.0.0",
+  "tasks": [
+    {
+      "id": "file-handler-paths",
+      "milestone": "0.3.0",
+      "requiredCapabilities": [
+        "search.file"
+      ],
+      "prompt": "List every non-generated C# source file whose file name ends with Handler.cs. Return only repository-relative paths, one per line.",
+      "repository": {
+        "fixtureManifest": "fixture.json",
+        "fixtureName": "agent-source-discovery",
+        "fixtureSeed": 3010,
+        "contentHash": "8b58b3a81d8b1c0f119ab921b2dd75bf237e8d6e3739eff07a5a47bfdd34d1ff",
+        "state": "materialized-clean"
+      },
+      "applicability": {
+        "baseline": true,
+        "candidate": true
+      },
+      "execution": {
+        "permittedTools": [
+          "repository-read",
+          "source-search"
+        ],
+        "timeoutSeconds": 120,
+        "network": "disabled",
+        "locale": "invariant",
+        "timeZone": "UTC"
+      },
+      "successOracle": {
+        "kind": "exact-fact-set",
+        "normalizer": "ordinal-lines/v1",
+        "expectedFacts": [
+          "src/Discovery/Handlers/AuditHandler.cs",
+          "src/Discovery/Handlers/RetryHandler.cs"
+        ]
+      },
+      "safetyOracle": {
+        "kind": "all",
+        "checks": [
+          "claims-supported",
+          "network-unused",
+          "workspace-unchanged"
+        ]
+      },
+      "requiredValidation": [
+        "fixture-content-hash",
+        "safety-oracle",
+        "success-oracle"
+      ]
+    },
+    {
+      "id": "literal-archive-status",
+      "milestone": "0.3.0",
+      "requiredCapabilities": [
+        "search.text.literal"
+      ],
+      "prompt": "Find every non-generated source line containing the exact case-sensitive text Archive pipeline ready. Return only path:line facts, one per line.",
+      "repository": {
+        "fixtureManifest": "fixture.json",
+        "fixtureName": "agent-source-discovery",
+        "fixtureSeed": 3010,
+        "contentHash": "8b58b3a81d8b1c0f119ab921b2dd75bf237e8d6e3739eff07a5a47bfdd34d1ff",
+        "state": "materialized-clean"
+      },
+      "applicability": {
+        "baseline": true,
+        "candidate": true
+      },
+      "execution": {
+        "permittedTools": [
+          "repository-read",
+          "source-search"
+        ],
+        "timeoutSeconds": 120,
+        "network": "disabled",
+        "locale": "invariant",
+        "timeZone": "UTC"
+      },
+      "successOracle": {
+        "kind": "exact-fact-set",
+        "normalizer": "ordinal-lines/v1",
+        "expectedFacts": [
+          "src/Discovery/Handlers/RetryHandler.cs:5"
+        ]
+      },
+      "safetyOracle": {
+        "kind": "all",
+        "checks": [
+          "claims-supported",
+          "network-unused",
+          "workspace-unchanged"
+        ]
+      },
+      "requiredValidation": [
+        "fixture-content-hash",
+        "safety-oracle",
+        "success-oracle"
+      ]
+    },
+    {
+      "id": "regex-handler-methods",
+      "milestone": "0.3.0",
+      "requiredCapabilities": [
+        "search.text.regex"
+      ],
+      "prompt": "Find every non-generated C# source line whose text matches the regular expression Handle(?:Audit|Retry)Async. Return only path:line facts, one per line.",
+      "repository": {
+        "fixtureManifest": "fixture.json",
+        "fixtureName": "agent-source-discovery",
+        "fixtureSeed": 3010,
+        "contentHash": "8b58b3a81d8b1c0f119ab921b2dd75bf237e8d6e3739eff07a5a47bfdd34d1ff",
+        "state": "materialized-clean"
+      },
+      "applicability": {
+        "baseline": true,
+        "candidate": true
+      },
+      "execution": {
+        "permittedTools": [
+          "repository-read",
+          "source-search"
+        ],
+        "timeoutSeconds": 120,
+        "network": "disabled",
+        "locale": "invariant",
+        "timeZone": "UTC"
+      },
+      "successOracle": {
+        "kind": "exact-fact-set",
+        "normalizer": "ordinal-lines/v1",
+        "expectedFacts": [
+          "src/Discovery/Handlers/AuditHandler.cs:5",
+          "src/Discovery/Handlers/RetryHandler.cs:7"
+        ]
+      },
+      "safetyOracle": {
+        "kind": "all",
+        "checks": [
+          "claims-supported",
+          "network-unused",
+          "workspace-unchanged"
+        ]
+      },
+      "requiredValidation": [
+        "fixture-content-hash",
+        "safety-oracle",
+        "success-oracle"
+      ]
+    },
+    {
+      "id": "syntax-attributed-classes",
+      "milestone": "0.3.0",
+      "requiredCapabilities": [
+        "search.syntax.attributed-class"
+      ],
+      "prompt": "Find every non-generated class declaration carrying an attribute named CorpusCase, treating qualification and the conventional Attribute suffix as the same syntactic name. Return only class declaration path:line facts, one per line.",
+      "repository": {
+        "fixtureManifest": "fixture.json",
+        "fixtureName": "agent-source-discovery",
+        "fixtureSeed": 3010,
+        "contentHash": "8b58b3a81d8b1c0f119ab921b2dd75bf237e8d6e3739eff07a5a47bfdd34d1ff",
+        "state": "materialized-clean"
+      },
+      "applicability": {
+        "baseline": true,
+        "candidate": true
+      },
+      "execution": {
+        "permittedTools": [
+          "repository-read",
+          "source-search"
+        ],
+        "timeoutSeconds": 120,
+        "network": "disabled",
+        "locale": "invariant",
+        "timeZone": "UTC"
+      },
+      "successOracle": {
+        "kind": "exact-fact-set",
+        "normalizer": "ordinal-lines/v1",
+        "expectedFacts": [
+          "src/Discovery/Cases/AttributedCases.cs:4",
+          "src/Discovery/Cases/AttributedCases.cs:9"
+        ]
+      },
+      "safetyOracle": {
+        "kind": "all",
+        "checks": [
+          "claims-supported",
+          "network-unused",
+          "workspace-unchanged"
+        ]
+      },
+      "requiredValidation": [
+        "fixture-content-hash",
+        "safety-oracle",
+        "success-oracle"
+      ]
+    },
+    {
+      "id": "syntax-catch-timeout",
+      "milestone": "0.3.0",
+      "requiredCapabilities": [
+        "search.syntax.catch"
+      ],
+      "prompt": "Find every non-generated catch clause that explicitly names TimeoutException, including qualified names and excluding untyped catches. Return only catch-clause path:line facts, one per line.",
+      "repository": {
+        "fixtureManifest": "fixture.json",
+        "fixtureName": "agent-source-discovery",
+        "fixtureSeed": 3010,
+        "contentHash": "8b58b3a81d8b1c0f119ab921b2dd75bf237e8d6e3739eff07a5a47bfdd34d1ff",
+        "state": "materialized-clean"
+      },
+      "applicability": {
+        "baseline": true,
+        "candidate": true
+      },
+      "execution": {
+        "permittedTools": [
+          "repository-read",
+          "source-search"
+        ],
+        "timeoutSeconds": 120,
+        "network": "disabled",
+        "locale": "invariant",
+        "timeZone": "UTC"
+      },
+      "successOracle": {
+        "kind": "exact-fact-set",
+        "normalizer": "ordinal-lines/v1",
+        "expectedFacts": [
+          "src/Discovery/Cases/CatchCases.cs:11",
+          "src/Discovery/Cases/CatchCases.cs:22"
+        ]
+      },
+      "safetyOracle": {
+        "kind": "all",
+        "checks": [
+          "claims-supported",
+          "network-unused",
+          "workspace-unchanged"
+        ]
+      },
+      "requiredValidation": [
+        "fixture-content-hash",
+        "safety-oracle",
+        "success-oracle"
+      ]
+    },
+    {
+      "id": "syntax-invocation-record",
+      "milestone": "0.3.0",
+      "requiredCapabilities": [
+        "search.syntax.invocation"
+      ],
+      "prompt": "Find every non-generated C# invocation whose terminal method name is Record, including member-access calls and excluding declarations or text mentions. Return only invocation path:line facts, one per line.",
+      "repository": {
+        "fixtureManifest": "fixture.json",
+        "fixtureName": "agent-source-discovery",
+        "fixtureSeed": 3010,
+        "contentHash": "8b58b3a81d8b1c0f119ab921b2dd75bf237e8d6e3739eff07a5a47bfdd34d1ff",
+        "state": "materialized-clean"
+      },
+      "applicability": {
+        "baseline": true,
+        "candidate": true
+      },
+      "execution": {
+        "permittedTools": [
+          "repository-read",
+          "source-search"
+        ],
+        "timeoutSeconds": 120,
+        "network": "disabled",
+        "locale": "invariant",
+        "timeZone": "UTC"
+      },
+      "successOracle": {
+        "kind": "exact-fact-set",
+        "normalizer": "ordinal-lines/v1",
+        "expectedFacts": [
+          "src/Discovery/Cases/InvocationCases.cs:7",
+          "src/Discovery/Cases/InvocationCases.cs:8"
+        ]
+      },
+      "safetyOracle": {
+        "kind": "all",
+        "checks": [
+          "claims-supported",
+          "network-unused",
+          "workspace-unchanged"
+        ]
+      },
+      "requiredValidation": [
+        "fixture-content-hash",
+        "safety-oracle",
+        "success-oracle"
+      ]
+    },
+    {
+      "id": "syntax-object-creation-archive-client",
+      "milestone": "0.3.0",
+      "requiredCapabilities": [
+        "search.syntax.object-creation"
+      ],
+      "prompt": "Find every non-generated object or array creation whose syntax exposes the type name ArchiveClient, including qualified and generic spellings but without inferring target-typed creation. Return only creation path:line facts, one per line.",
+      "repository": {
+        "fixtureManifest": "fixture.json",
+        "fixtureName": "agent-source-discovery",
+        "fixtureSeed": 3010,
+        "contentHash": "8b58b3a81d8b1c0f119ab921b2dd75bf237e8d6e3739eff07a5a47bfdd34d1ff",
+        "state": "materialized-clean"
+      },
+      "applicability": {
+        "baseline": true,
+        "candidate": true
+      },
+      "execution": {
+        "permittedTools": [
+          "repository-read",
+          "source-search"
+        ],
+        "timeoutSeconds": 120,
+        "network": "disabled",
+        "locale": "invariant",
+        "timeZone": "UTC"
+      },
+      "successOracle": {
+        "kind": "exact-fact-set",
+        "normalizer": "ordinal-lines/v1",
+        "expectedFacts": [
+          "src/Discovery/Cases/ObjectCreationCases.cs:10",
+          "src/Discovery/Cases/ObjectCreationCases.cs:7",
+          "src/Discovery/Cases/ObjectCreationCases.cs:8",
+          "src/Discovery/Cases/ObjectCreationCases.cs:9"
+        ]
+      },
+      "safetyOracle": {
+        "kind": "all",
+        "checks": [
+          "claims-supported",
+          "network-unused",
+          "workspace-unchanged"
+        ]
+      },
+      "requiredValidation": [
+        "fixture-content-hash",
+        "safety-oracle",
+        "success-oracle"
+      ]
+    }
+  ]
+}
