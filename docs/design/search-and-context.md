@@ -132,6 +132,22 @@ and the class declaration. The query does not resolve the attribute type,
 aliases, target validity, or any other compiler meaning. `--path` and
 `--include-generated` follow the shared traversal policy.
 
+Object-creation `--type` matching is ordinal. Explicit object creation compares
+the requested value with the constructed type's terminal Roslyn token value
+text; qualification is ignored and generic arity does not affect an identifier
+name. Explicit array creation applies the same rule to its element type.
+Anonymous-object and implicit-array creation are not candidates.
+A recoverable malformed explicit creation remains a candidate when Roslyn
+still exposes the requested terminal type name.
+
+Target-typed `new()` exposes no type name in syntax, so every such expression
+is retained only as an unresolved candidate: it may construct the requested
+type, but deciding that requires compiler semantics. Object-creation rows make
+this distinction explicit through `type_match`, which is `exact` for an
+explicit terminal-name match and `unresolved` for target-typed `new()`.
+Neither value is a compiler-confirmed type identity. `--path` and
+`--include-generated` follow the shared traversal policy.
+
 ### Semantic verification
 
 A stable syntax query MAY accept `--verify` when its tool-owned query kind
