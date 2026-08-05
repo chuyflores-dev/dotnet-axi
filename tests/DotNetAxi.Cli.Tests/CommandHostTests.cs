@@ -159,6 +159,7 @@ public sealed class CommandHostTests
         Assert.Collection(host.Operations,
             operation => Assert.Equal("home", operation.Name),
             operation => Assert.Equal("search", operation.Name),
+            operation => Assert.Equal("search file", operation.Name),
             operation => Assert.Equal("search text", operation.Name));
         Assert.All(host.Operations, operation =>
         {
