@@ -1,4 +1,3 @@
-using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
@@ -39,16 +38,6 @@ public static partial class AgentTaskCorpusLoader
         "dnaxi",
         "dotnet-axi",
     ];
-
-    private static readonly HashSet<string> WindowsDeviceNames =
-        new(StringComparer.OrdinalIgnoreCase)
-        {
-            "CON",
-            "PRN",
-            "AUX",
-            "NUL",
-            "CLOCK$",
-        };
 
     public static async ValueTask<AgentTaskCorpus> LoadAsync(
         string corpusPath,
@@ -602,60 +591,16 @@ public static partial class AgentTaskCorpusLoader
 
     private static string ValidateRelativePath(string? value, string field)
     {
-        if (string.IsNullOrWhiteSpace(value)
-            || Path.IsPathFullyQualified(value)
-            || value.Contains('\\')
-            || value.Contains(':')
-            || value.Any(static character =>
-                char.IsControl(character)
-                || character is '*' or '?' or '"' or '<' or '>' or '|'))
+        if (!PortableRelativePath.TryNormalize(
+                value,
+                normalizeBackslashes: false,
+                out var normalized))
         {
             throw new AgentTaskCorpusException(
                 $"{field} must be a portable relative path.");
         }
 
-        var segments = value.Split('/');
-        if (segments.Any(static segment =>
-                string.IsNullOrWhiteSpace(segment)
-                || segment is "." or ".."))
-        {
-            throw new AgentTaskCorpusException(
-                $"{field} cannot contain empty, '.' or '..' segments.");
-        }
-
-
-        foreach (var segment in segments)
-        {
-            if (!segment.IsNormalized(NormalizationForm.FormC)
-                || segment[^1] is ' ' or '.'
-                || IsWindowsDeviceName(segment))
-            {
-                throw new AgentTaskCorpusException(
-                    $"{field} must use portable NFC-normalized path segments.");
-            }
-        }
-
-        return string.Join('/', segments);
-    }
-
-    private static bool IsWindowsDeviceName(string segment)
-    {
-        var extensionSeparator = segment.IndexOf('.');
-        var baseName = extensionSeparator < 0
-            ? segment
-            : segment[..extensionSeparator];
-        return WindowsDeviceNames.Contains(baseName)
-            || (baseName.Length == 4
-                && baseName[3] is (>= '1' and <= '9')
-                    or '\u00b9'
-                    or '\u00b2'
-                    or '\u00b3'
-                && (baseName.StartsWith(
-                        "COM",
-                        StringComparison.OrdinalIgnoreCase)
-                    || baseName.StartsWith(
-                        "LPT",
-                        StringComparison.OrdinalIgnoreCase)));
+        return normalized;
     }
 
     private static string ResolveContainedPath(
