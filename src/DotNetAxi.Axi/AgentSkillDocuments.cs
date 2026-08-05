@@ -131,6 +131,14 @@ public static class AgentSkillDocuments
         lines.AddRange(
         [
             string.Empty,
+            "## Discover source with bounded queries",
+            string.Empty,
+        ]);
+        AddNumbered(lines, guidance.SourceDiscoveryFlow);
+
+        lines.AddRange(
+        [
+            string.Empty,
             "## Preserve evidence and safety",
             string.Empty,
         ]);

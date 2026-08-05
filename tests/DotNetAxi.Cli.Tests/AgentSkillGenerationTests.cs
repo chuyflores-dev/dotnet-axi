@@ -45,10 +45,13 @@ public sealed class AgentSkillGenerationTests
         foreach (var item in guidance.UseWhen
                      .Concat(guidance.SkipWhen)
                      .Concat(guidance.CapabilityFlow)
+                     .Concat(guidance.SourceDiscoveryFlow)
                      .Concat(guidance.SafetyFlow))
         {
             Assert.Contains(item, skill);
         }
+
+        AssertSourceDiscoveryGuidance(skill);
 
         Assert.DoesNotContain("dnx dotnet-axi -- search", skill);
         Assert.DoesNotContain("dnx dotnet-axi -- analyze", skill);
@@ -214,6 +217,9 @@ public sealed class AgentSkillGenerationTests
                 Assert.Contains(item, homeOutput.ToString());
                 Assert.Contains(item, helpOutput.ToString());
             }
+
+            AssertSourceDiscoveryGuidance(homeOutput.ToString());
+            AssertSourceDiscoveryGuidance(helpOutput.ToString());
         }
         finally
         {
@@ -235,6 +241,7 @@ public sealed class AgentSkillGenerationTests
         .. guidance.InvocationFlow,
         guidance.CapabilityCondition,
         .. guidance.CapabilityFlow,
+        .. guidance.SourceDiscoveryFlow,
         .. guidance.SafetyFlow,
         guidance.Completion,
         guidance.EvidenceReport,
@@ -294,12 +301,44 @@ public sealed class AgentSkillGenerationTests
         Assert.True(File.Exists(skillPath));
         Assert.True(File.Exists(referencePath));
         AssertPortableMetadata(File.ReadAllText(skillPath));
+        AssertSourceDiscoveryGuidance(File.ReadAllText(skillPath));
         Assert.Equal(
             File.ReadAllBytes(Path.Combine(source, "SKILL.md")),
             File.ReadAllBytes(skillPath));
         Assert.Equal(
             File.ReadAllBytes(Path.Combine(source, "references", "codex.md")),
             File.ReadAllBytes(referencePath));
+    }
+
+    private static void AssertSourceDiscoveryGuidance(string content)
+    {
+        foreach (var required in new[]
+                 {
+                     "dnaxi search file '<path-fragment>'",
+                     "dnaxi search text '<literal>'",
+                     "dnaxi search text '<dotnet-regex>' --regex",
+                     "dnaxi search syntax --help",
+                     "dnaxi search syntax invocation --name SaveChangesAsync",
+                     "--path <scope> --limit 20",
+                     "built-in engine",
+                     "use an available direct tool",
+                     "retrieval_command",
+                     "syntax candidates, never as compiler-verified",
+                 })
+        {
+            Assert.Contains(required, content);
+        }
+
+        foreach (var futureSemanticCommand in new[]
+                 {
+                     "dnaxi search symbol",
+                     "dnaxi show symbol",
+                     "dnaxi references",
+                     "dnaxi implementations",
+                 })
+        {
+            Assert.DoesNotContain(futureSemanticCommand, content);
+        }
     }
 
     private static string CreateTemporaryDirectory()

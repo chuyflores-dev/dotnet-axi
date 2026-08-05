@@ -114,8 +114,18 @@ for non-.NET work or a simple read of an already-known file.
 When the invoked version exposes the relevant capability, guidance SHOULD
 teach agents to:
 
-- Use text search for literals.
-- Use stable syntax queries for syntax shape.
+- Route path-fragment discovery through bounded file search, while preserving
+  a direct read when the exact file is already known and that is smaller.
+- Distinguish literal text from .NET regular-expression search and keep both
+  path-scoped and bounded.
+- Treat compatible `rg` use as optional acceleration: unavailable,
+  incompatible, or unsuitable acceleration degrades to the built-in text
+  engine without changing the stable command contract.
+- Select only stable syntax query kinds exposed by the invoked help, and label
+  their results as syntax candidates rather than compiler-verified identity.
+- Use a returned path or match to choose the next narrower evidence-producing
+  file, text, or syntax query instead of broadly dumping source. A truncated
+  result's retrieval command is used only when the omitted rows are needed.
 - Use Roslyn operations for exact identity.
 - Inspect impact before public changes.
 - Request bounded context.

@@ -14,6 +14,7 @@ public sealed class AgentCommandGuidance
         IEnumerable<string> invocationFlow,
         string capabilityCondition,
         IEnumerable<string> capabilityFlow,
+        IEnumerable<string> sourceDiscoveryFlow,
         IEnumerable<string> safetyFlow,
         string completion,
         string evidenceReport)
@@ -31,6 +32,9 @@ public sealed class AgentCommandGuidance
             capabilityCondition,
             nameof(capabilityCondition));
         CapabilityFlow = Copy(capabilityFlow, nameof(capabilityFlow));
+        SourceDiscoveryFlow = Copy(
+            sourceDiscoveryFlow,
+            nameof(sourceDiscoveryFlow));
         SafetyFlow = Copy(safetyFlow, nameof(safetyFlow));
         Completion = RequiredText(completion, nameof(completion));
         EvidenceReport = RequiredText(evidenceReport, nameof(evidenceReport));
@@ -57,6 +61,8 @@ public sealed class AgentCommandGuidance
     public string CapabilityCondition { get; }
 
     public IReadOnlyList<string> CapabilityFlow { get; }
+
+    public IReadOnlyList<string> SourceDiscoveryFlow { get; }
 
     public IReadOnlyList<string> SafetyFlow { get; }
 
@@ -308,6 +314,17 @@ public static class AgentGuidanceCatalog
             "Request bounded context.",
             "Run fast validation during work.",
             "Run standard validation before completion.",
+        ],
+        sourceDiscoveryFlow:
+        [
+            "Before source discovery, inspect the invoked version's structured help for the selected route and its options. If that route is unavailable, use an available direct tool and report the capability gap instead of inventing a command.",
+            "Find a file by normalized path with `dnaxi search file '<path-fragment>' --path <scope> --limit 20`. If the exact file is already known and a direct read is smaller, read it directly.",
+            "Find literal text with `dnaxi search text '<literal>' --path <scope> --limit 20`.",
+            "Find a .NET regular expression with `dnaxi search text '<dotnet-regex>' --regex --path <scope> --limit 20`; narrow the expression or path when a file times out.",
+            "Find a C# syntax shape by checking `dnaxi search syntax --help` and selecting an exposed stable query. For example, use `dnaxi search syntax invocation --name SaveChangesAsync --path <scope> --limit 20`.",
+            "Treat stable syntax results as syntax candidates, never as compiler-verified symbol or type identity.",
+            "Text search may use compatible `rg` acceleration. When that optional engine is absent, incompatible, or unsuitable for the query, `search text` degrades to its built-in engine with the same stable command behavior.",
+            "Keep discovery bounded with a narrow `--path` and `--limit`. If output is truncated, follow its `retrieval_command` only when the remaining rows are needed; otherwise use the returned path or match to issue the next narrower file, text, or syntax query instead of dumping broad source.",
         ],
         safetyFlow:
         [
