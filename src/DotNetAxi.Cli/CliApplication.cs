@@ -49,6 +49,47 @@ internal static class CliApplication
             host.ResponseWriter);
 
         var searchCommand = new Command("search", "Search the current workspace.");
+        host.RegisterCommand(rootCommand, searchCommand, OperationPolicy.Passive,
+            ["dnaxi search file Program", "dnaxi search text TODO"]);
+
+        var fileCommand = new Command("file", "Find files by normalized workspace-relative path.");
+        var fileQuery = new Argument<string>("query");
+        var fileCaseSensitive = new Option<bool>("--case-sensitive");
+        var extension = new Option<string[]>("--extension") { AllowMultipleArgumentsPerToken = false };
+        var glob = new Option<string[]>("--glob") { AllowMultipleArgumentsPerToken = false };
+        var filePath = new Option<string[]>("--path") { AllowMultipleArgumentsPerToken = false };
+        var fileProject = new Option<string?>("--project");
+        var fileChanged = new Option<bool>("--changed");
+        var fileIncludeGenerated = new Option<bool>("--include-generated");
+        var fileLimit = new Option<int>("--limit") { DefaultValueFactory = static _ => 100 };
+        var fileFields = new Option<string[]>("--fields") { AllowMultipleArgumentsPerToken = true };
+        fileCommand.Arguments.Add(fileQuery);
+        fileCommand.Options.Add(fileCaseSensitive);
+        fileCommand.Options.Add(extension);
+        fileCommand.Options.Add(glob);
+        fileCommand.Options.Add(filePath);
+        fileCommand.Options.Add(fileProject);
+        fileCommand.Options.Add(fileChanged);
+        fileCommand.Options.Add(fileIncludeGenerated);
+        fileCommand.Options.Add(fileLimit);
+        fileCommand.Options.Add(fileFields);
+        host.RegisterCommand(searchCommand, fileCommand, OperationPolicy.Passive,
+            ["dnaxi search file Program", "dnaxi search file .cs --extension cs --path src"]);
+        fileCommand.BindHandler(
+            result => FileSearchCommandRequest.Create(
+                result.GetValue(fileQuery)!,
+                result.GetValue(fileCaseSensitive),
+                result.GetValue(extension) ?? [],
+                result.GetValue(glob) ?? [],
+                result.GetValue(filePath) ?? [],
+                result.GetValue(fileProject),
+                result.GetValue(fileChanged),
+                result.GetValue(fileIncludeGenerated),
+                result.GetValue(fileLimit),
+                result.GetValue(fileFields) ?? []),
+            static () => new FileSearchCommandHandler(),
+            host.ResponseWriter);
+
         var textCommand = new Command("text", "Find literal text in eligible workspace files.");
         var query = new Argument<string>("query");
         var caseSensitive = new Option<bool>("--case-sensitive");
@@ -74,8 +115,6 @@ internal static class CliApplication
         textCommand.Options.Add(changed);
         textCommand.Options.Add(baseReference);
         textCommand.Options.Add(head);
-        host.RegisterCommand(rootCommand, searchCommand, OperationPolicy.Passive,
-            ["dnaxi search text TODO", "dnaxi search text TODO --path src"]);
         host.RegisterCommand(searchCommand, textCommand, OperationPolicy.Passive,
             ["dnaxi search text TODO --path src", "dnaxi search text TODO --case-sensitive"]);
         textCommand.BindHandler(
