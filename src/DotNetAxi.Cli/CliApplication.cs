@@ -153,8 +153,8 @@ internal static class CliApplication
         host.RegisterCommand(searchCommand, syntaxCommand, OperationPolicy.Passive,
             [
                 "dnaxi search syntax invocation --name SaveChangesAsync",
-                "dnaxi search syntax invocation --name Map --path src",
                 "dnaxi search syntax class --attribute Authorize",
+                "dnaxi search syntax object-creation --type HttpClient",
             ]);
 
         var invocationCommand = new Command(
@@ -246,6 +246,52 @@ internal static class CliApplication
                 result.GetValue(classFields) ?? [],
                 result.GetValue(classPath) ?? []),
             static () => new AttributedClassSyntaxCommandHandler(),
+            host.ResponseWriter);
+
+        var objectCreationCommand = new Command(
+            "object-creation",
+            "Find explicit C# object or array creation syntax by terminal type name; "
+                + "target-typed new() remains an unresolved syntax candidate.");
+        var objectCreationType = new Option<string>("--type")
+        {
+            Description = "Match the exact ordinal terminal type name.",
+            Required = true,
+        };
+        var objectCreationIncludeGenerated = new Option<bool>("--include-generated");
+        var objectCreationLimit = new Option<int>("--limit")
+        {
+            DefaultValueFactory = static _ => 100,
+        };
+        var objectCreationFull = new Option<bool>("--full");
+        var objectCreationFields = new Option<string[]>("--fields")
+        {
+            AllowMultipleArgumentsPerToken = true,
+        };
+        var objectCreationPath = new Option<string[]>("--path")
+        {
+            AllowMultipleArgumentsPerToken = false,
+        };
+        objectCreationCommand.Options.Add(objectCreationType);
+        objectCreationCommand.Options.Add(objectCreationIncludeGenerated);
+        objectCreationCommand.Options.Add(objectCreationLimit);
+        objectCreationCommand.Options.Add(objectCreationFull);
+        objectCreationCommand.Options.Add(objectCreationFields);
+        objectCreationCommand.Options.Add(objectCreationPath);
+        host.RegisterCommand(syntaxCommand, objectCreationCommand, OperationPolicy.Passive,
+            [
+                "dnaxi search syntax object-creation --type HttpClient",
+                "dnaxi search syntax object-creation --type Widget --path src --include-generated",
+            ]);
+        objectCreationCommand.BindHandler(
+            result => ObjectCreationSyntaxCommandRequest.Create(
+                result.GetValue(objectCreationType)!,
+                result.GetValue(objectCreationIncludeGenerated),
+                result.GetValue(objectCreationLimit),
+                result.Tokens.Any(token => token.Value == "--limit"),
+                result.GetValue(objectCreationFull),
+                result.GetValue(objectCreationFields) ?? [],
+                result.GetValue(objectCreationPath) ?? []),
+            static () => new ObjectCreationSyntaxCommandHandler(),
             host.ResponseWriter);
 
         return host;
