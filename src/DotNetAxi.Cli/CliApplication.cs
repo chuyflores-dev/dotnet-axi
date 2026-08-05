@@ -154,6 +154,7 @@ internal static class CliApplication
             [
                 "dnaxi search syntax invocation --name SaveChangesAsync",
                 "dnaxi search syntax invocation --name Map --path src",
+                "dnaxi search syntax class --attribute Authorize",
             ]);
 
         var invocationCommand = new Command(
@@ -199,6 +200,52 @@ internal static class CliApplication
                 result.GetValue(invocationFields) ?? [],
                 result.GetValue(invocationPath) ?? []),
             static () => new InvocationSyntaxCommandHandler(),
+            host.ResponseWriter);
+
+        var attributedClassCommand = new Command(
+            "class",
+            "Find C# class declarations by syntactic attribute name; results are syntax candidates.");
+        var classAttribute = new Option<string>("--attribute")
+        {
+            Description =
+                "Match the ordinal terminal attribute identifier with optional Attribute suffix.",
+            Required = true,
+        };
+        var classIncludeGenerated = new Option<bool>("--include-generated");
+        var classLimit = new Option<int>("--limit")
+        {
+            DefaultValueFactory = static _ => 100,
+        };
+        var classFull = new Option<bool>("--full");
+        var classFields = new Option<string[]>("--fields")
+        {
+            AllowMultipleArgumentsPerToken = true,
+        };
+        var classPath = new Option<string[]>("--path")
+        {
+            AllowMultipleArgumentsPerToken = false,
+        };
+        attributedClassCommand.Options.Add(classAttribute);
+        attributedClassCommand.Options.Add(classIncludeGenerated);
+        attributedClassCommand.Options.Add(classLimit);
+        attributedClassCommand.Options.Add(classFull);
+        attributedClassCommand.Options.Add(classFields);
+        attributedClassCommand.Options.Add(classPath);
+        host.RegisterCommand(syntaxCommand, attributedClassCommand, OperationPolicy.Passive,
+            [
+                "dnaxi search syntax class --attribute Authorize",
+                "dnaxi search syntax class --attribute Obsolete --path src --include-generated",
+            ]);
+        attributedClassCommand.BindHandler(
+            result => AttributedClassSyntaxCommandRequest.Create(
+                result.GetValue(classAttribute)!,
+                result.GetValue(classIncludeGenerated),
+                result.GetValue(classLimit),
+                result.Tokens.Any(token => token.Value == "--limit"),
+                result.GetValue(classFull),
+                result.GetValue(classFields) ?? [],
+                result.GetValue(classPath) ?? []),
+            static () => new AttributedClassSyntaxCommandHandler(),
             host.ResponseWriter);
 
         return host;

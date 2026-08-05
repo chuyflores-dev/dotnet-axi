@@ -162,7 +162,8 @@ public sealed class CommandHostTests
             operation => Assert.Equal("search file", operation.Name),
             operation => Assert.Equal("search text", operation.Name),
             operation => Assert.Equal("search syntax", operation.Name),
-            operation => Assert.Equal("search syntax invocation", operation.Name));
+            operation => Assert.Equal("search syntax invocation", operation.Name),
+            operation => Assert.Equal("search syntax class", operation.Name));
         Assert.All(host.Operations, operation =>
         {
             Assert.Same(OperationPolicy.Passive, operation.Policy);

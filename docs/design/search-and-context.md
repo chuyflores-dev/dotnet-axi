@@ -117,6 +117,21 @@ query does not infer aliases, extension-method binding, overload identity, or
 any other compiler meaning. `--path` narrows the shared traversal scope and
 `--include-generated` applies the shared generated-source policy.
 
+Attributed-class `--attribute` matching is ordinal and compares the requested
+terminal name with each class-attached attribute's terminal Roslyn identifier
+value text. The optional `Attribute` suffix is removed from both names when it
+follows a non-empty base name, so `Authorize` and `AuthorizeAttribute` select
+the same candidates. Qualified and alias-qualified attribute syntax uses its
+terminal identifier, and a target specifier on a class-attached attribute list
+does not change the match. Each `ClassDeclarationSyntax` is emitted at most
+once even when several attributes match; nested, static, and partial classes
+remain ordinary class candidates. Records, structs, interfaces, and
+compilation-unit attributes are not class candidates. Recoverable malformed
+syntax remains a candidate only when Roslyn attaches both the attribute name
+and the class declaration. The query does not resolve the attribute type,
+aliases, target validity, or any other compiler meaning. `--path` and
+`--include-generated` follow the shared traversal policy.
+
 ### Semantic verification
 
 A stable syntax query MAY accept `--verify` when its tool-owned query kind
