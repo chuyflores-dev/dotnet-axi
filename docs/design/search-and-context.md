@@ -148,6 +148,21 @@ explicit terminal-name match and `unresolved` for target-typed `new()`.
 Neither value is a compiler-confirmed type identity. `--path` and
 `--include-generated` follow the shared traversal policy.
 
+Catch search without `--type` returns both typed and untyped catch clauses.
+With `--type`, matching is ordinal and compares the requested value with the
+catch declaration type's terminal Roslyn token value text; qualification is
+ignored and generic arity does not affect an identifier name. Untyped catches
+are excluded by a type filter because they expose no syntactic type name.
+Catch filters do not change type matching.
+
+`--empty` retains catch blocks with zero parsed Roslyn statements. Comments and
+other trivia therefore remain empty, while an empty statement or any other
+parsed statement is non-empty. A recoverable malformed catch remains a
+candidate when Roslyn still exposes a catch clause that satisfies the selected
+type and statement-count filters. The query does not resolve aliases,
+inheritance, filter truth, or any other compiler meaning. `--path` and
+`--include-generated` follow the shared traversal policy.
+
 ### Semantic verification
 
 A stable syntax query MAY accept `--verify` when its tool-owned query kind

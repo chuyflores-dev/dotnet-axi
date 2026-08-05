@@ -164,7 +164,8 @@ public sealed class CommandHostTests
             operation => Assert.Equal("search syntax", operation.Name),
             operation => Assert.Equal("search syntax invocation", operation.Name),
             operation => Assert.Equal("search syntax class", operation.Name),
-            operation => Assert.Equal("search syntax object-creation", operation.Name));
+            operation => Assert.Equal("search syntax object-creation", operation.Name),
+            operation => Assert.Equal("search syntax catch", operation.Name));
         Assert.All(host.Operations, operation =>
         {
             Assert.Same(OperationPolicy.Passive, operation.Policy);
