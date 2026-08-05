@@ -10,6 +10,7 @@
     <Using Include="Xunit" />
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="../../src/DotNetAxi.DotNet/DotNetAxi.DotNet.csproj" />
     <ProjectReference Include="../../src/DotNetAxi.Search/DotNetAxi.Search.csproj" />
   </ItemGroup>
 </Project>

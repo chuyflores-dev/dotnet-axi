@@ -20,6 +20,27 @@ internal static class BuiltInTextSearchEngine
         ArgumentNullException.ThrowIfNull(matcher);
         cancellationToken.ThrowIfCancellationRequested();
 
+        return await SearchAsync(
+                traverser.Traverse(request.Traversal, cancellationToken),
+                request,
+                matcher,
+                candidatePaths: null,
+                cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    public static async Task<TextSearchResult> SearchAsync(
+        IReadOnlyList<WorkspaceTraversalPath> paths,
+        TextSearchRequest request,
+        ITextSearchMatcher matcher,
+        IReadOnlySet<string>? candidatePaths,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(paths);
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(matcher);
+        cancellationToken.ThrowIfCancellationRequested();
+
         var matches = new List<TextSearchMatch>();
         var skipped = new List<TextSearchSkippedFile>();
         var observations = new List<TextSearchFileObservation>();
@@ -35,7 +56,7 @@ internal static class BuiltInTextSearchEngine
         using var observation = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
         InitializeObservation(observation, request, matcher);
 
-        foreach (var path in traverser.Traverse(request.Traversal, cancellationToken))
+        foreach (var path in paths)
         {
             cancellationToken.ThrowIfCancellationRequested();
             var read = await ReadAsync(path.FullPath, cancellationToken).ConfigureAwait(false);
@@ -63,9 +84,23 @@ internal static class BuiltInTextSearchEngine
                 continue;
             }
 
-            var contentHash = Convert.ToHexStringLower(SHA256.HashData(read.Bytes!));
             try
             {
+                if (candidatePaths is not null
+                    && !candidatePaths.Contains(Path.GetFullPath(path.FullPath))
+                    && !matcher.FindMatches(
+                            read.Text,
+                            maximumMatches: 1,
+                            cancellationToken)
+                        .Any())
+                {
+                    observations.Add(new TextSearchFileObservation(
+                        path.RelativePath,
+                        TextSearchFileStatus.Analyzed));
+                    continue;
+                }
+
+                var contentHash = Convert.ToHexStringLower(SHA256.HashData(read.Bytes!));
                 var remainingCapacity = request.Limit - matches.Count;
                 var matchObservationLimit = remainingCapacity == int.MaxValue
                     ? int.MaxValue
