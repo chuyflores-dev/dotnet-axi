@@ -159,6 +159,40 @@ function Assert-InstalledAgentSkill {
         -not $skill.Contains("`n---`n")) {
         throw "Installed Agent Skill metadata is not portable or discoverable."
     }
+
+    $requiredSourceDiscoveryGuidance = @(
+        "dnaxi search file '<path-fragment>'",
+        "dnaxi search text '<literal>'",
+        "dnaxi search text '<dotnet-regex>' --regex",
+        "dnaxi search syntax --help",
+        "dnaxi search syntax invocation --name SaveChangesAsync",
+        "--path <scope> --limit 20",
+        "built-in engine",
+        "use an available direct tool",
+        "retrieval_command",
+        "syntax candidates, never as compiler-verified"
+    )
+    foreach ($required in $requiredSourceDiscoveryGuidance) {
+        if (-not $skill.Contains(
+                $required,
+                [System.StringComparison]::Ordinal)) {
+            throw "Installed Agent Skill is missing source-discovery guidance '$required'."
+        }
+    }
+
+    $futureSemanticCommands = @(
+        "dnaxi search symbol",
+        "dnaxi show symbol",
+        "dnaxi references",
+        "dnaxi implementations"
+    )
+    foreach ($futureCommand in $futureSemanticCommands) {
+        if ($skill.Contains(
+                $futureCommand,
+                [System.StringComparison]::Ordinal)) {
+            throw "Installed Agent Skill uses unavailable semantic command '$futureCommand'."
+        }
+    }
 }
 
 function Assert-PortablePdb {
