@@ -277,6 +277,69 @@ Candidate and baseline conditions use the same agent, model, settings, and task
 state. Each task/condition runs at least five times in interleaved randomized
 order.
 
+The runner emits the agent-neutral
+`dotnet-axi/agent-benchmark-result/v1` contract. One immutable series manifest
+pins the corpus, harness, adapter, agent version, exact model and reasoning
+setting, settings hash, fixture commit, product commit and schema, dispatch
+mode, run count, randomization seed, and immutable baseline and candidate
+condition descriptors. A single execution-settings value supplies both
+conditions, so model, settings, permission profile, and disabled-network policy
+cannot drift between them. Condition descriptors identify only their
+condition-specific instruction and concrete-tool configuration hashes; the
+runner rejects swapped descriptors or adapter-observed settings and hashes that
+differ from the controlled input. It snapshots and revalidates public corpus
+records before scheduling, fixture creation, or adapter work; malformed task
+identities, collections, policies, applicability, oracles, and validation
+contracts fail closed.
+
+The seed drives a stable shuffle of the complete
+task-by-condition-by-repetition matrix, rather than adjacent condition pairs.
+Execution order is assigned after the shuffle and retained in every result, so
+the schedule can be replayed without carrying a condition-order bias. Every
+applicable task/condition has at least five independently materialized fixture
+runs. The shared fixture factory supplies a clean task state. A bounded,
+domain-separated before/after fingerprint covers the root and complete
+workspace file and directory inventory with explicit regular, directory,
+special, and reparse-point types. It never follows a root or entry reparse
+point, reads content only for declared regular fixture files after their
+inventory metadata still matches, and never reads arbitrary added-file
+content. Missing content, entry limits, inspection timeouts, and I/O failures
+produce an incomplete unsafe result while preserving normalized and raw run
+evidence.
+
+An adapter start failure is retryable only when it certifies that no live agent
+execution was created. After an execution starts, the runner never starts a
+replacement for that logical run. Before any permitted pre-start retry, the
+runner proves that declared content and the full inventory still match the
+initial state. Completion and timeout first snapshot normalized evidence, then
+every completed, timed-out, or cancelled execution receives exactly one
+bounded stop and dispose before final integrity is measured. Timeout results
+retain the last normalized progress and raw events rather than discarding
+partial tokens, turns, calls, or inspected scope.
+
+Normalized results retain the immutable final answer; success, exact-fact
+support, fixture integrity, safety, and required-validation outcomes are
+derived by the runner from corpus oracles wherever deterministic. Results also
+record input/output/total tokens, turns, ordered tool calls, wall duration,
+ordinal inspected file and project sets, timeout and start-attempt state,
+versions, all controlling hashes, permission/network policy, and separate
+immutable `claims-supported`, `network-unused`, and `workspace-unchanged`
+outcomes. Inspected scope uses the fixture system's canonical portable
+relative-path rules. Provider events remain opaque immutable strings with
+contiguous sequence numbers and per-event SHA-256 hashes; the result pins the
+ordered raw trajectory with a separate SHA-256 hash. Negative or overflowing
+token metrics, invalid scope, unpermitted tool classes, missing raw evidence,
+hash drift, malformed ordering, and unknown normalized statuses fail closed.
+
+Dispatch is explicit. Continuous-integration dispatch rejects every adapter
+except the exact sealed in-process deterministic fake type; adapter metadata
+cannot self-attest fake status. The descriptor is read and snapshotted once.
+Real-agent adapters require manual dispatch. The fake implements the same
+public adapter and lifecycle contracts and deterministically supplies answers,
+usage, inspected scope, tool calls, observed configuration, and raw events from
+the controlled input. It neither launches an agent nor exercises provider
+credentials.
+
 The minimum baseline uses ordinary file reads, `rg` or equivalent search, and
 raw `dotnet` commands. It receives no hidden `dotnet-axi` guidance or
 artifacts. Additional comparisons MAY include Roslyn-oriented MCP servers or
