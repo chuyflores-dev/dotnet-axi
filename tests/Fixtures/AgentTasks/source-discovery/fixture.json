@@ -1,0 +1,71 @@
+{
+  "schema": "dotnet-axi/fixture/v1",
+  "name": "agent-source-discovery",
+  "seed": 3010,
+  "sdk": {
+    "version": "10.0.302",
+    "rollForward": "latestPatch",
+    "allowPrerelease": false
+  },
+  "capabilities": [
+    "language:csharp",
+    "project:sdk-style",
+    "workspace:single-project"
+  ],
+  "build": {
+    "target": "src/Discovery/Discovery.csproj",
+    "expectedOutcome": "success"
+  },
+  "files": [
+    {
+      "path": "README.md",
+      "template": "templates/README.md",
+      "expandTokens": false
+    },
+    {
+      "path": "obj/GeneratedNoise.g.cs",
+      "template": "templates/GeneratedNoise.g.cs",
+      "expandTokens": false
+    },
+    {
+      "path": "src/Discovery/Cases/AttributedCases.cs",
+      "template": "templates/AttributedCases.cs",
+      "expandTokens": false
+    },
+    {
+      "path": "src/Discovery/Cases/CatchCases.cs",
+      "template": "templates/CatchCases.cs",
+      "expandTokens": false
+    },
+    {
+      "path": "src/Discovery/Cases/InvocationCases.cs",
+      "template": "templates/InvocationCases.cs",
+      "expandTokens": false
+    },
+    {
+      "path": "src/Discovery/Cases/ObjectCreationCases.cs",
+      "template": "templates/ObjectCreationCases.cs",
+      "expandTokens": false
+    },
+    {
+      "path": "src/Discovery/Discovery.csproj",
+      "template": "templates/Discovery.csproj",
+      "expandTokens": false
+    },
+    {
+      "path": "src/Discovery/Handlers/AuditHandler.cs",
+      "template": "templates/AuditHandler.cs",
+      "expandTokens": false
+    },
+    {
+      "path": "src/Discovery/Handlers/RetryHandler.cs",
+      "template": "templates/RetryHandler.cs",
+      "expandTokens": false
+    },
+    {
+      "path": "src/Discovery/Infrastructure/FixtureTypes.cs",
+      "template": "templates/FixtureTypes.cs",
+      "expandTokens": false
+    }
+  ]
+}

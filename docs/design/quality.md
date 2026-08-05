@@ -290,6 +290,51 @@ deterministic oracle; it receives blinded condition output, uses one pinned
 judge configuration across compared conditions, and is recorded in the run
 manifest.
 
+### Corpus contract
+
+The agent-neutral corpus uses
+`dotnet-axi/agent-task-corpus/v1`. Its corpus ID and semantic version are
+independent of the product and harness versions. Each task declares:
+
+- A stable task ID, first applicable product milestone, and required product
+  capabilities.
+- One condition-neutral prompt and explicit baseline and candidate
+  applicability. Prompts and judge rubrics cannot name either condition,
+  `dnaxi`, or `dotnet-axi`; adapters expose condition-specific tools without
+  changing the task text.
+- A fixture manifest, fixture name and seed, materialized workspace content
+  hash, and a clean materialized state. Fixture manifests are resolved inside
+  the corpus directory and validated through the shared fixture factory.
+- Abstract permitted tool classes, a bounded timeout, disabled network, the
+  invariant locale, and UTC. The adapter maps permitted classes to concrete
+  tools for its condition without adding tool-selection hints to the prompt.
+- A success oracle, a separate safety oracle, and required harness validation.
+  Discovery tasks use an exact set of newline facts normalized by
+  `ordinal-lines/v1`. Their deterministic safety checks require supported
+  claims, no network use, and an unchanged workspace. Validation always
+  confirms the fixture hash and executes both oracles.
+
+Corpus consumers select only tasks whose first milestone is not later than the
+measured product and whose required capabilities are present. Adding tasks for
+a later milestone therefore does not turn an earlier release's intentionally
+unshipped capabilities into missing evidence.
+
+The controlled `0.3.0` set contains file-name, literal-text, regular-expression,
+invocation, attributed-class, object-creation, and catch-clause discovery. One
+deterministic C# fixture includes qualified forms, generated noise, textual
+false candidates, and syntax that must remain unresolved without semantic
+inference. The task prompt describes the outcome and response facts, not a
+condition-specific command.
+
+Exact fact sets must be nonempty, unique, and stored in ordinal order. Strict
+corpus loading rejects unknown fields, duplicate or unsorted outcomes, fixture
+identity or content-hash drift, omitted validation, moving or mutable setup,
+ambient network/locale/time-zone settings, and condition-specific guidance.
+If a later task genuinely needs a model judge, its oracle instead declares an
+independently versioned rubric, requires condition blinding, and adds explicit
+model-judge validation; deterministic and model-judged criteria cannot be
+mixed in one oracle.
+
 Scenarios SHOULD cover declaration lookup, exact references, conceptual
 discovery, caller/impact analysis, diagnostic investigation, targeted change,
 architecture detection, changed-scope validation, and multi-project failure
