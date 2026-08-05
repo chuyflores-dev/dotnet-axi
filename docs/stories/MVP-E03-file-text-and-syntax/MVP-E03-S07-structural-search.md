@@ -1,9 +1,9 @@
-# MVP-E03-S07 — Search Structural Patterns
+# MVP-E03-S07 — Defer General Structural Patterns
 
 ## Outcome
 
-`search structural` returns syntax candidates for raw patterns and configured
-rules through the stable output contract.
+The MVP omits a general raw-pattern and rule language. Supported syntax shapes
+are exposed only through stable tool-owned Roslyn queries.
 
 ## Design
 
@@ -11,21 +11,21 @@ rules through the stable output contract.
 
 ## Boundary
 
-Syntax candidates are never labeled compiler-verified, and AST-grep rewrites
-cannot modify source in the MVP.
+Backend-specific pattern syntax, arbitrary syntax-rule execution, and syntax
+rewrites are outside the MVP. Syntax candidates are never labeled
+compiler-verified.
 
 ## Acceptance
 
-- Pattern/rule selection, include/exclude scope, limits, cancellation, empty
-  results, and capability failures behave consistently.
-- Results preserve normalized locations and candidate provenance.
+- The CLI does not advertise `search structural --pattern` or `--rule`.
+- Supported syntax searches preserve normalized locations, deterministic
+  scope, cancellation, limits, empty results, and candidate provenance.
 
 ## Verification
 
-- Command fixtures cover patterns, rules, ignores, limits, no matches,
-  unsupported adapters, and attempted rewrites.
+- Command-contract tests cover the supported stable syntax-query surface and
+  reject unsupported general structural commands without invoking a backend.
 
 ## Dependencies
 
-- `MVP-E03-S06`
-- `MVP-E01-S06`
+- None.

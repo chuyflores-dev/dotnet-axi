@@ -302,7 +302,7 @@ public static class AgentGuidanceCatalog
         capabilityFlow:
         [
             "Use text search for literals.",
-            "Use structural search for syntax shape.",
+            "Use stable syntax queries for syntax shape.",
             "Use Roslyn operations for exact identity.",
             "Inspect impact before public changes.",
             "Request bounded context.",

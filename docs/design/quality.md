@@ -6,7 +6,7 @@ testing, and agent-task evaluation.
 ## Performance principles
 
 The tool provides useful commands before full repository semantic analysis
-completes. Home, file, text, and structural search do not wait for a full
+completes. Home, file, text, and syntax search do not wait for a full
 semantic index.
 
 Semantic operations attempt to load only candidate projects and required
@@ -38,7 +38,7 @@ for required completeness.
 The repository includes a repeatable large-repository fixture generated from a
 committed generator, manifest, and fixed seed. The reference fixture contains
 approximately 50,000 C# files across enough projects and dependencies to
-exercise catalog, structural, and candidate semantic work.
+exercise catalog, syntax, and candidate semantic work.
 
 The manifest records CPU model/core count, memory, storage, OS, filesystem,
 .NET SDK, dependency versions, power mode, fixture hash, and tool commit.
@@ -61,7 +61,7 @@ Initial designated-runner targets are:
 |---|---:|
 | Home view | ≤ 2 seconds |
 | File/text search | ≤ 5 seconds |
-| Repository-wide AST structural search | ≤ 15 seconds |
+| Repository-wide Roslyn syntax search | ≤ 15 seconds |
 | Candidate semantic verification of up to 5 projects | ≤ 15 seconds |
 
 The optional Phase 2 warm-session target is a repeated symbol query at ≤ 3
@@ -163,9 +163,9 @@ Fixtures cover:
 
 ### Structural and Roslyn oracles
 
-Structural tests compare AST-grep candidates with Roslyn verification for
-representative patterns, coordinate conversion, ignore behavior, no-match
-translation, and unsupported adapters.
+Syntax-query tests compare product candidates with direct Roslyn syntax-tree
+traversal for representative shapes, normalized coordinates, ignore behavior,
+malformed input, and no-match behavior.
 
 Semantic tests compare references and relationships with direct Roslyn API
 results across overloads, aliases, linked files, multi-targeting,

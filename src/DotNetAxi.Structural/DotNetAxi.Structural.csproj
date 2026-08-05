@@ -1,9 +1,5 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <ItemGroup>
-    <InternalsVisibleTo Include="DotNetAxi.Structural.Tests" />
-  </ItemGroup>
-
-  <ItemGroup>
     <ProjectReference Include="../DotNetAxi.Contracts/DotNetAxi.Contracts.csproj" />
   </ItemGroup>
 </Project>

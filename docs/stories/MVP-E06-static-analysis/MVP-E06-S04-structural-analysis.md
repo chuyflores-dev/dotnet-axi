@@ -2,8 +2,8 @@
 
 ## Outcome
 
-`analyze structural` runs configured AST-grep YAML rules and returns normalized
-syntax-policy findings.
+`analyze structural` runs configured tool-owned Roslyn syntax rules and returns
+normalized syntax-policy findings.
 
 ## Design
 
@@ -17,17 +17,22 @@ declared and used.
 ## Acceptance
 
 - Rule discovery, selected rule scope, severity, location, cancellation, and
-  optional-engine failures are explicit.
+  unknown-rule failures are explicit.
 - Empty catches, direct construction, forbidden syntax, and migration-pattern
   fixtures can be expressed without source rewrites.
 
 ## Verification
 
-- Rule fixtures cover configured directories, valid and invalid YAML, matches,
-  no matches, missing AST-grep, and generated-code scope.
+- Rule fixtures cover configured IDs and options, valid and invalid
+  configuration, matches, no matches, malformed syntax, and generated-code
+  scope.
 
 ## Dependencies
 
 - `MVP-E06-S01`
-- `MVP-E03-S07`
+- `MVP-E03-S08`
+- `MVP-E03-S09`
+- `MVP-E03-S10`
+- `MVP-E03-S11`
+- `MVP-E03-S12`
 - `MVP-E10-S06`

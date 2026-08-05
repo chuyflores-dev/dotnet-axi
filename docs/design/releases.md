@@ -39,7 +39,7 @@ compatibility, or quality work until a later milestone.
 |---|---|---|
 | `0.1.0` | First installable agent-facing CLI contract | CLI/output foundation, bounded structured help and version output, query-planning seams, and verified .NET tool invocation |
 | `0.2.0` | Workspace-aware CLI | Workspace selection, worktree state, project/framework coverage, snapshot identity, the passive home view, and an installable on-demand Agent Skill |
-| `0.3.0` | First-use source discovery | File, literal, regular-expression, structural, and stable Roslyn syntax searches without a mandatory index, plus the first measured Codex agent-task comparison |
+| `0.3.0` | First-use source discovery | File, literal, regular-expression, and stable Roslyn syntax searches without a mandatory index, plus the first measured Codex agent-task comparison |
 | `0.4.0` | Stable source identity and bounded context | Symbol discovery, stateless entity IDs, candidate verification, show, outline, and context budgets |
 | `0.5.0` | Semantic relationships and graphs | References, implementations, inheritance, callers/callees, project graphs, paths, cycles, and impact |
 | `0.6.0` | Analysis and structured SDK execution | Compiler/configured analysis plus noninteractive restore, build, test, format, and constrained `dotnet` execution |

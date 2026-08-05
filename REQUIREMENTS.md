@@ -52,7 +52,7 @@ The product:
 - Keeps passive discovery separate from operations that can execute repository
   code, access the network, or write files.
 - Produces machine-readable TOON v4.1 using output schema `dotnet-axi/v1`.
-- Remains usable when Git, `rg`, AST-grep, restore assets, or some projects are
+- Remains usable when Git, `rg`, restore assets, or some projects are
   unavailable, with explicit capability or coverage reporting.
 
 The product is not intended to replace the .NET SDK, MSBuild, Roslyn, an IDE,
@@ -66,8 +66,7 @@ The MVP includes:
 
 - Passive home, workspace, solution, project, framework, and changed-scope
   discovery.
-- File, text, stable syntax, AST-grep structural, and symbol declaration
-  search.
+- File, text, stable Roslyn syntax, and symbol declaration search.
 - Stateless evidence IDs plus bounded show, outline, and context retrieval.
 - Roslyn-backed references, implementations, overrides, derived types, and
   supported callers/callees.

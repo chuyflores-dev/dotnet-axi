@@ -13,8 +13,7 @@ platform, SDK, and optional-engine compatibility matrix.
   trusted publishing.
 - Supported OS/RID and .NET SDK 8, 9, and 10 validation.
 - Roslyn/MSBuild host compatibility and isolated failure behavior.
-- Git, `rg`, and AST-grep discovery, version reporting, and graceful
-  degradation.
+- Git and `rg` discovery, version reporting, and graceful degradation.
 - Constrained-host package behavior across supported platforms and invocation forms.
 
 ## Boundary

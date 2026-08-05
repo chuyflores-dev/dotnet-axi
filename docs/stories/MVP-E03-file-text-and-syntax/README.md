@@ -9,8 +9,7 @@ syntax shape, and stable tool-owned syntax queries without a persistent index.
 
 - Shared traversal, ignore, generated-code, and path-scope behavior.
 - Built-in file and text search, including encoding and timeout handling.
-- AST-grep structural discovery behind a stable adapter.
-- Roslyn syntax fallback and stable syntax queries.
+- Roslyn-backed stable syntax queries for supported C# shapes.
 - Deterministic limits, ordering, explicit empty results, and capability
   degradation.
 
@@ -37,8 +36,8 @@ Compiler verification of candidates and symbol identity belong to `MVP-E04`.
 - [MVP-E03-S03 — Search literal text](MVP-E03-S03-literal-text-search.md)
 - [MVP-E03-S04 — Search regular expressions](MVP-E03-S04-regex-search.md)
 - [MVP-E03-S05 — Accelerate text search with `rg`](MVP-E03-S05-rg-acceleration.md)
-- [MVP-E03-S06 — Adapt AST-grep](MVP-E03-S06-ast-grep-adapter.md)
-- [MVP-E03-S07 — Search structural patterns](MVP-E03-S07-structural-search.md)
+- [MVP-E03-S06 — Defer AST-grep beyond MVP](MVP-E03-S06-ast-grep-adapter.md)
+- [MVP-E03-S07 — Defer general structural patterns](MVP-E03-S07-structural-search.md)
 - [MVP-E03-S08 — Provide the Roslyn syntax engine](MVP-E03-S08-roslyn-syntax-engine.md)
 - [MVP-E03-S09 — Search invocation syntax](MVP-E03-S09-invocation-syntax.md)
 - [MVP-E03-S10 — Search attributed classes](MVP-E03-S10-attributed-class-syntax.md)
@@ -48,5 +47,5 @@ Compiler verification of candidates and symbol identity belong to `MVP-E04`.
 ## Complete when
 
 - File, text, and supported syntax searches work from a clean first process.
-- Built-in behavior remains authoritative when optional accelerators are
+- Built-in behavior remains authoritative when optional text accelerators are
   absent or incompatible.

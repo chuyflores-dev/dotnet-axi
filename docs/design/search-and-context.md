@@ -5,7 +5,7 @@ solution compilation, plus bounded source retrieval for agents.
 
 ## Shared traversal
 
-File, text, and structural search MUST:
+File, text, and syntax search MUST:
 
 - Respect workspace `.gitignore` files and `.git/info/exclude`.
 - Apply `dotnet-axi.yml` exclusions.
@@ -80,54 +80,22 @@ on host locale.
 
 ## Structural search
 
-```bash
-dnaxi search structural --pattern '<pattern>'
-dnaxi search structural --rule <rule-id-or-path>
-```
+General backend-specific pattern and rule commands are outside the MVP. The
+MVP exposes the stable, tool-owned C# syntax queries below and implements them
+with Roslyn syntax trees.
 
-AST-grep SHOULD be the preferred initial adapter. The adapter MUST:
+A future general structural-search surface MUST define product-owned query
+semantics, traversal, provenance, cancellation, limits, and semantic-verifier
+behavior. It also requires benchmark evidence that the stable syntax queries
+are insufficient. Third-party pattern syntax or output schemas MUST NOT become
+the public contract by accident.
 
-- Use structured JSON internally.
-- Follow the shared traversal and ignore contract.
-- Support include/exclude globs and cancellation.
-- Translate results into stable internal contracts.
-- Keep progress and dependency diagnostics out of stdout.
-
-When AST-grep is unavailable, tool-owned structural queries fall back to
-Roslyn syntax where implemented. Raw backend patterns MAY fail with an
-actionable structured error, while unrelated commands remain functional.
-
-### Semantic verification
-
-```bash
-dnaxi search structural --pattern '<pattern>' \
-  --verify-as <invocation|object-creation|type-reference|attribute|declaration>
-```
-
-Verification MUST discover candidates, map them to every owning project and
-selected target framework, load only candidate scope when possible, resolve
-the requested construct with Roslyn, and report discovered, verified, rejected,
-and unresolved counts.
-
-Tool-owned syntax queries and YAML rules MAY declare verifier metadata so the
-shorter `--verify` form is unambiguous. A raw pattern without metadata MUST
-reject bare `--verify` with `semantic.verifier_required`; an arbitrary syntax
-node MUST NOT be presented as having one compiler-verifiable meaning.
-
-Syntax-only matches MUST NOT be described as compiler-confirmed facts.
-
-AST-grep no-match exit behavior MUST be translated to a successful explicit
-zero result and `dotnet-axi` exit `0`. AST-grep rewrites MUST NOT directly
-modify user files in the MVP.
-
-The release MUST publish the AST-grep and C# grammar versions exercised by
-conformance tests. Missing or unsupported versions return capability metadata
-and a correction. Raw backend JSON, coordinates, exit codes, and diagnostic
-schemas MUST NOT escape the adapter boundary.
+Syntax-only matches MUST NOT be described as compiler-confirmed facts or
+silently trigger source rewrites.
 
 ## Stable syntax queries
 
-The product SHOULD expose tool-owned queries independent of AST-grep syntax:
+The MVP exposes tool-owned C# syntax queries:
 
 ```bash
 dnaxi search syntax invocation --name SaveChangesAsync
@@ -136,8 +104,20 @@ dnaxi search syntax object-creation --type HttpClient
 dnaxi search syntax catch --type Exception --empty
 ```
 
-The implementation MAY use AST-grep, Roslyn syntax, or both, but user-facing
-semantics remain stable.
+Roslyn syntax is the authoritative MVP implementation. It parses only selected
+files, follows the shared traversal contract, and does not require a
+compilation or execute repository code.
+
+### Semantic verification
+
+A stable syntax query MAY accept `--verify` when its tool-owned query kind
+declares one unambiguous compiler construct. Verification maps candidates to
+every owning project and selected target framework, loads only candidate scope
+when possible, resolves the construct with Roslyn, and reports discovered,
+verified, rejected, and unresolved counts.
+
+Arbitrary syntax nodes do not invent a compiler meaning. A query without a
+declared verifier rejects `--verify` with an actionable structured error.
 
 ## Symbol declarations
 
@@ -193,8 +173,7 @@ and cheap relationship summaries.
 a large file.
 
 `outline` returns imports, namespace, types, members, signatures, and relevant
-attributes. AST-grep MAY provide the outline; Roslyn syntax MUST be available
-as a fallback.
+attributes through Roslyn syntax.
 
 ## Bounded context
 

@@ -2,8 +2,8 @@
 
 ## Outcome
 
-Structural candidates can be verified as a declared compiler construct in the
-smallest valid project and framework scope.
+Tool-owned syntax candidates can be verified as a declared compiler construct
+in the smallest valid project and framework scope.
 
 ## Design
 
@@ -12,13 +12,12 @@ smallest valid project and framework scope.
 
 ## Boundary
 
-Bare `--verify` requires rule metadata; arbitrary syntax nodes cannot invent a
-compiler meaning.
+Only a syntax query with one declared verifier accepts `--verify`; arbitrary
+syntax nodes cannot invent a compiler meaning.
 
 ## Acceptance
 
-- `--verify-as` and metadata-driven `--verify` report discovered, verified,
-  rejected, and unresolved counts.
+- `--verify` reports discovered, verified, rejected, and unresolved counts.
 - Every owning project/framework variant and all partial-coverage reasons stay
   explicit.
 
@@ -29,7 +28,10 @@ compiler meaning.
 
 ## Dependencies
 
-- `MVP-E03-S07`
 - `MVP-E03-S08`
+- `MVP-E03-S09`
+- `MVP-E03-S10`
+- `MVP-E03-S11`
+- `MVP-E03-S12`
 - `MVP-E02-S05`
 - `MVP-E02-S06`

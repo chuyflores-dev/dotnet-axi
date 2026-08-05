@@ -17,15 +17,14 @@ Exception type matching is syntactic until semantic verification is requested.
 
 - Typed, untyped, filtered, empty, comment-only, and malformed catches follow
   explicit query semantics.
-- Roslyn fallback and supported AST-grep execution produce equivalent
-  normalized candidates.
+- Roslyn produces deterministic normalized candidates for every supported
+  catch shape.
 
 ## Verification
 
-- Paired-engine fixtures cover type and empty filters, trivia, nested catches,
+- Roslyn fixtures cover type and empty filters, trivia, nested catches,
   generated scope, false candidates, and empty results.
 
 ## Dependencies
 
-- `MVP-E03-S06`
 - `MVP-E03-S08`

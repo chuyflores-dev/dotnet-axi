@@ -18,7 +18,7 @@ produce comparative evidence.
 
 - The harness removes tool state, preserves restored dependencies, performs one
   unmeasured filesystem warm-up, and runs at least 30 measured iterations.
-- Home, file/text, structural, and bounded semantic scenarios record full
+- Home, file/text, syntax, and bounded semantic scenarios record full
   environment and fixture identity.
 
 ## Verification
@@ -32,5 +32,6 @@ produce comparative evidence.
 - `MVP-E01-S07`
 - `MVP-E03-S02`
 - `MVP-E03-S03`
-- `MVP-E03-S07`
+- `MVP-E03-S08`
+- `MVP-E03-S09`
 - `MVP-E04-S04`

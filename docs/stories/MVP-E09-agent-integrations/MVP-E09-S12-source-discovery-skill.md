@@ -3,7 +3,7 @@
 ## Outcome
 
 The released Agent Skill routes applicable .NET source-discovery tasks through
-the shipped file, text, structural, and stable syntax commands.
+the shipped file, text, and stable syntax commands.
 
 ## Design
 
@@ -18,9 +18,8 @@ direct read when the exact file is already known.
 
 ## Acceptance
 
-- Canonical guidance distinguishes file, literal or regular-expression,
-  structural, and stable syntax discovery and explains optional-engine
-  degradation.
+- Canonical guidance distinguishes file, literal or regular-expression, and
+  stable syntax discovery and explains optional text-engine degradation.
 - Examples use only shipped commands, preserve bounded output, and point to
   the next evidence-producing query instead of encouraging broad source dumps.
 - Skill, structured-help, and home-view guidance remain generated from one
@@ -38,7 +37,7 @@ direct read when the exact file is already known.
 - `MVP-E03-S02`
 - `MVP-E03-S03`
 - `MVP-E03-S04`
-- `MVP-E03-S07`
+- `MVP-E03-S08`
 - `MVP-E03-S09`
 - `MVP-E03-S10`
 - `MVP-E03-S11`

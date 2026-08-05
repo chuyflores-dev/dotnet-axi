@@ -8,7 +8,7 @@ candidate syntax semantically, and retrieve bounded source context.
 ## Scope
 
 - Ranked symbol declaration discovery and candidate-scoped semantic loading.
-- Structural candidate verification with explicit verified, rejected, and
+- Syntax candidate verification with explicit verified, rejected, and
   unresolved counts.
 - Stateless entity IDs, owner/framework variants, and stale-ID handling.
 - Symbol/document show, outline, and budgeted context composition.

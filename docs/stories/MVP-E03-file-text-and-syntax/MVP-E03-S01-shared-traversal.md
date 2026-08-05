@@ -2,7 +2,7 @@
 
 ## Outcome
 
-File, text, and structural engines receive the same deterministic set of
+File, text, and syntax engines receive the same deterministic set of
 eligible workspace paths.
 
 ## Design
@@ -18,7 +18,7 @@ narrow the tool-owned traversal contract.
 
 - Git ignores, repository configuration, generated-code policy, build-output
   exclusions, explicit path scope, and symlink policy are applied once.
-- Optional engines can consume the resulting path set without applying hidden
+- Search engines consume the resulting path set without applying hidden
   traversal defaults.
 
 ## Verification

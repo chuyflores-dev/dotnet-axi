@@ -2,8 +2,8 @@
 
 ## Outcome
 
-Structural candidates and semantic relationships can be compared with direct
-AST-grep and Roslyn authority in repeatable tests.
+Syntax candidates and semantic relationships can be compared with direct
+Roslyn syntax and semantic authority in repeatable tests.
 
 ## Design
 
@@ -11,8 +11,8 @@ AST-grep and Roslyn authority in repeatable tests.
 
 ## Boundary
 
-Oracles test adapter truth and coordinate translation; they do not reuse the
-production adapter implementation being verified.
+Oracles traverse syntax trees and semantic APIs independently; they do not
+reuse the production query implementations being verified.
 
 ## Acceptance
 
@@ -29,7 +29,11 @@ production adapter implementation being verified.
 ## Dependencies
 
 - `MVP-E13-S02`
-- `MVP-E03-S07`
+- `MVP-E03-S08`
+- `MVP-E03-S09`
+- `MVP-E03-S10`
+- `MVP-E03-S11`
+- `MVP-E03-S12`
 - `MVP-E04-S04`
 - `MVP-E05-S02`
 - `MVP-E05-S03`

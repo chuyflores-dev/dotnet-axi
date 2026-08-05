@@ -18,7 +18,7 @@ settings, harness, and corpus.
 
 ## Acceptance
 
-- Every applicable file, text, structural, and stable syntax task runs at
+- Every applicable file, text, and stable syntax task runs at
   least five times per condition with randomized interleaving and equivalent
   isolated workspaces.
 - The manifest pins agent, model, reasoning, CLI, sandbox, permissions,

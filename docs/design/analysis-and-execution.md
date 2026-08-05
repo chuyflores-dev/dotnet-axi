@@ -43,9 +43,9 @@ snapshot, or be reported as successful analysis.
 
 ### Structural and architecture rules
 
-`analyze structural` runs AST-grep YAML rules for syntax-only policies such as
-empty catches, direct `HttpClient` construction, forbidden syntax, and
-migration patterns.
+`analyze structural` runs configured tool-owned Roslyn syntax rules for
+policies such as empty catches, direct `HttpClient` construction, forbidden
+syntax, and migration patterns.
 
 `analyze architecture` runs configuration-driven rules for forbidden
 project/namespace dependencies, layer boundaries, circular dependencies, and
