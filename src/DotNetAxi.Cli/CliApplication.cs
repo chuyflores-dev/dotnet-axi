@@ -50,7 +50,11 @@ internal static class CliApplication
 
         var searchCommand = new Command("search", "Search the current workspace.");
         host.RegisterCommand(rootCommand, searchCommand, OperationPolicy.Passive,
-            ["dnaxi search file Program", "dnaxi search text TODO"]);
+            [
+                "dnaxi search file Program",
+                "dnaxi search text TODO",
+                "dnaxi search syntax invocation --name SaveChangesAsync",
+            ]);
 
         var fileCommand = new Command("file", "Find files by normalized workspace-relative path.");
         var fileQuery = new Argument<string>("query");
@@ -141,6 +145,60 @@ internal static class CliApplication
                 result.GetValue(baseReference),
                 result.GetValue(head)),
             static () => new TextSearchCommandHandler(),
+            host.ResponseWriter);
+
+        var syntaxCommand = new Command(
+            "syntax",
+            "Search stable tool-owned C# syntax shapes without loading a compilation.");
+        host.RegisterCommand(searchCommand, syntaxCommand, OperationPolicy.Passive,
+            [
+                "dnaxi search syntax invocation --name SaveChangesAsync",
+                "dnaxi search syntax invocation --name Map --path src",
+            ]);
+
+        var invocationCommand = new Command(
+            "invocation",
+            "Find C# invocation syntax by exact terminal name; results are syntax candidates.");
+        var invocationName = new Option<string>("--name")
+        {
+            Description = "Match the exact ordinal terminal invocation identifier.",
+            Required = true,
+        };
+        var invocationIncludeGenerated = new Option<bool>("--include-generated");
+        var invocationLimit = new Option<int>("--limit")
+        {
+            DefaultValueFactory = static _ => 100,
+        };
+        var invocationFull = new Option<bool>("--full");
+        var invocationFields = new Option<string[]>("--fields")
+        {
+            AllowMultipleArgumentsPerToken = true,
+        };
+        var invocationPath = new Option<string[]>("--path")
+        {
+            AllowMultipleArgumentsPerToken = false,
+        };
+        invocationCommand.Options.Add(invocationName);
+        invocationCommand.Options.Add(invocationIncludeGenerated);
+        invocationCommand.Options.Add(invocationLimit);
+        invocationCommand.Options.Add(invocationFull);
+        invocationCommand.Options.Add(invocationFields);
+        invocationCommand.Options.Add(invocationPath);
+        host.RegisterCommand(syntaxCommand, invocationCommand, OperationPolicy.Passive,
+            [
+                "dnaxi search syntax invocation --name SaveChangesAsync",
+                "dnaxi search syntax invocation --name Map --path src --include-generated",
+            ]);
+        invocationCommand.BindHandler(
+            result => InvocationSyntaxCommandRequest.Create(
+                result.GetValue(invocationName)!,
+                result.GetValue(invocationIncludeGenerated),
+                result.GetValue(invocationLimit),
+                result.Tokens.Any(token => token.Value == "--limit"),
+                result.GetValue(invocationFull),
+                result.GetValue(invocationFields) ?? [],
+                result.GetValue(invocationPath) ?? []),
+            static () => new InvocationSyntaxCommandHandler(),
             host.ResponseWriter);
 
         return host;

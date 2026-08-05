@@ -108,6 +108,15 @@ Roslyn syntax is the authoritative MVP implementation. It parses only selected
 files, follows the shared traversal contract, and does not require a
 compilation or execute repository code.
 
+Invocation `--name` matching is ordinal and compares the requested value with
+the terminal Roslyn identifier's value text. It therefore handles escaped
+identifiers uniformly and ignores generic arity while matching simple names,
+member access, and conditional member binding. A recoverable malformed
+invocation is a candidate when Roslyn still exposes that terminal name. The
+query does not infer aliases, extension-method binding, overload identity, or
+any other compiler meaning. `--path` narrows the shared traversal scope and
+`--include-generated` applies the shared generated-source policy.
+
 ### Semantic verification
 
 A stable syntax query MAY accept `--verify` when its tool-owned query kind
