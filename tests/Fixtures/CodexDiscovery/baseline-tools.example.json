@@ -1,0 +1,12 @@
+{
+  "schema": "dotnet-axi/codex-discovery-tool-configuration/v1",
+  "configurationOverrides": [
+    "skills.config=[]"
+  ],
+  "executableSearchPathEntries": [
+    {
+      "path": "/absolute/path/to/isolated-raw-tool-bin",
+      "sha256": "replace-with-64-lowercase-hex-raw-tool-directory-hash"
+    }
+  ]
+}

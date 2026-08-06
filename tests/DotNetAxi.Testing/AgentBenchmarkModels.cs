@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Text.Json.Serialization;
 
 namespace DotNetAxi.Testing;
 
@@ -50,6 +51,44 @@ public sealed record AgentBenchmarkConfiguration(
 public sealed record AgentBenchmarkAdapterDescriptor(
     string Id,
     string Version);
+
+internal sealed record AgentBenchmarkScheduledRun(
+    string RunId,
+    string TaskId,
+    AgentBenchmarkCondition Condition,
+    int Repetition,
+    int ExecutionOrder);
+
+internal sealed class AgentBenchmarkPreparedSeries
+{
+    internal AgentBenchmarkPreparedSeries(
+        AgentBenchmarkSeriesManifest manifest,
+        IReadOnlyList<AgentBenchmarkScheduledRun> schedule)
+    {
+        Manifest = manifest with
+        {
+            Execution = manifest.Execution with { },
+            Provenance = manifest.Provenance with { },
+            Baseline = manifest.Baseline with { },
+            Candidate = manifest.Candidate with { },
+            Adapter = manifest.Adapter with { },
+        };
+        Schedule = AgentBenchmarkSnapshots.List(
+            schedule.Select(static run => run with { }));
+    }
+
+    public AgentBenchmarkSeriesManifest Manifest { get; }
+
+    public IReadOnlyList<AgentBenchmarkScheduledRun> Schedule { get; }
+}
+
+internal interface IAgentBenchmarkRunSink
+{
+    ValueTask RetainAsync(
+        AgentBenchmarkSeriesManifest manifest,
+        AgentBenchmarkRunResult run,
+        CancellationToken cancellationToken = default);
+}
 
 public interface IAgentBenchmarkAdapter
 {
@@ -211,6 +250,7 @@ public sealed record AgentBenchmarkRunHashes(
 
 public sealed class AgentBenchmarkRunResult
 {
+    [JsonConstructor]
     internal AgentBenchmarkRunResult(
         string runId,
         string taskId,

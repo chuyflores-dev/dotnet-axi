@@ -23,7 +23,11 @@ internal sealed class CodexAgentBenchmarkExecution
         _normalizer = new CodexAgentBenchmarkEventNormalizer(input);
         _normalizer.AddAdapterEvent(
             "adapter.process.started",
-            JsonSerializer.Serialize(new { processId = process.Id }));
+            JsonSerializer.Serialize(new
+            {
+                processId = process.Id,
+                workspacePath = Path.GetFullPath(input.WorkspacePath),
+            }));
         _standardOutput = ReadStandardOutputAsync();
         _standardError = ReadStandardErrorAsync();
         Completion = CompleteAsync();
