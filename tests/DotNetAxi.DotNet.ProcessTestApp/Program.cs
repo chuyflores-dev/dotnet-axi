@@ -4,6 +4,12 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
 
+if (Environment.GetEnvironmentVariable(
+        "DNAXI_OPTIONAL_DEPENDENCY_SHIM") == "1")
+{
+    return OptionalDependencyShim(args);
+}
+
 return args.FirstOrDefault() switch
 {
     "echo" => Echo(args[1..]),
@@ -16,6 +22,40 @@ return args.FirstOrDefault() switch
     "codex-fixture" => await CodexFixtureAsync(args[1..]),
     _ => 64,
 };
+
+static int OptionalDependencyShim(IReadOnlyList<string> values)
+{
+    var command = Path.GetFileNameWithoutExtension(Environment.ProcessPath);
+    if (command is null
+        || (command != "git" && command != "rg"))
+    {
+        return 64;
+    }
+
+    var prefix = $"DNAXI_OPTIONAL_DEPENDENCY_{command.ToUpperInvariant()}";
+    var marker = Environment.GetEnvironmentVariable($"{prefix}_MARKER");
+    if (!string.IsNullOrWhiteSpace(marker))
+    {
+        File.WriteAllText(marker, "invoked");
+    }
+
+    var version = Environment.GetEnvironmentVariable($"{prefix}_VERSION");
+    if (values.Count == 1
+        && values[0] == "--version"
+        && !string.IsNullOrWhiteSpace(version))
+    {
+        Console.WriteLine(version);
+        return 0;
+    }
+
+    return int.TryParse(
+        Environment.GetEnvironmentVariable($"{prefix}_EXIT_CODE"),
+        NumberStyles.Integer,
+        CultureInfo.InvariantCulture,
+        out var exitCode)
+            ? exitCode
+            : 74;
+}
 
 static async Task<int> CodexFixtureAsync(IReadOnlyList<string> values)
 {
