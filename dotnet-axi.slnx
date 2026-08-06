@@ -18,6 +18,7 @@
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/DotNetAxi.Analysis.Tests/DotNetAxi.Analysis.Tests.csproj" />
+    <Project Path="tests/DotNetAxi.CodexSmoke/DotNetAxi.CodexSmoke.csproj" />
     <Project Path="tests/DotNetAxi.Cli.TestApp/DotNetAxi.Cli.TestApp.csproj" />
     <Project Path="tests/DotNetAxi.Cli.Tests/DotNetAxi.Cli.Tests.csproj" />
     <Project Path="tests/DotNetAxi.Contracts.Tests/DotNetAxi.Contracts.Tests.csproj" />

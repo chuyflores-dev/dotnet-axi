@@ -1,10 +1,10 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
+    <OutputType>Exe</OutputType>
     <IsPackable>false</IsPackable>
   </PropertyGroup>
 
   <ItemGroup>
-    <InternalsVisibleTo Include="DotNetAxi.Testing.Tests" />
-    <InternalsVisibleTo Include="DotNetAxi.CodexSmoke" />
+    <ProjectReference Include="../DotNetAxi.Testing/DotNetAxi.Testing.csproj" />
   </ItemGroup>
 </Project>

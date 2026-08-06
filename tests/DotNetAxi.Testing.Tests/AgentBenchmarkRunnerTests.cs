@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using System.Diagnostics;
+using System.Text.Json;
 
 namespace DotNetAxi.Testing.Tests;
 
@@ -64,6 +65,7 @@ public sealed class AgentBenchmarkRunnerTests
             series.Manifest.Dispatch);
         Assert.Equal(configuration.Baseline, series.Manifest.Baseline);
         Assert.Equal(configuration.Candidate, series.Manifest.Candidate);
+        Assert.Equal("read-only", series.Manifest.Execution.Sandbox);
         Assert.NotSame(configuration.Baseline, series.Manifest.Baseline);
         Assert.NotSame(configuration.Candidate, series.Manifest.Candidate);
         Assert.All(
@@ -73,7 +75,8 @@ public sealed class AgentBenchmarkRunnerTests
                 Assert.Equal("fake-agent-1.0.0", input.Execution.AgentVersion);
                 Assert.Equal("fake-model", input.Execution.ModelId);
                 Assert.Equal("controlled", input.Execution.ReasoningSetting);
-                Assert.Equal("read-only", input.Execution.PermissionProfile);
+                Assert.Equal("read-only", input.Execution.Sandbox);
+                Assert.Equal("never", input.Execution.PermissionProfile);
                 Assert.Equal("disabled", input.Execution.NetworkPolicy);
                 Assert.Equal(corpus.Tasks[0].Prompt, input.Task.Prompt);
             });
@@ -108,6 +111,8 @@ public sealed class AgentBenchmarkRunnerTests
                 });
                 Assert.Equal("1.0.0", run.Versions.HarnessVersion);
                 Assert.Equal("fake-model", run.Versions.ModelId);
+                Assert.Equal("read-only", run.Sandbox);
+                Assert.Equal("never", run.PermissionProfile);
                 Assert.Equal(corpus.Version, run.Versions.CorpusVersion);
                 Assert.Equal(corpus.Tasks[0].Repository.ContentHash,
                     run.Hashes.FixtureContent);
@@ -198,7 +203,21 @@ public sealed class AgentBenchmarkRunnerTests
         Assert.False(timedOut.Safe);
         Assert.Equal(3, timedOut.InputTokens);
         Assert.Equal(1, timedOut.Turns);
-        Assert.Single(timedOut.RawEvents);
+        Assert.Equal(2, timedOut.RawEvents.Count);
+        var started = Assert.Single(
+            timedOut.RawEvents,
+            static value => value.Kind == "adapter.process.started");
+        var exited = Assert.Single(
+            timedOut.RawEvents,
+            static value => value.Kind == "adapter.process.exited");
+        using var startedPayload = JsonDocument.Parse(started.Payload);
+        using var exitedPayload = JsonDocument.Parse(exited.Payload);
+        Assert.Equal(
+            startedPayload.RootElement.GetProperty("processId").GetInt32(),
+            exitedPayload.RootElement.GetProperty("processId").GetInt32());
+        Assert.Equal(
+            137,
+            exitedPayload.RootElement.GetProperty("exitCode").GetInt32());
         Assert.Equal(1, timedOut.StartAttempts);
         Assert.Equal(10, starts);
         Assert.Equal(1, hanging!.StopCalls);
@@ -969,6 +988,7 @@ public sealed class AgentBenchmarkRunnerTests
                 "controlled",
                 Hash("settings"),
                 "read-only",
+                "never",
                 "disabled"),
             new AgentBenchmarkProvenance(
                 "1.0.0",
@@ -1119,23 +1139,24 @@ public sealed class AgentBenchmarkRunnerTests
 
     private sealed class HangingExecution : IAgentBenchmarkExecution
     {
-        private readonly IReadOnlyList<AgentBenchmarkRawEvent> _rawEvents;
+        private readonly List<AgentBenchmarkRawEvent> _rawEvents = [];
         private readonly TaskCompletionSource<AgentBenchmarkAdapterResult>
             _completion = new(
                 TaskCreationOptions.RunContinuationsAsynchronously);
 
         public HangingExecution(string runId)
         {
-            var payload = $"started:{runId}";
-            _rawEvents = Array.AsReadOnly(
-                new[]
-                {
-                    new AgentBenchmarkRawEvent(
-                        0,
-                        "fake.started",
-                        payload,
-                        Hash(payload)),
-                });
+            var payload = JsonSerializer.Serialize(new
+            {
+                processId = 60_060,
+                runId,
+            });
+            _rawEvents.Add(
+                new AgentBenchmarkRawEvent(
+                    0,
+                    "adapter.process.started",
+                    payload,
+                    Hash(payload)));
         }
 
         public Task<AgentBenchmarkAdapterResult> Completion => _completion.Task;
@@ -1151,13 +1172,24 @@ public sealed class AgentBenchmarkRunnerTests
                 Turns: 1,
                 ToolCalls: [],
                 new AgentBenchmarkInspectedScope([], []),
-                _rawEvents);
+                Array.AsReadOnly(_rawEvents.ToArray()));
 
         public ValueTask StopAsync(
             CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
             StopCalls++;
+            var payload = JsonSerializer.Serialize(new
+            {
+                processId = 60_060,
+                exitCode = 137,
+            });
+            _rawEvents.Add(
+                new AgentBenchmarkRawEvent(
+                    _rawEvents.Count,
+                    "adapter.process.exited",
+                    payload,
+                    Hash(payload)));
             _completion.TrySetCanceled(cancellationToken);
             return ValueTask.CompletedTask;
         }

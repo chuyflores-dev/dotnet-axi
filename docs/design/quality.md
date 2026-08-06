@@ -247,6 +247,63 @@ records the CLI version, exact model, reasoning setting, sandbox, instructions,
 event stream, and reported usage. Runs are ephemeral and isolate user-level
 configuration from the controlled benchmark condition.
 
+The adapter launches one absolute, version-pinned Codex executable as `codex
+exec --ephemeral --json --ignore-user-config --ignore-rules`. Every argument is
+passed without a shell. Each run also passes the exact model, workspace, and `read-only` or
+`workspace-write` sandbox explicitly; fixes the reasoning and `never` approval
+settings; and disables web search and workspace-sandbox network access. A task
+receives `workspace-write` only when its abstract permitted tools declare
+`workspace-write`; every other task is passive and must use `read-only`.
+Condition-specific configuration accepts only declared skill and MCP-server
+exposure, whose instruction and concrete-tool hashes are pinned in the series
+manifest. Authentication environment is supplied explicitly to this one
+process and is not included in captured arguments or evidence.
+
+The first successfully created launcher process owns the run even before a
+`thread.started` event arrives. Its PID is retained once, silence while that
+process remains live is not a start failure, and no adapter-internal retry is
+performed. The runner's task timeout is the total deadline. Timeout first
+snapshots available normalized and raw evidence, then the existing bounded
+stop/dispose lifecycle terminates, waits for, and reaps the exact process tree.
+
+Codex stdout is framed as JSONL and retained verbatim with contiguous sequence
+numbers and hashes. A nonempty final fragment without a newline is truncated,
+even when it is otherwise valid JSON. The adapter also retains stderr plus
+process-start and process-exit evidence, including PID and exit code. It
+normalizes the immutable final agent message, turn usage, command executions,
+file changes, tool outcomes, and portable inspected file/project scope.
+One thread and one turn follow an explicit start, item, and terminal transition
+model; duplicate or out-of-order lifecycle events fail closed. Bare, rooted,
+and quoted repository paths are normalized only after preserving root
+semantics, and recognized paths outside the workspace are unsafe. Malformed,
+duplicate, overflowing, permission-denied, read-only, network-denied, and
+untrusted-scope evidence fails closed while preserving the complete trajectory.
+After timeout, the runner preserves the pre-cleanup snapshot, performs bounded
+stop and dispose, and then retains only a monotonic extension containing the
+owned launcher's final PID and exit-code evidence.
+
+The adapter smoke is manually dispatched and separate from the S15 measured
+series. Copy and fill
+`tests/Fixtures/CodexAdapter/manual-smoke.example.json`, then run:
+
+```bash
+dotnet run --project tests/DotNetAxi.CodexSmoke/DotNetAxi.CodexSmoke.csproj \
+  --configuration Release -- \
+  --manifest /absolute/path/to/smoke-request.json \
+  --output /absolute/path/to/new-smoke-evidence.json
+```
+
+The request pins an absolute Codex executable, declared CLI version, isolated
+authenticated `CODEX_HOME`, controlled workspace, exact model and reasoning,
+settings and condition hashes, sandbox, approval, network, timeout, and cleanup
+policy. The create-new evidence file retains normalized and raw results and
+mechanically reconciles raw sequence/hashes, turn usage, turns, tool calls,
+final answer, PID, and exit code. It hashes but does not publish the
+authentication-home path and never records credential contents. Canonical
+builds compile the smoke project but never execute it; no PR CI path dispatches
+Codex or supplies credentials. Successful smoke evidence is readiness evidence
+only.
+
 The later Claude adapter uses supported noninteractive streaming JSON and
 records the equivalent model, permission, turn-limit, event, usage, cost, and
 version evidence. Adding Claude does not redefine or invalidate the Codex

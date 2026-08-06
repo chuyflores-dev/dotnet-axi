@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Globalization;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Text.Json;
 
 return args.FirstOrDefault() switch
 {
@@ -12,8 +13,72 @@ return args.FirstOrDefault() switch
     "signal" => Signal(args[1..]),
     "spawn-descendant" => SpawnDescendant(args[1..]),
     "descendant" => Hang(),
+    "codex-fixture" => await CodexFixtureAsync(args[1..]),
     _ => 64,
 };
+
+static async Task<int> CodexFixtureAsync(IReadOnlyList<string> values)
+{
+    var fixturePath = Environment.GetEnvironmentVariable("CODEX_FIXTURE_PATH");
+    var behavior = Environment.GetEnvironmentVariable("CODEX_FIXTURE_BEHAVIOR")
+        ?? "emit";
+    var configuredExitCode =
+        Environment.GetEnvironmentVariable("CODEX_FIXTURE_EXIT_CODE");
+    for (var index = 0; index + 1 < values.Count; index += 2)
+    {
+        if (values[index] == "exec")
+        {
+            break;
+        }
+
+        switch (values[index])
+        {
+            case "--fixture":
+                fixturePath = values[index + 1];
+                break;
+            case "--behavior":
+                behavior = values[index + 1];
+                break;
+            case "--exit-code":
+                configuredExitCode = values[index + 1];
+                break;
+        }
+    }
+
+    if (fixturePath is not null)
+    {
+        var encodedWorkspace = JsonSerializer.Serialize(
+            Environment.CurrentDirectory);
+        var content = (await File.ReadAllTextAsync(fixturePath)).Replace(
+            "{{WORKSPACE}}",
+            encodedWorkspace[1..^1],
+            StringComparison.Ordinal);
+        await Console.Out.WriteAsync(
+            behavior == "truncate"
+                ? content.TrimEnd('\r', '\n')
+                : content);
+        await Console.Out.FlushAsync();
+    }
+
+    if (behavior == "hang")
+    {
+        return Hang();
+    }
+
+    if (behavior == "stderr-denied")
+    {
+        await Console.Error.WriteLineAsync(
+            "permission denied by the configured approval policy");
+    }
+
+    return int.TryParse(
+        configuredExitCode,
+        NumberStyles.Integer,
+        CultureInfo.InvariantCulture,
+        out var exitCode)
+            ? exitCode
+            : 0;
+}
 
 static int Echo(IReadOnlyList<string> values)
 {

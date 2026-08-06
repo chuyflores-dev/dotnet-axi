@@ -87,6 +87,7 @@ public sealed class DeterministicFakeAgentBenchmarkAdapter
                 input.Execution.ModelId,
                 input.Execution.ReasoningSetting,
                 input.Execution.SettingsHash,
+                input.Execution.Sandbox,
                 input.Execution.PermissionProfile,
                 input.Execution.NetworkPolicy,
                 input.Task.Repository.ContentHash,

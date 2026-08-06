@@ -1,0 +1,25 @@
+{
+  "schema": "dotnet-axi/codex-adapter-smoke-request/v1",
+  "codexExecutablePath": "/absolute/path/to/pinned/codex",
+  "codexCliVersion": "replace-with-exact-version",
+  "codexHomePath": "/absolute/path/to/isolated-authenticated-codex-home",
+  "workspacePath": "/absolute/path/to/controlled-smoke-workspace",
+  "modelId": "replace-with-exact-model-id",
+  "reasoningSetting": "high",
+  "settingsHash": "replace-with-64-lowercase-hex-settings-hash",
+  "sandbox": "read-only",
+  "permissionProfile": "never",
+  "networkPolicy": "disabled",
+  "condition": "candidate",
+  "instructionsHash": "replace-with-64-lowercase-hex-instructions-hash",
+  "toolConfigurationHash": "replace-with-64-lowercase-hex-tool-hash",
+  "configurationOverrides": [],
+  "taskContentHash": "replace-with-64-lowercase-hex-fixture-hash",
+  "permittedTools": [
+    "repository-read",
+    "source-search"
+  ],
+  "prompt": "Return the controlled smoke answer only.",
+  "timeoutSeconds": 120,
+  "cleanupTimeoutSeconds": 10
+}
