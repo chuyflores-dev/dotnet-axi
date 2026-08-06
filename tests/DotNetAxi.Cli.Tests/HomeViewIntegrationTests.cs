@@ -8,7 +8,7 @@ public sealed class HomeViewIntegrationTests
     private readonly RepositoryFixtureFactory _fixtures = new();
 
     [Fact]
-    public async Task Git_workspace_renders_live_catalog_and_worktree_state()
+    public async Task Git_workspace_catalog_degrades_without_starting_git()
     {
         await using var fixture = await _fixtures.CreateAsync(
             CatalogManifestPath("git-worktree"),
@@ -30,7 +30,7 @@ public sealed class HomeViewIntegrationTests
             "workspace:\n  root: ~/workspace\n  project: Workspace.csproj\n  projects: 1\n  csharp_files: 4\n",
             result.StandardOutput);
         Assert.Contains(
-            "git:\n  branch: main\n  changed_files: 5\n",
+            "git:\n  branch: unknown\n  changed_files: unknown\n",
             result.StandardOutput);
         AssertOnlyAvailableSuggestion(result.StandardOutput);
     }
@@ -219,7 +219,6 @@ public sealed class HomeViewIntegrationTests
 
     [Theory]
     [InlineData("--help", "help", 0)]
-    [InlineData("--version", "version", 0)]
     [InlineData("--unknown", "home", 2)]
     public async Task Parser_owned_output_does_not_create_home_dependencies(
         string option,
@@ -263,6 +262,51 @@ public sealed class HomeViewIntegrationTests
         Assert.Equal(string.Empty, error.ToString());
     }
 
+    [Fact]
+    public async Task Version_capabilities_use_the_discovered_workspace_root()
+    {
+        var workspaceRoot = Path.Combine(
+            Path.GetTempPath(),
+            $"dnaxi-version-root-{Guid.NewGuid():N}");
+        var currentDirectory = Path.Combine(workspaceRoot, "src", "nested");
+        var gitDirectory = Path.Combine(workspaceRoot, ".git");
+        Directory.CreateDirectory(Path.Combine(gitDirectory, "objects"));
+        File.WriteAllText(
+            Path.Combine(gitDirectory, "HEAD"),
+            "ref: refs/heads/main\n");
+        Directory.CreateDirectory(currentDirectory);
+        Directory.CreateDirectory(Path.Combine(workspaceRoot, "tools"));
+        try
+        {
+            var output = new StringWriter();
+            var error = new StringWriter();
+            var reporter = new RecordingCapabilityReporter();
+            var host = CliApplication.Create(
+                output,
+                error,
+                () => new HomeInvocationContext(
+                    currentDirectory,
+                    Path.Combine(workspaceRoot, "dnaxi"),
+                    workspaceRoot),
+                static () => new WorkspaceDiscoverer(),
+                static () => throw new InvalidOperationException(
+                    "Version reporting created the Git dependency."),
+                () => reporter);
+
+            var exitCode = await host.InvokeAsync(["--version"]);
+
+            Assert.Equal(0, exitCode);
+            Assert.Equal(workspaceRoot, reporter.WorkspaceRoot);
+            Assert.Equal(1, reporter.Calls);
+            Assert.Contains("command: version\n", output.ToString());
+            Assert.Equal(string.Empty, error.ToString());
+        }
+        finally
+        {
+            Directory.Delete(workspaceRoot, recursive: true);
+        }
+    }
+
     private static async Task<HomeInvocationResult> InvokeHomeAsync(
         RepositoryFixture fixture,
         string currentDirectory)
@@ -281,13 +325,46 @@ public sealed class HomeViewIntegrationTests
                     "dnaxi"),
                 fixture.RootPath),
             static () => new WorkspaceDiscoverer(),
-            static () => new WorktreeStateInspector());
+            static () => WorktreeStateInspector.CreatePassive());
 
         var exitCode = await host.InvokeAsync([]);
         return new HomeInvocationResult(
             exitCode,
             output.ToString(),
             error.ToString());
+    }
+
+    private sealed class RecordingCapabilityReporter : ICapabilityReporter
+    {
+        public int Calls { get; private set; }
+
+        public string? WorkspaceRoot { get; private set; }
+
+        public ValueTask<CapabilityReport> ReportAsync(
+            string workspaceRoot,
+            CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            Calls++;
+            WorkspaceRoot = workspaceRoot;
+            return ValueTask.FromResult(
+                new CapabilityReport(
+                    new SelectedHostCapability(
+                        null,
+                        CapabilityAvailability.Missing),
+                    MissingVersionedCapability(),
+                    MissingVersionedCapability(),
+                    MissingVersionedCapability(),
+                    MissingVersionedCapability(),
+                    [],
+                    []));
+        }
+
+        private static VersionedCapability MissingVersionedCapability() =>
+            new(
+                null,
+                CapabilityAvailability.Missing,
+                CapabilityCompatibility.Unverified);
     }
 
     private static void AssertEnvelope(string output)
@@ -297,6 +374,19 @@ public sealed class HomeViewIntegrationTests
         Assert.Contains("status: success\n", output);
         Assert.Contains(
             "description: \"Search, analyze, validate, and safely change the current .NET workspace\"\n",
+            output);
+        Assert.Contains("tool: dotnet-axi\n", output);
+        Assert.Contains($"tool_version: {ToolVersion.Current}\n", output);
+        Assert.Contains("output_schema: dotnet-axi/v1\n", output);
+        Assert.Contains(
+            "capabilities:\n  selected_host:\n",
+            output);
+        Assert.Contains("\n  sdk:\n", output);
+        Assert.Contains("\n  ms_build:\n", output);
+        Assert.Contains("\n  roslyn:\n", output);
+        Assert.Contains("\n  optional_engines[1]", output);
+        Assert.Contains(
+            "command_engines[1]{command,preferred_engine,selected_engine,degradation}",
             output);
         Assert.Contains(
             "analysis:\n  status: not_loaded\n  compiler_errors: unknown\n",

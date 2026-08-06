@@ -11,6 +11,9 @@ public sealed class ChangedScopeResolver
     {
     }
 
+    public static ChangedScopeResolver CreatePassive() =>
+        new(WorktreeStateInspector.CreatePassive());
+
     internal ChangedScopeResolver(
         WorktreeStateInspector worktreeInspector)
     {
@@ -395,6 +398,11 @@ public sealed class ChangedScopeResolver
         WorktreeInspectionFailure failure) =>
         failure.Kind switch
         {
+            WorktreeInspectionFailureKind.ProcessPolicyDenied => Error(
+                ChangedScopeErrorKind.ProcessPolicyDenied,
+                "operation.passive_process_denied",
+                "Changed-scope resolution requires a Git process, which passive operation policy denied.",
+                "Omit --changed and use workspace or path selectors; inspect Git changes separately when needed."),
             WorktreeInspectionFailureKind.GitExecutableNotFound => Error(
                 ChangedScopeErrorKind.GitExecutableNotFound,
                 "workspace.git_unavailable",

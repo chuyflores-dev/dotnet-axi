@@ -68,6 +68,38 @@ public sealed class ProcessRunnerTests
     }
 
     [Fact]
+    public async Task Inherited_environment_is_preserved_and_controlled_values_are_applied()
+    {
+        var parentPath = Environment.GetEnvironmentVariable("PATH");
+        Assert.False(string.IsNullOrEmpty(parentPath));
+        const string controlled = "literal;$HOME%PATH%&|<>";
+
+        var result = await RunAsync(
+            RepositoryRoot(),
+            ["echo"],
+            new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                ["PROCESS_RUNNER_VALUE"] = controlled,
+            },
+            environmentPolicy: ProcessEnvironmentPolicy.InheritParent);
+
+        AssertCompleted(result, 0);
+        var lines = result.StandardOutput.Text.Split(
+            '\n',
+            StringSplitOptions.RemoveEmptyEntries);
+        Assert.Equal(
+            parentPath,
+            Decode(Assert.Single(lines, line => line.StartsWith(
+                "path:",
+                StringComparison.Ordinal))[5..]));
+        Assert.Equal(
+            controlled,
+            Decode(Assert.Single(lines, line => line.StartsWith(
+                "env:",
+                StringComparison.Ordinal))[4..]));
+    }
+
+    [Fact]
     public async Task Concurrent_stdout_and_stderr_pressure_is_drained()
     {
         const int characterCount = 256 * 1024;
@@ -474,6 +506,9 @@ public sealed class ProcessRunnerTests
 
         Assert.Equal("secret-argument", Assert.Single(request.Arguments));
         Assert.Equal("secret-value", request.Environment["TOKEN"]);
+        Assert.Equal(
+            ProcessEnvironmentPolicy.Isolated,
+            request.EnvironmentPolicy);
         Assert.Equal(nameof(ProcessRunRequest), request.ToString());
     }
 
@@ -560,6 +595,14 @@ public sealed class ProcessRunnerTests
             emptyOutput,
             emptyOutput,
             TimeSpan.Zero));
+        Assert.Throws<ArgumentOutOfRangeException>(() => new ProcessRunRequest(
+            ProcessApplicationPath(),
+            RepositoryRoot(),
+            [],
+            new Dictionary<string, string>(),
+            new ProcessOutputLimits(1, 1),
+            TestTimeout,
+            (ProcessEnvironmentPolicy)int.MaxValue));
         Assert.Throws<ArgumentException>(() => new ProcessRunResult(
             ProcessLifecycle.NotStarted,
             ProcessRunOutcome.StartFailed,
@@ -592,6 +635,8 @@ public sealed class ProcessRunnerTests
         IReadOnlyDictionary<string, string>? environment = null,
         ProcessOutputLimits? outputLimits = null,
         TimeSpan? timeout = null,
+        ProcessEnvironmentPolicy environmentPolicy =
+            ProcessEnvironmentPolicy.Isolated,
         CancellationToken cancellationToken = default)
     {
         var request = new ProcessRunRequest(
@@ -600,7 +645,8 @@ public sealed class ProcessRunnerTests
             arguments,
             environment ?? new Dictionary<string, string>(),
             outputLimits ?? new ProcessOutputLimits(1024 * 1024, 1024 * 1024),
-            timeout ?? TestTimeout);
+            timeout ?? TestTimeout,
+            environmentPolicy);
         return await new ProcessRunner().RunAsync(request, cancellationToken);
     }
 
@@ -670,7 +716,7 @@ public sealed class ProcessRunnerTests
         var path = Path.Combine(
             Path.GetTempPath(),
             "dotnet-axi-process-runner-tests",
-            $"{Environment.ProcessId}-{Guid.NewGuid():N}");
+            $"hostile ;$()&-{Environment.ProcessId}-{Guid.NewGuid():N}");
         Directory.CreateDirectory(path);
         return path;
     }

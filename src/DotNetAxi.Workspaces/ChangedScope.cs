@@ -21,6 +21,7 @@ public enum ChangedScopeErrorKind
     GitProcessTimedOut,
     GitFilterCommandsConfigured,
     InvalidGitOutput,
+    ProcessPolicyDenied,
 }
 
 public sealed class ChangedScopeRequest

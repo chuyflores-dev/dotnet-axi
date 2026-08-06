@@ -4,10 +4,13 @@ public enum DotNetHostFailureReason
 {
     HostNotFound,
     HostUnsupported,
+    SdkProbeTimedOut,
+    SdkProbeFailed,
     SdkUnavailable,
     SdkUnsupported,
     SdkSelectionInvalid,
     MsBuildUnavailable,
+    ProcessPolicyDenied,
 }
 
 public enum DotNetHostCompatibility

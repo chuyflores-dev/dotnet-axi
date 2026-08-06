@@ -13,7 +13,7 @@ public sealed class RgTextSearchAcceleratorTests
         var root = CreateDirectory();
         try
         {
-            var first = CreateFile(root, "first.cs", "before\nNEEDLE");
+            var first = CreateFile(root, "hostile ;$()&.cs", "before\nNEEDLE");
             var noMatch = CreateFile(root, "no-match.cs", "nothing here");
             var utf16 = Path.Combine(root, "utf16.cs");
             await File.WriteAllTextAsync(
@@ -28,7 +28,7 @@ public sealed class RgTextSearchAcceleratorTests
             await File.WriteAllBytesAsync(invalid, [0xff]);
             var paths = new[]
             {
-                Entry(first, "first.cs"),
+                Entry(first, "hostile ;$()&.cs"),
                 Entry(noMatch, "no-match.cs"),
                 Entry(utf16, "utf16.cs"),
                 Entry(binary, "binary.dat"),
@@ -71,6 +71,7 @@ public sealed class RgTextSearchAcceleratorTests
                 runner.Requests[1].Arguments);
             Assert.All(runner.Requests, item =>
                 Assert.Equal(FakeExecutable(root), item.ExecutablePath));
+            Assert.All(runner.Requests, AssertSafeRipgrepRequest);
             Assert.Equal(
                 TextSearchFileStatus.Analyzed,
                 actual.Observations.Single(item => item.Path == "no-match.cs").Status);
@@ -265,6 +266,17 @@ public sealed class RgTextSearchAcceleratorTests
             Directory.Delete(root, recursive: true);
         }
     }
+
+    [Theory]
+    [InlineData("12.1.0", RgVersionCompatibility.Unsupported)]
+    [InlineData("13.0.0", RgVersionCompatibility.Supported)]
+    [InlineData("15.2.0", RgVersionCompatibility.Supported)]
+    [InlineData("16.0.0", RgVersionCompatibility.Unverified)]
+    [InlineData("15.2oops", RgVersionCompatibility.Unverified)]
+    public void Version_classification_is_strict_and_shared_with_routing(
+        string version,
+        RgVersionCompatibility expected) =>
+        Assert.Equal(expected, RgTextSearchAccelerator.ClassifyVersion(version));
 
     [Fact]
     public async Task Dependency_failure_and_raw_diagnostics_fall_back_silently()
@@ -637,6 +649,25 @@ public sealed class RgTextSearchAcceleratorTests
             new ProcessCapturedOutput(standardOutput, limitExceeded: false),
             new ProcessCapturedOutput(standardError, limitExceeded: false),
             TimeSpan.FromMilliseconds(1));
+
+    private static void AssertSafeRipgrepRequest(ProcessRunRequest request)
+    {
+        Assert.Equal(
+            ProcessEnvironmentPolicy.InheritParent,
+            request.EnvironmentPolicy);
+        Assert.Equal(
+            request.WorkingDirectory,
+            Path.GetFullPath(request.WorkingDirectory));
+        Assert.Equal(
+            ChildProcessEnvironment.RipgrepDefaults.Count,
+            request.Environment.Count);
+        foreach (var expected in ChildProcessEnvironment.RipgrepDefaults)
+        {
+            Assert.Equal(expected.Value, request.Environment[expected.Key]);
+        }
+
+        Assert.False(request.Environment.ContainsKey("PATH"));
+    }
 
     private static ProcessRunResult Cancelled() =>
         new(

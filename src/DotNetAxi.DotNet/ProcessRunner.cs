@@ -160,10 +160,14 @@ public sealed class ProcessRunner : IProcessRunner
             RedirectStandardOutput = true,
             RedirectStandardError = true,
         };
-        startInfo.Environment.Clear();
+        if (request.EnvironmentPolicy is ProcessEnvironmentPolicy.Isolated)
+        {
+            startInfo.Environment.Clear();
+        }
+
         foreach (var variable in request.Environment)
         {
-            startInfo.Environment.Add(variable.Key, variable.Value);
+            startInfo.Environment[variable.Key] = variable.Value;
         }
 
         foreach (var argument in request.Arguments)

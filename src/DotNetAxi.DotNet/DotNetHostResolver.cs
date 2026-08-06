@@ -20,6 +20,15 @@ public sealed class DotNetHostResolver : IDotNetHostResolver
     {
     }
 
+    public DotNetHostResolver(IProcessRunner runner)
+        : this(
+            runner,
+            static () => Environment.GetEnvironmentVariable("PATH"),
+            File.Exists,
+            IsExecutable)
+    {
+    }
+
     internal DotNetHostResolver(
         IProcessRunner runner,
         Func<string?> pathValue,
@@ -40,8 +49,10 @@ public sealed class DotNetHostResolver : IDotNetHostResolver
         cancellationToken.ThrowIfCancellationRequested();
 
         var executablePath = request.ExplicitHostPath is null
-            ? ResolvePathHost(_pathValue())
-            : ResolveExplicitHost(request.ExplicitHostPath);
+            ? ResolvePathHost(_pathValue(), request.WorkspaceRoot)
+            : ResolveExplicitHost(
+                request.ExplicitHostPath,
+                request.WorkspaceRoot);
         if (executablePath is null)
         {
             return Failed(
@@ -64,8 +75,35 @@ public sealed class DotNetHostResolver : IDotNetHostResolver
             .ConfigureAwait(false);
         ThrowIfCancelled(sdkInfo, cancellationToken);
         cancellationToken.ThrowIfCancellationRequested();
-        if (sdkInfo.Outcome is not ProcessRunOutcome.Completed
-            || sdkInfo.Exit?.ExitCode != 0)
+        if (sdkInfo.Outcome is ProcessRunOutcome.StartFailed
+            && sdkInfo.StartFailure is ProcessStartFailure.PolicyDenied)
+        {
+            return Failed(
+                DotNetHostFailureReason.ProcessPolicyDenied,
+                "sdk.probe_policy_denied",
+                "Continue with built-in passive capabilities; do not retry the SDK probe from this passive operation.",
+                executablePath);
+        }
+
+        if (sdkInfo.Outcome is ProcessRunOutcome.TimedOut)
+        {
+            return Failed(
+                DotNetHostFailureReason.SdkProbeTimedOut,
+                "sdk.probe_timed_out",
+                "Retry the passive SDK probe, or select another trusted dotnet host.",
+                executablePath);
+        }
+
+        if (sdkInfo.Outcome is not ProcessRunOutcome.Completed)
+        {
+            return Failed(
+                DotNetHostFailureReason.SdkProbeFailed,
+                "sdk.probe_failed",
+                "Retry the passive SDK probe, or select another trusted dotnet host.",
+                executablePath);
+        }
+
+        if (sdkInfo.Exit?.ExitCode != 0)
         {
             return Failed(
                 DotNetHostFailureReason.SdkUnavailable,
@@ -85,6 +123,12 @@ public sealed class DotNetHostResolver : IDotNetHostResolver
         }
 
         TryParseSdkVersion(selected.Version, out var sdkVersion);
+        var msBuildPath = Path.Combine(selected.SdkPath, "Microsoft.Build.dll");
+        var sdk = new SelectedDotNetSdk(
+            selected.Version,
+            selected.SdkPath,
+            msBuildPath,
+            ClassifyCompatibility(sdkVersion));
         var major = sdkVersion.Major;
         if (major < 8)
         {
@@ -92,26 +136,23 @@ public sealed class DotNetHostResolver : IDotNetHostResolver
                 DotNetHostFailureReason.SdkUnsupported,
                 "sdk.selected_unsupported",
                 "Select a dotnet host with an installed .NET 8, .NET 9, or .NET 10 SDK accepted by global.json.",
-                executablePath);
+                executablePath,
+                sdk);
         }
 
-        var msBuildPath = Path.Combine(selected.SdkPath, "Microsoft.Build.dll");
         if (!_fileExists(msBuildPath))
         {
             return Failed(
                 DotNetHostFailureReason.MsBuildUnavailable,
                 "msbuild.selected_instance_missing",
                 "Repair or reinstall the selected .NET SDK so its MSBuild assemblies are available.",
-                executablePath);
+                executablePath,
+                sdk);
         }
 
         return new DotNetHostResolution(
             executablePath,
-            new SelectedDotNetSdk(
-                selected.Version,
-                selected.SdkPath,
-                msBuildPath,
-                ClassifyCompatibility(sdkVersion)),
+            sdk,
             null);
     }
 
@@ -119,7 +160,8 @@ public sealed class DotNetHostResolver : IDotNetHostResolver
         string? pathValue,
         bool isWindows,
         Func<string, bool> fileExists,
-        Func<string, bool> isExecutable)
+        Func<string, bool> isExecutable,
+        string? workspaceRoot = null)
     {
         ArgumentNullException.ThrowIfNull(fileExists);
         ArgumentNullException.ThrowIfNull(isExecutable);
@@ -131,8 +173,11 @@ public sealed class DotNetHostResolver : IDotNetHostResolver
         var executableName = isWindows ? "dotnet.exe" : "dotnet";
         foreach (var rawDirectory in pathValue.Split(Path.PathSeparator))
         {
-            var directory = isWindows ? rawDirectory.Trim().Trim('"') : rawDirectory;
-            if (isWindows && directory.Length == 0)
+            var directory = isWindows
+                ? rawDirectory.Trim().Trim('"')
+                : rawDirectory;
+            if (string.IsNullOrWhiteSpace(directory)
+                || !Path.IsPathFullyQualified(directory))
             {
                 continue;
             }
@@ -140,7 +185,13 @@ public sealed class DotNetHostResolver : IDotNetHostResolver
             try
             {
                 var candidate = Path.GetFullPath(Path.Combine(directory, executableName));
-                if (fileExists(candidate) && (isWindows || isExecutable(candidate)))
+                if (fileExists(candidate)
+                    && (isWindows || isExecutable(candidate))
+                    && (workspaceRoot is null
+                        || IsExecutableOutsideWorkspace(
+                            candidate,
+                            workspaceRoot,
+                            fileExists)))
                 {
                     return candidate;
                 }
@@ -247,25 +298,25 @@ public sealed class DotNetHostResolver : IDotNetHostResolver
                     executablePath,
                     workspaceRoot,
                     arguments,
-                    new Dictionary<string, string>(StringComparer.Ordinal)
-                    {
-                        ["DOTNET_CLI_TELEMETRY_OPTOUT"] = "1",
-                        ["DOTNET_NOLOGO"] = "1",
-                        ["DOTNET_SKIP_FIRST_TIME_EXPERIENCE"] = "1",
-                        ["DOTNET_CLI_UI_LANGUAGE"] = "en-US",
-                    },
+                    ChildProcessEnvironment.DotNetDefaults,
                     new ProcessOutputLimits(OutputLimit, OutputLimit),
-                    CommandTimeout),
+                    CommandTimeout,
+                    ProcessEnvironmentPolicy.InheritParent),
                 cancellationToken)
             .ConfigureAwait(false);
 
-    private string? ResolvePathHost(string? pathValue) => ResolveHostPath(
+    private string? ResolvePathHost(
+        string? pathValue,
+        string workspaceRoot) => ResolveHostPath(
         pathValue,
         OperatingSystem.IsWindows(),
         _fileExists,
-        _isExecutable);
+        _isExecutable,
+        workspaceRoot);
 
-    private string? ResolveExplicitHost(string explicitHostPath)
+    private string? ResolveExplicitHost(
+        string explicitHostPath,
+        string workspaceRoot)
     {
         var expectedName = OperatingSystem.IsWindows() ? "dotnet.exe" : "dotnet";
         return Path.GetFileName(explicitHostPath).Equals(
@@ -275,16 +326,126 @@ public sealed class DotNetHostResolver : IDotNetHostResolver
                        : StringComparison.Ordinal)
                && _fileExists(explicitHostPath)
                && (OperatingSystem.IsWindows() || _isExecutable(explicitHostPath))
+               && IsExecutableOutsideWorkspace(
+                   explicitHostPath,
+                   workspaceRoot,
+                   _fileExists)
             ? explicitHostPath
             : null;
+    }
+
+    private static bool IsExecutableOutsideWorkspace(
+        string executablePath,
+        string workspaceRoot,
+        Func<string, bool> fileExists)
+    {
+        try
+        {
+            var fullExecutablePath = Path.GetFullPath(executablePath);
+            var fullWorkspaceRoot = Path.GetFullPath(workspaceRoot);
+            if (IsWithin(fullWorkspaceRoot, fullExecutablePath))
+            {
+                return false;
+            }
+
+            if (!File.Exists(fullExecutablePath) && fileExists(fullExecutablePath))
+            {
+                return true;
+            }
+
+            return !IsWithin(
+                ResolvePhysicalPath(fullWorkspaceRoot),
+                ResolvePhysicalPath(fullExecutablePath));
+        }
+        catch (Exception exception)
+            when (exception is ArgumentException
+                or NotSupportedException
+                or PathTooLongException
+                or IOException
+                or UnauthorizedAccessException)
+        {
+            return false;
+        }
+    }
+
+    private static bool IsWithin(string root, string path)
+    {
+        var relative = Path.GetRelativePath(root, path);
+        return relative.Equals(".", StringComparison.Ordinal)
+            || (!Path.IsPathFullyQualified(relative)
+                && !relative.Equals("..", StringComparison.Ordinal)
+                && !relative.StartsWith("../", StringComparison.Ordinal)
+                && !relative.StartsWith("..\\", StringComparison.Ordinal));
+    }
+
+    private static string ResolvePhysicalPath(string path)
+    {
+        var currentPath = Path.GetFullPath(path);
+        var visited = new HashSet<string>(
+            OperatingSystem.IsWindows()
+                ? StringComparer.OrdinalIgnoreCase
+                : StringComparer.Ordinal)
+        {
+            currentPath,
+        };
+        for (var pass = 0; pass < 64; pass++)
+        {
+            var resolved = ResolvePhysicalPathPass(currentPath, out var changed);
+            if (!changed)
+            {
+                return resolved;
+            }
+
+            if (!visited.Add(resolved))
+            {
+                throw new IOException(
+                    "A symbolic-link cycle prevents physical path resolution.");
+            }
+
+            currentPath = resolved;
+        }
+
+        throw new IOException(
+            "The symbolic-link chain is too deep to resolve safely.");
+    }
+
+    private static string ResolvePhysicalPathPass(
+        string path,
+        out bool changed)
+    {
+        changed = false;
+        var fullPath = Path.GetFullPath(path);
+        var root = Path.GetPathRoot(fullPath)
+            ?? throw new ArgumentException(
+                "A fully qualified path requires a root.",
+                nameof(path));
+        var current = root;
+        foreach (var segment in fullPath[root.Length..].Split(
+                     [Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar],
+                     StringSplitOptions.RemoveEmptyEntries))
+        {
+            current = Path.Combine(current, segment);
+            FileSystemInfo entry = Directory.Exists(current)
+                ? new DirectoryInfo(current)
+                : new FileInfo(current);
+            var target = entry.ResolveLinkTarget(returnFinalTarget: false);
+            if (target is not null)
+            {
+                current = target.FullName;
+                changed = true;
+            }
+        }
+
+        return Path.GetFullPath(current);
     }
 
     private static DotNetHostResolution Failed(
         DotNetHostFailureReason reason,
         string code,
         string correction,
-        string? executablePath = null) =>
-        new(executablePath, null, new DotNetHostFailure(reason, code, correction));
+        string? executablePath = null,
+        SelectedDotNetSdk? sdk = null) =>
+        new(executablePath, sdk, new DotNetHostFailure(reason, code, correction));
 
     private static void ThrowIfCancelled(
         ProcessRunResult result,

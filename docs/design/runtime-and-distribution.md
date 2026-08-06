@@ -166,6 +166,12 @@ Product telemetry is disabled by default. Child `dotnet` processes opt out of
 .NET CLI telemetry. Any future explicit telemetry opt-in describes fields and
 destinations and excludes source, paths, symbols, arguments, and transcripts.
 
+The passive CLI composition cannot start child processes. Optional capability
+probes and Git inspection receive rejecting process guards, text search uses
+the built-in engine, and a process-dependent selector returns a typed policy
+denial with a non-executing correction. Missing tools or assets never broaden
+the operation into process or network access.
+
 ### Process and secret safety
 
 External processes use argument-list APIs without shell string concatenation.
@@ -219,6 +225,12 @@ Commands capable of running MSBuild targets, tests, applications, configured
 analyzers, source generators, templates, tools, workloads, or package scripts
 are classified as executing. The home view, setup hook, file/text/syntax
 search, and passive project catalog never trigger repository-code execution.
+
+Passive command handlers are composed without executing dependencies. Where a
+shared service requires a process-shaped interface, the composition supplies a
+guard that returns typed not-started evidence and never delegates to the
+operating system. Passive commands do not substitute restore, project
+evaluation, analyzers, or generators when coverage inputs are unavailable.
 
 Executing commands run with the caller's operating-system permissions and say
 they are not a security sandbox unless an enforced sandbox is active.
@@ -342,6 +354,22 @@ Version and home output report `dotnet-axi` version, output schema, selected
 SDK, relevant Roslyn/MSBuild compatibility, Git availability, and optional
 engine availability.
 
+Capability reporting keeps availability (`present`, `missing`, or `unverified`)
+separate from compatibility (`supported`, `unsupported`, or `unverified`). It identifies the
+exact selected `dotnet` host and reports command-engine routing independently;
+for example, `search text` selects compatible `rg` when possible and always
+reports the built-in degradation path. Detection is limited to bounded
+`dotnet --info`, `git --version`, and `rg --version` probes plus passive
+assembly-metadata reads. It never installs, updates, restores, downloads,
+evaluates a project, or executes repository code.
+
+PATH host discovery ignores empty and relative entries and rejects executable
+candidates lexically or physically within the workspace, including symlink or
+reparse-point aliases. The same workspace-trust boundary applies to an
+explicit host path before any passive version process starts. A timed-out or
+failed SDK probe is unverified rather than missing and remains distinct from a
+completed host probe that reports no selected SDK.
+
 ### Compatibility baseline
 
 The MVP guarantees its passive semantic contract for SDK-style C# projects
@@ -358,6 +386,16 @@ Build-time package versions are pinned. Release evidence records runtime
 versions tested for .NET SDK, MSBuild, Roslyn, Git, `rg`, supported operating
 systems, and runtime identifiers. Unsupported optional engines degrade to
 built-in behavior where possible.
+
+The initial tested SDK feature band is stable `10.0.3xx`; other parseable .NET
+8-or-newer SDKs are retained as present but labeled unverified, while pre-.NET
+8 selections are unsupported. Selected MSBuild and Roslyn assembly versions
+inherit that SDK compatibility only when their passive metadata probes
+succeed. Git 2.11 or newer within major version 2 is supported; older Git is
+unsupported and newer major versions are unverified. `rg` major versions 13
+through 15 are supported for optional acceleration; older versions are
+unsupported and newer versions are unverified. Missing, malformed, or failed
+optional probes do not break commands with a built-in path.
 
 ## Internal components
 

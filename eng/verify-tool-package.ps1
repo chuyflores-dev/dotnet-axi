@@ -483,6 +483,23 @@ function Assert-VersionOutput {
             throw "Version output is missing '$line'. Output: $($Result.StandardOutput)"
         }
     }
+
+    $requiredCapabilityFragments = @(
+        "capabilities:`n  selected_host:`n",
+        "`n  sdk:`n",
+        "`n  ms_build:`n",
+        "`n  roslyn:`n",
+        "`n  git:`n",
+        "`n  optional_engines[1]",
+        "`n  command_engines[1]{command,preferred_engine,selected_engine,degradation}:`n"
+    )
+    foreach ($fragment in $requiredCapabilityFragments) {
+        if (-not $Result.StandardOutput.Contains(
+                $fragment,
+                [System.StringComparison]::Ordinal)) {
+            throw "Version output is missing capability fragment '$fragment'. Output: $($Result.StandardOutput)"
+        }
+    }
 }
 
 function Assert-HelpOutput {
@@ -542,6 +559,10 @@ function Assert-HomeOutput {
         "schema: dotnet-axi/v1",
         "command: home",
         "status: success",
+        "tool: dotnet-axi",
+        "output_schema: dotnet-axi/v1",
+        "capabilities:`n  selected_host:`n",
+        "command_engines[1]{command,preferred_engine,selected_engine,degradation}",
         "guidance:",
         "invocation: dnx dotnet-axi -- <command>",
         "Do not claim completion solely because files changed."

@@ -26,6 +26,11 @@ public sealed class WorktreeStateInspector
     {
     }
 
+    public static WorktreeStateInspector CreatePassive() => new(
+        "git",
+        processTimeout: null,
+        RejectingWorktreeGitProcessFactory.Instance);
+
     internal WorktreeStateInspector(
         string gitExecutable,
         TimeSpan? processTimeout,
@@ -210,6 +215,10 @@ public sealed class WorktreeStateInspector
             {
                 return GitProcessResult.StartFailure();
             }
+        }
+        catch (PassiveProcessInvocationException)
+        {
+            return GitProcessResult.PolicyDenied();
         }
         catch (Win32Exception exception)
             when (exception.NativeErrorCode is 2 or 3)
@@ -596,6 +605,10 @@ public sealed class WorktreeStateInspector
             FailureResult(
                 WorktreeInspectionFailureKind.GitExecutableNotFound);
 
+        public static GitProcessResult PolicyDenied() =>
+            FailureResult(
+                WorktreeInspectionFailureKind.ProcessPolicyDenied);
+
         public static GitProcessResult StartFailure() =>
             FailureResult(
                 WorktreeInspectionFailureKind.GitProcessStartFailed);
@@ -667,6 +680,60 @@ internal sealed class SystemWorktreeGitProcessFactory
     public IWorktreeGitProcess Create(ProcessStartInfo startInfo) =>
         new SystemWorktreeGitProcess(startInfo);
 }
+
+internal sealed class RejectingWorktreeGitProcessFactory
+    : IWorktreeGitProcessFactory
+{
+    public static RejectingWorktreeGitProcessFactory Instance { get; } = new();
+
+    private RejectingWorktreeGitProcessFactory()
+    {
+    }
+
+    public IWorktreeGitProcess Create(ProcessStartInfo startInfo)
+    {
+        ArgumentNullException.ThrowIfNull(startInfo);
+        return RejectingWorktreeGitProcess.Instance;
+    }
+}
+
+internal sealed class RejectingWorktreeGitProcess : IWorktreeGitProcess
+{
+    public static RejectingWorktreeGitProcess Instance { get; } = new();
+
+    private RejectingWorktreeGitProcess()
+    {
+    }
+
+    public bool HasExited => true;
+
+    public int ExitCode => throw Rejected();
+
+    public bool Start() => throw Rejected();
+
+    public void CloseStandardInput() => throw Rejected();
+
+    public Task<string> ReadStandardOutputToEndAsync(
+        CancellationToken cancellationToken) => throw Rejected();
+
+    public Task<string> ReadStandardErrorToEndAsync(
+        CancellationToken cancellationToken) => throw Rejected();
+
+    public Task WaitForExitAsync(
+        CancellationToken cancellationToken) => throw Rejected();
+
+    public void Kill(bool entireProcessTree) => throw Rejected();
+
+    public void Dispose()
+    {
+    }
+
+    private static PassiveProcessInvocationException Rejected() => new(
+        "Passive operation policy rejected Git process invocation.");
+}
+
+internal sealed class PassiveProcessInvocationException(string message)
+    : InvalidOperationException(message);
 
 internal sealed class SystemWorktreeGitProcess : IWorktreeGitProcess
 {

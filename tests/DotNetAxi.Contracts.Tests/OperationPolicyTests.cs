@@ -5,6 +5,20 @@ namespace DotNetAxi.Contracts.Tests;
 public sealed class OperationPolicyTests
 {
     [Fact]
+    public void Process_start_failure_ordinals_remain_compatible()
+    {
+        Assert.Equal(0, (int)ProcessStartFailure.None);
+        Assert.Equal(1, (int)ProcessStartFailure.ExecutableNotFound);
+        Assert.Equal(2, (int)ProcessStartFailure.WorkingDirectoryNotFound);
+        Assert.Equal(
+            3,
+            (int)ProcessStartFailure.WorkingDirectoryPermissionDenied);
+        Assert.Equal(4, (int)ProcessStartFailure.PermissionDenied);
+        Assert.Equal(5, (int)ProcessStartFailure.Other);
+        Assert.Equal(6, (int)ProcessStartFailure.PolicyDenied);
+    }
+
+    [Fact]
     public void Every_effect_category_is_explicit_and_queryable()
     {
         var policy = new OperationPolicy(

@@ -5,11 +5,25 @@ namespace DotNetAxi.DotNet.Tests;
 public sealed class DotNetHostResolverTests
 {
     [Fact]
+    public void Host_failure_reason_ordinals_remain_compatible()
+    {
+        Assert.Equal(0, (int)DotNetHostFailureReason.HostNotFound);
+        Assert.Equal(1, (int)DotNetHostFailureReason.HostUnsupported);
+        Assert.Equal(2, (int)DotNetHostFailureReason.SdkProbeTimedOut);
+        Assert.Equal(3, (int)DotNetHostFailureReason.SdkProbeFailed);
+        Assert.Equal(4, (int)DotNetHostFailureReason.SdkUnavailable);
+        Assert.Equal(5, (int)DotNetHostFailureReason.SdkUnsupported);
+        Assert.Equal(6, (int)DotNetHostFailureReason.SdkSelectionInvalid);
+        Assert.Equal(7, (int)DotNetHostFailureReason.MsBuildUnavailable);
+        Assert.Equal(8, (int)DotNetHostFailureReason.ProcessPolicyDenied);
+    }
+
+    [Fact]
     public async Task Path_host_reports_its_executable_selected_sdk_and_supported_compatibility()
     {
         using var fixture = new HostFixture();
-        var first = Path.Combine(fixture.Root, "first");
-        var second = Path.Combine(fixture.Root, "second");
+        var first = Path.Combine(fixture.ToolsRoot, "first");
+        var second = Path.Combine(fixture.ToolsRoot, "second");
         var executable = Path.GetFullPath(Path.Combine(second, HostName));
         var sdkBase = Path.Combine(fixture.Root, "sdks");
         var sdkPath = Path.GetFullPath(Path.Combine(sdkBase, "10.0.302"));
@@ -31,8 +45,8 @@ public sealed class DotNetHostResolverTests
     public async Task Explicit_supported_host_is_used_instead_of_path()
     {
         using var fixture = new HostFixture();
-        var pathHost = Path.Combine(fixture.Root, "path", HostName);
-        var explicitHost = Path.Combine(fixture.Root, "selected", HostName);
+        var pathHost = Path.Combine(fixture.ToolsRoot, "path", HostName);
+        var explicitHost = Path.Combine(fixture.ToolsRoot, "selected", HostName);
         var sdkBase = Path.Combine(fixture.Root, "sdks");
         var sdkPath = Path.Combine(sdkBase, "9.0.308");
         var resolver = fixture.Resolver(
@@ -64,11 +78,11 @@ public sealed class DotNetHostResolverTests
               }
             }
             """);
-        var executable = Path.Combine(fixture.Root, HostName);
+        var executable = fixture.HostPath;
         var sdkBase = Path.Combine(fixture.Root, "sdks");
         var sdkPath = Path.Combine(sdkBase, "10.0.401");
         var resolver = fixture.Resolver(
-            fixture.Root,
+            fixture.ToolsRoot,
             existingPaths: [executable, Path.Combine(sdkPath, "Microsoft.Build.dll")],
             Completed(Info("10.0.401", sdkPath)));
 
@@ -85,16 +99,16 @@ public sealed class DotNetHostResolverTests
             fixture.Runner.Requests.Select(static request => request.Arguments));
         Assert.All(
             fixture.Runner.Requests,
-            request => Assert.Equal("en-US", request.Environment["DOTNET_CLI_UI_LANGUAGE"]));
+            AssertSafeDotNetEnvironment);
     }
 
     [Fact]
     public async Task Unavailable_global_json_sdk_has_an_actionable_structured_failure()
     {
         using var fixture = new HostFixture();
-        var executable = Path.Combine(fixture.Root, HostName);
+        var executable = fixture.HostPath;
         var resolver = fixture.Resolver(
-            fixture.Root,
+            fixture.ToolsRoot,
             existingPaths: [executable],
             Completed("A compatible SDK is not installed.\n", exitCode: 145));
 
@@ -120,12 +134,12 @@ public sealed class DotNetHostResolverTests
               }
             }
             """);
-        var executable = Path.Combine(fixture.Root, HostName);
+        var executable = fixture.HostPath;
         var sdkBase = Path.Combine(fixture.Root, "sdks");
         var version = "10.0.100-preview.3";
         var sdkPath = Path.Combine(sdkBase, version);
         var resolver = fixture.Resolver(
-            fixture.Root,
+            fixture.ToolsRoot,
             existingPaths: [executable, Path.Combine(sdkPath, "Microsoft.Build.dll")],
             Completed(Info(version, sdkPath)));
 
@@ -148,10 +162,10 @@ public sealed class DotNetHostResolverTests
               }
             }
             """);
-        var executable = Path.Combine(fixture.Root, HostName);
+        var executable = fixture.HostPath;
         var sdkPath = Path.Combine(fixture.Root, ".dotnet", "sdk", "10.0.302");
         var resolver = fixture.Resolver(
-            fixture.Root,
+            fixture.ToolsRoot,
             existingPaths: [executable, Path.Combine(sdkPath, "Microsoft.Build.dll")],
             Completed(Info("10.0.302", sdkPath)));
 
@@ -166,11 +180,11 @@ public sealed class DotNetHostResolverTests
     public async Task Duplicate_sdk_versions_honor_the_exact_base_path_selected_by_host()
     {
         using var fixture = new HostFixture();
-        var executable = Path.Combine(fixture.Root, HostName);
+        var executable = fixture.HostPath;
         var firstSdk = Path.Combine(fixture.Root, "first", "sdk", "10.0.302");
         var selectedSdk = Path.Combine(fixture.Root, "second", "sdk", "10.0.302");
         var resolver = fixture.Resolver(
-            fixture.Root,
+            fixture.ToolsRoot,
             existingPaths:
             [
                 executable,
@@ -204,9 +218,9 @@ public sealed class DotNetHostResolverTests
     {
         using var fixture = new HostFixture();
         using var cancellation = new CancellationTokenSource();
-        var executable = Path.Combine(fixture.Root, HostName);
+        var executable = fixture.HostPath;
         var resolver = fixture.Resolver(
-            fixture.Root,
+            fixture.ToolsRoot,
             existingPaths: [executable],
             Cancelled());
 
@@ -223,16 +237,20 @@ public sealed class DotNetHostResolverTests
     public async Task Selected_sdk_without_its_msbuild_assembly_is_a_structured_mismatch()
     {
         using var fixture = new HostFixture();
-        var executable = Path.Combine(fixture.Root, HostName);
+        var executable = fixture.HostPath;
         var sdkBase = Path.Combine(fixture.Root, "sdks");
         var resolver = fixture.Resolver(
-            fixture.Root,
+            fixture.ToolsRoot,
             existingPaths: [executable],
             Completed(Info("10.0.302", Path.Combine(sdkBase, "10.0.302"))));
 
         var result = await resolver.ResolveAsync(new DotNetHostResolutionRequest(fixture.Root));
 
         Assert.False(result.IsResolved);
+        Assert.Equal("10.0.302", result.Sdk?.Version);
+        Assert.Equal(
+            Path.Combine(sdkBase, "10.0.302", "Microsoft.Build.dll"),
+            result.Sdk?.MsBuildPath);
         Assert.Equal(DotNetHostFailureReason.MsBuildUnavailable, result.Failure?.Reason);
         Assert.Equal("msbuild.selected_instance_missing", result.Failure?.Code);
         Assert.Contains("reinstall", result.Failure?.Correction, StringComparison.Ordinal);
@@ -242,16 +260,17 @@ public sealed class DotNetHostResolverTests
     public async Task Selected_pre_baseline_sdk_is_reported_as_unsupported()
     {
         using var fixture = new HostFixture();
-        var executable = Path.Combine(fixture.Root, HostName);
+        var executable = fixture.HostPath;
         var sdkBase = Path.Combine(fixture.Root, "sdks");
         var resolver = fixture.Resolver(
-            fixture.Root,
+            fixture.ToolsRoot,
             existingPaths: [executable],
             Completed(Info("7.0.410", Path.Combine(sdkBase, "7.0.410"))));
 
         var result = await resolver.ResolveAsync(new DotNetHostResolutionRequest(fixture.Root));
 
         Assert.False(result.IsResolved);
+        Assert.Equal("7.0.410", result.Sdk?.Version);
         Assert.Equal(DotNetHostFailureReason.SdkUnsupported, result.Failure?.Reason);
         Assert.Equal("sdk.selected_unsupported", result.Failure?.Code);
     }
@@ -260,9 +279,9 @@ public sealed class DotNetHostResolverTests
     public async Task Unsupported_explicit_host_fails_without_starting_a_process()
     {
         using var fixture = new HostFixture();
-        var unsupported = Path.Combine(fixture.Root, "not-dotnet");
+        var unsupported = Path.Combine(fixture.ToolsRoot, "not-dotnet");
         var resolver = fixture.Resolver(
-            fixture.Root,
+            fixture.ToolsRoot,
             existingPaths: [unsupported]);
 
         var result = await resolver.ResolveAsync(
@@ -273,11 +292,153 @@ public sealed class DotNetHostResolverTests
         Assert.Empty(fixture.Runner.Requests);
     }
 
+    [Theory]
+    [InlineData("")]
+    [InlineData("relative-tools")]
+    public async Task Empty_and_relative_path_entries_never_start_a_host(
+        string pathValue)
+    {
+        using var fixture = new HostFixture();
+        var candidate = Path.GetFullPath(Path.Combine(pathValue, HostName));
+        var resolver = fixture.Resolver(pathValue, [candidate]);
+
+        var result = await resolver.ResolveAsync(
+            new DotNetHostResolutionRequest(fixture.Root));
+
+        Assert.Equal(DotNetHostFailureReason.HostNotFound, result.Failure?.Reason);
+        Assert.Empty(fixture.Runner.Requests);
+    }
+
+    [Fact]
+    public async Task Workspace_local_path_host_is_skipped_for_an_external_host()
+    {
+        using var fixture = new HostFixture();
+        var workspaceTools = Path.Combine(fixture.Root, "tools");
+        var workspaceHost = Path.Combine(workspaceTools, HostName);
+        var sdkPath = Path.Combine(fixture.Root, "sdks", "10.0.302");
+        var resolver = fixture.Resolver(
+            string.Join(Path.PathSeparator, workspaceTools, fixture.ToolsRoot),
+            [
+                workspaceHost,
+                fixture.HostPath,
+                Path.Combine(sdkPath, "Microsoft.Build.dll"),
+            ],
+            Completed(Info("10.0.302", sdkPath)));
+
+        var result = await resolver.ResolveAsync(
+            new DotNetHostResolutionRequest(fixture.Root));
+
+        Assert.True(result.IsResolved);
+        Assert.Equal(fixture.HostPath, result.ExecutablePath);
+        Assert.All(
+            fixture.Runner.Requests,
+            request => Assert.Equal(fixture.HostPath, request.ExecutablePath));
+    }
+
+    [Fact]
+    public async Task Explicit_workspace_local_host_never_starts()
+    {
+        using var fixture = new HostFixture();
+        var workspaceHost = Path.Combine(fixture.Root, HostName);
+        var resolver = fixture.Resolver(fixture.ToolsRoot, [workspaceHost]);
+
+        var result = await resolver.ResolveAsync(
+            new DotNetHostResolutionRequest(fixture.Root, workspaceHost));
+
+        Assert.Equal(DotNetHostFailureReason.HostUnsupported, result.Failure?.Reason);
+        Assert.Empty(fixture.Runner.Requests);
+    }
+
+    [Fact]
+    public async Task External_symlink_to_workspace_host_never_starts()
+    {
+        using var fixture = new HostFixture();
+        var workspaceHost = Path.Combine(fixture.Root, HostName);
+        await File.WriteAllTextAsync(workspaceHost, "repository-controlled");
+        try
+        {
+            File.CreateSymbolicLink(fixture.HostPath, workspaceHost);
+        }
+        catch (Exception exception)
+            when (exception is IOException
+                or UnauthorizedAccessException
+                or PlatformNotSupportedException)
+        {
+            return;
+        }
+
+        var resolver = fixture.Resolver(fixture.ToolsRoot, [fixture.HostPath]);
+
+        var result = await resolver.ResolveAsync(
+            new DotNetHostResolutionRequest(fixture.Root));
+
+        Assert.Equal(DotNetHostFailureReason.HostNotFound, result.Failure?.Reason);
+        Assert.Empty(fixture.Runner.Requests);
+    }
+
+    [Fact]
+    public async Task Timed_out_sdk_probe_is_distinct_from_an_unavailable_sdk()
+    {
+        using var fixture = new HostFixture();
+        var resolver = fixture.Resolver(
+            fixture.ToolsRoot,
+            [fixture.HostPath],
+            TimedOut());
+
+        var result = await resolver.ResolveAsync(
+            new DotNetHostResolutionRequest(fixture.Root));
+
+        Assert.Equal(fixture.HostPath, result.ExecutablePath);
+        Assert.Equal(DotNetHostFailureReason.SdkProbeTimedOut, result.Failure?.Reason);
+        Assert.Equal("sdk.probe_timed_out", result.Failure?.Code);
+        Assert.Single(fixture.Runner.Requests);
+    }
+
+    [Fact]
+    public async Task Failed_sdk_probe_is_distinct_from_an_unavailable_sdk()
+    {
+        using var fixture = new HostFixture();
+        var resolver = fixture.Resolver(
+            fixture.ToolsRoot,
+            [fixture.HostPath],
+            RuntimeFailed());
+
+        var result = await resolver.ResolveAsync(
+            new DotNetHostResolutionRequest(fixture.Root));
+
+        Assert.Equal(DotNetHostFailureReason.SdkProbeFailed, result.Failure?.Reason);
+        Assert.Equal("sdk.probe_failed", result.Failure?.Code);
+        Assert.Single(fixture.Runner.Requests);
+    }
+
+    [Fact]
+    public async Task Policy_denied_sdk_probe_is_not_reported_as_retryable_failure()
+    {
+        using var fixture = new HostFixture();
+        var resolver = fixture.Resolver(
+            fixture.ToolsRoot,
+            [fixture.HostPath],
+            PolicyDenied());
+
+        var result = await resolver.ResolveAsync(
+            new DotNetHostResolutionRequest(fixture.Root));
+
+        Assert.Equal(
+            DotNetHostFailureReason.ProcessPolicyDenied,
+            result.Failure?.Reason);
+        Assert.Equal("sdk.probe_policy_denied", result.Failure?.Code);
+        Assert.Contains(
+            "do not retry",
+            result.Failure?.Correction,
+            StringComparison.OrdinalIgnoreCase);
+        Assert.Single(fixture.Runner.Requests);
+    }
+
     [Fact]
     public async Task Missing_path_host_has_an_actionable_structured_failure()
     {
         using var fixture = new HostFixture();
-        var resolver = fixture.Resolver(Path.Combine(fixture.Root, "empty"), []);
+        var resolver = fixture.Resolver(Path.Combine(fixture.ToolsRoot, "empty"), []);
 
         var result = await resolver.ResolveAsync(new DotNetHostResolutionRequest(fixture.Root));
 
@@ -290,6 +451,25 @@ public sealed class DotNetHostResolverTests
     }
 
     private static string HostName => OperatingSystem.IsWindows() ? "dotnet.exe" : "dotnet";
+
+    private static void AssertSafeDotNetEnvironment(ProcessRunRequest request)
+    {
+        Assert.Equal(
+            ProcessEnvironmentPolicy.InheritParent,
+            request.EnvironmentPolicy);
+        Assert.Equal(
+            ChildProcessEnvironment.DotNetDefaults.Count,
+            request.Environment.Count);
+        foreach (var expected in ChildProcessEnvironment.DotNetDefaults)
+        {
+            Assert.Equal(expected.Value, request.Environment[expected.Key]);
+        }
+
+        Assert.Equal(
+            "true",
+            request.Environment["DOTNET_CLI_WORKLOAD_UPDATE_NOTIFY_DISABLE"]);
+        Assert.False(request.Environment.ContainsKey("PATH"));
+    }
 
     private static ProcessRunResult Completed(string output, int exitCode = 0) =>
         new(
@@ -307,6 +487,36 @@ public sealed class DotNetHostResolverTests
             ProcessRunOutcome.Cancelled,
             ProcessStartFailure.None,
             null,
+            new ProcessCapturedOutput(string.Empty, limitExceeded: false),
+            new ProcessCapturedOutput(string.Empty, limitExceeded: false),
+            TimeSpan.Zero);
+
+    private static ProcessRunResult TimedOut() =>
+        new(
+            ProcessLifecycle.Terminated,
+            ProcessRunOutcome.TimedOut,
+            ProcessStartFailure.None,
+            new ProcessExitEvidence(143, null),
+            new ProcessCapturedOutput(string.Empty, limitExceeded: false),
+            new ProcessCapturedOutput(string.Empty, limitExceeded: false),
+            TimeSpan.Zero);
+
+    private static ProcessRunResult RuntimeFailed() =>
+        new(
+            ProcessLifecycle.Completed,
+            ProcessRunOutcome.RuntimeFailed,
+            ProcessStartFailure.None,
+            new ProcessExitEvidence(1, null),
+            new ProcessCapturedOutput(string.Empty, limitExceeded: false),
+            new ProcessCapturedOutput(string.Empty, limitExceeded: false),
+            TimeSpan.Zero);
+
+    private static ProcessRunResult PolicyDenied() =>
+        new(
+            ProcessLifecycle.NotStarted,
+            ProcessRunOutcome.StartFailed,
+            ProcessStartFailure.PolicyDenied,
+            exit: null,
             new ProcessCapturedOutput(string.Empty, limitExceeded: false),
             new ProcessCapturedOutput(string.Empty, limitExceeded: false),
             TimeSpan.Zero);
@@ -332,7 +542,9 @@ public sealed class DotNetHostResolverTests
         public HostFixture(string? globalJson = null)
         {
             Root = Path.Combine(Path.GetTempPath(), $"dnaxi-host-{Guid.NewGuid():N}");
+            ToolsRoot = Root + "-tools";
             Directory.CreateDirectory(Root);
+            Directory.CreateDirectory(ToolsRoot);
             if (globalJson is not null)
             {
                 File.WriteAllText(Path.Combine(Root, "global.json"), globalJson);
@@ -340,6 +552,10 @@ public sealed class DotNetHostResolverTests
         }
 
         public string Root { get; }
+
+        public string ToolsRoot { get; }
+
+        public string HostPath => Path.Combine(ToolsRoot, HostName);
 
         public StubProcessRunner Runner { get; } = new();
 
@@ -362,7 +578,11 @@ public sealed class DotNetHostResolverTests
                 static _ => true);
         }
 
-        public void Dispose() => Directory.Delete(Root, recursive: true);
+        public void Dispose()
+        {
+            Directory.Delete(ToolsRoot, recursive: true);
+            Directory.Delete(Root, recursive: true);
+        }
 
         private static StringComparer PathComparer() => OperatingSystem.IsWindows()
             ? StringComparer.OrdinalIgnoreCase

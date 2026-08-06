@@ -1,5 +1,4 @@
 using DotNetAxi.Contracts;
-using DotNetAxi.DotNet;
 using DotNetAxi.Search;
 using DotNetAxi.Workspaces;
 
@@ -44,6 +43,20 @@ internal sealed class TextSearchCommandHandler : ICommandHandler<TextSearchComma
     private static readonly TimeSpan DefaultRegexPerFileTimeout =
         TimeSpan.FromSeconds(1);
 
+    private readonly ChangedScopeResolver _changedScopeResolver;
+
+    public TextSearchCommandHandler()
+        : this(ChangedScopeResolver.CreatePassive())
+    {
+    }
+
+    internal TextSearchCommandHandler(
+        ChangedScopeResolver changedScopeResolver)
+    {
+        _changedScopeResolver = changedScopeResolver
+            ?? throw new ArgumentNullException(nameof(changedScopeResolver));
+    }
+
     public async ValueTask<ICommandResult> HandleAsync(TextSearchCommandRequest request, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -75,7 +88,7 @@ internal sealed class TextSearchCommandHandler : ICommandHandler<TextSearchComma
         {
             try
             {
-                changedScope = await new ChangedScopeResolver().ResolveAsync(
+                changedScope = await _changedScopeResolver.ResolveAsync(
                     workspace, new ChangedScopeRequest(request.Base, request.Head), cancellationToken).ConfigureAwait(false);
             }
             catch (ChangedScopeResolutionException exception) when (exception.Kind is ChangedScopeErrorKind.GitRequired
@@ -114,11 +127,10 @@ internal sealed class TextSearchCommandHandler : ICommandHandler<TextSearchComma
         var skippedDetailLimit = request.Full && includeSkipDetails
             ? int.MaxValue
             : 50;
-        var accelerator = new RgTextSearchAccelerator(new ProcessRunner());
         TextSearchResult result;
         if (request.Regex)
         {
-            result = await new RegexTextSearcher(scoped, accelerator).SearchAsync(
+            result = await new RegexTextSearcher(scoped).SearchAsync(
                 new RegexTextSearchRequest(
                     request.Query,
                     traversal,
@@ -130,7 +142,7 @@ internal sealed class TextSearchCommandHandler : ICommandHandler<TextSearchComma
         }
         else
         {
-            result = await new LiteralTextSearcher(scoped, accelerator).SearchAsync(
+            result = await new LiteralTextSearcher(scoped).SearchAsync(
                 new TextSearchRequest(
                     request.Query,
                     traversal,
