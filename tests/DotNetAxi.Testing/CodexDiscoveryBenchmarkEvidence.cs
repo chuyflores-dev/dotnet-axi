@@ -838,12 +838,18 @@ internal static class CodexDiscoveryEvidenceValidator
                                                     "status",
                                                     out var commandStatus)
                                                 || commandStatus == "completed");
+                            var toolClass = MapRawCommandToolClass(
+                                command,
+                                run,
+                                task);
                             toolCalls.Add(new AgentBenchmarkToolCall(
                                 toolCalls.Count,
-                                MapRawCommandToolClass(command),
+                                toolClass,
                                 command,
                                 AgentBenchmarkHash.Compute(item.GetRawText()),
                                 succeeded));
+                            protocolFailure |= !task.Execution.PermittedTools
+                                .Contains(toolClass, StringComparer.Ordinal);
                             protocolFailure |= !ObserveRawScope(
                                 command,
                                 workspacePath,
@@ -865,6 +871,10 @@ internal static class CodexDiscoveryEvidenceValidator
                                 "file_change",
                                 AgentBenchmarkHash.Compute(item.GetRawText()),
                                 IsRawCompleted(item)));
+                            protocolFailure |= !task.Execution.PermittedTools
+                                .Contains(
+                                    "workspace-write",
+                                    StringComparer.Ordinal);
                             if (item.TryGetProperty("changes", out var changes)
                                 && changes.ValueKind == JsonValueKind.Array)
                             {
@@ -919,6 +929,8 @@ internal static class CodexDiscoveryEvidenceValidator
                                 qualifiedName,
                                 AgentBenchmarkHash.Compute(item.GetRawText()),
                                 IsRawCompleted(item)));
+                            protocolFailure |= !task.Execution.PermittedTools
+                                .Contains(toolClass, StringComparer.Ordinal);
                         }
                         else if (itemType == "web_search")
                         {
@@ -929,6 +941,8 @@ internal static class CodexDiscoveryEvidenceValidator
                                 "web_search",
                                 AgentBenchmarkHash.Compute(item.GetRawText()),
                                 IsRawCompleted(item)));
+                            protocolFailure |= !task.Execution.PermittedTools
+                                .Contains("network", StringComparer.Ordinal);
                         }
                         else if (itemType == "error")
                         {
@@ -1065,7 +1079,10 @@ internal static class CodexDiscoveryEvidenceValidator
             System.Text.RegularExpressions.RegexOptions.IgnoreCase
             | System.Text.RegularExpressions.RegexOptions.CultureInvariant);
 
-    private static string MapRawCommandToolClass(string command)
+    private static string MapRawCommandToolClass(
+        string command,
+        AgentBenchmarkRunResult run,
+        AgentTaskDefinition task)
     {
         const System.Text.RegularExpressions.RegexOptions Options =
             System.Text.RegularExpressions.RegexOptions.IgnoreCase
@@ -1094,12 +1111,20 @@ internal static class CodexDiscoveryEvidenceValidator
             return "dotnet-sdk";
         }
 
-        return System.Text.RegularExpressions.Regex.IsMatch(
+        if (System.Text.RegularExpressions.Regex.IsMatch(
             command,
             "(?:^|[\\s'\"])git(?:[\\s'\"]|$)",
-            Options)
-                ? "git"
-                : "shell";
+            Options))
+        {
+            return "git";
+        }
+
+        return run.Sandbox == "read-only"
+               && task.Execution.PermittedTools.Contains(
+                   "repository-read",
+                   StringComparer.Ordinal)
+            ? "repository-read"
+            : "shell";
     }
 
     private static bool ObserveRawScope(
@@ -1122,6 +1147,11 @@ internal static class CodexDiscoveryEvidenceValidator
             var path = match.Groups["quotedPath"].Success
                 ? match.Groups["quotedPath"].Value
                 : match.Groups["path"].Value;
+            if (IsRawScopePattern(path))
+            {
+                continue;
+            }
+
             valid &= ObserveRawPath(path, workspacePath, files, projects);
         }
 
@@ -1159,6 +1189,12 @@ internal static class CodexDiscoveryEvidenceValidator
             candidate = relative;
         }
 
+        if (candidate.StartsWith("./", StringComparison.Ordinal)
+            || candidate.StartsWith(".\\", StringComparison.Ordinal))
+        {
+            candidate = candidate[2..];
+        }
+
         if (!PortableRelativePath.TryNormalize(
                 candidate,
                 normalizeBackslashes: true,
@@ -1183,6 +1219,10 @@ internal static class CodexDiscoveryEvidenceValidator
 
         return false;
     }
+
+    private static bool IsRawScopePattern(string value) =>
+        value.StartsWith('!')
+        || value.IndexOfAny(['*', '?', '{', '}']) >= 0;
 
     private static string NormalizeMacOsPrivatePath(string path) =>
         OperatingSystem.IsMacOS()

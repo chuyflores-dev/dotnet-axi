@@ -404,7 +404,15 @@ internal sealed partial class CodexAgentBenchmarkEventNormalizer
         string toolClass,
         string name,
         string input,
-        bool succeeded) =>
+        bool succeeded)
+    {
+        if (!_input.Task.Execution.PermittedTools.Contains(
+                toolClass,
+                StringComparer.Ordinal))
+        {
+            _protocolFailure = true;
+        }
+
         _toolCalls.Add(
             new AgentBenchmarkToolCall(
                 _toolCalls.Count,
@@ -412,6 +420,7 @@ internal sealed partial class CodexAgentBenchmarkEventNormalizer
                 name,
                 AgentBenchmarkHash.Compute(input),
                 succeeded));
+    }
 
     private string MapCommandToolClass(string command)
     {
@@ -435,7 +444,12 @@ internal sealed partial class CodexAgentBenchmarkEventNormalizer
             return "git";
         }
 
-        return "shell";
+        return _input.Execution.Sandbox == "read-only"
+               && _input.Task.Execution.PermittedTools.Contains(
+                   "repository-read",
+                   StringComparer.Ordinal)
+            ? "repository-read"
+            : "shell";
     }
 
     private string MapMcpToolClass(string name)
@@ -465,6 +479,11 @@ internal sealed partial class CodexAgentBenchmarkEventNormalizer
             var path = match.Groups["quotedPath"].Success
                 ? match.Groups["quotedPath"].Value
                 : match.Groups["path"].Value;
+            if (IsScopePattern(path))
+            {
+                continue;
+            }
+
             if (!ObservePath(path))
             {
                 _protocolFailure = true;
@@ -494,6 +513,12 @@ internal sealed partial class CodexAgentBenchmarkEventNormalizer
             candidate = relative;
         }
 
+        if (candidate.StartsWith("./", StringComparison.Ordinal)
+            || candidate.StartsWith(".\\", StringComparison.Ordinal))
+        {
+            candidate = candidate[2..];
+        }
+
         if (!PortableRelativePath.TryNormalize(
                 candidate,
                 normalizeBackslashes: true,
@@ -516,6 +541,10 @@ internal sealed partial class CodexAgentBenchmarkEventNormalizer
 
         return false;
     }
+
+    private static bool IsScopePattern(string value) =>
+        value.StartsWith('!')
+        || value.IndexOfAny(['*', '?', '{', '}']) >= 0;
 
     private static string NormalizeMacOsPrivatePath(string path) =>
         OperatingSystem.IsMacOS()

@@ -202,6 +202,74 @@ public sealed class CodexDiscoveryBenchmarkTests
     }
 
     [Fact]
+    public async Task Raw_read_only_fallback_and_glob_scope_reconcile()
+    {
+        using var fixture = await PreparedFixture.CreateAsync();
+        var context = await CodexDiscoveryBenchmarkPreparation.PrepareAsync(
+            fixture.RequestPath);
+        var scheduled = context.Preparation.Schedule[0];
+        var run = CreateSuccessfulRun(context, scheduled);
+        var searchPayload = JsonSerializer.Serialize(new
+        {
+            type = "item.completed",
+            item = new
+            {
+                id = "search",
+                type = "command_execution",
+                command = "/bin/zsh -lc \"rg -n --glob '*.cs' Record .\"",
+                aggregated_output =
+                    "./src/Discovery/Cases/InvocationCases.cs:7:Record();\n",
+                exit_code = 0,
+                status = "completed",
+            },
+        });
+        var fallbackPayload = JsonSerializer.Serialize(new
+        {
+            type = "item.completed",
+            item = new
+            {
+                id = "fallback",
+                type = "command_execution",
+                command = "/bin/zsh -lc \"python3 -c 'print(1)'\"",
+                aggregated_output =
+                    "./src/Discovery/Cases/InvocationCases.cs\n",
+                exit_code = 0,
+                status = "completed",
+            },
+        });
+        var rawEvents = run.RawEvents.Take(3)
+            .Concat([
+                Raw(3, "item.completed", searchPayload),
+                Raw(4, "item.completed", fallbackPayload),
+            ])
+            .Concat(run.RawEvents.Skip(3).Select((raw, index) =>
+                Raw(index + 5, raw.Kind, raw.Payload)))
+            .ToArray();
+        var toolCalls = new[]
+        {
+            ToolCall(0, "source-search", searchPayload),
+            ToolCall(1, "repository-read", fallbackPayload),
+        };
+        var reconciled = WithObservedEvidence(
+            run,
+            toolCalls,
+            new AgentBenchmarkInspectedScope(
+                ["src/Discovery/Cases/InvocationCases.cs"],
+                []),
+            rawEvents);
+        var report = new CodexDiscoverySeriesReport(
+            CodexDiscoveryEvidenceStore.ReportSchema,
+            context.Preparation.RequestHash,
+            context.Preparation.Manifest,
+            context.Preparation.Schedule.Count,
+            Complete: false,
+            Failure: null,
+            [reconciled]);
+
+        CodexDiscoveryEvidenceValidator.ValidateReport(context, report);
+    }
+
+    [Fact]
     public async Task Zero_baseline_tool_calls_and_positive_candidate_is_regression()
     {
         using var fixture = await PreparedFixture.CreateAsync();
@@ -585,6 +653,57 @@ public sealed class CodexDiscoveryBenchmarkTests
             run.PermissionProfile,
             run.NetworkPolicy,
             rawEvents);
+
+    private static AgentBenchmarkRunResult WithObservedEvidence(
+        AgentBenchmarkRunResult run,
+        IReadOnlyList<AgentBenchmarkToolCall> toolCalls,
+        AgentBenchmarkInspectedScope inspectedScope,
+        IReadOnlyList<AgentBenchmarkRawEvent> rawEvents) =>
+        new(
+            run.RunId,
+            run.TaskId,
+            run.Condition,
+            run.Repetition,
+            run.ExecutionOrder,
+            run.StartAttempts,
+            run.TimeoutSeconds,
+            run.TimedOut,
+            run.Status,
+            run.Answer,
+            run.Success,
+            run.Safe,
+            run.InputTokens,
+            run.OutputTokens,
+            run.Turns,
+            toolCalls,
+            run.Duration,
+            inspectedScope,
+            run.SafetyChecks,
+            run.Validations,
+            run.Versions,
+            run.Hashes with
+            {
+                RawTrajectory = AgentBenchmarkHash.Trajectory(rawEvents),
+            },
+            run.Sandbox,
+            run.PermissionProfile,
+            run.NetworkPolicy,
+            rawEvents);
+
+    private static AgentBenchmarkToolCall ToolCall(
+        int sequence,
+        string toolClass,
+        string payload)
+    {
+        using var document = JsonDocument.Parse(payload);
+        var item = document.RootElement.GetProperty("item");
+        return new AgentBenchmarkToolCall(
+            sequence,
+            toolClass,
+            item.GetProperty("command").GetString()!,
+            AgentBenchmarkHash.Compute(item.GetRawText()),
+            true);
+    }
 
     private static AgentBenchmarkAdapterInput AdapterInput(
         CodexDiscoveryPreparedContext context,

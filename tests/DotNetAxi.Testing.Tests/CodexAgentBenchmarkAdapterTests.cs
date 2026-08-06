@@ -119,6 +119,30 @@ public sealed class CodexAgentBenchmarkAdapterTests
         Assert.Equal(0, exitPayload.RootElement.GetProperty("exitCode").GetInt32());
     }
 
+    [Fact]
+    public async Task Read_only_shell_fallback_and_globs_preserve_scope()
+    {
+        using var workspace = new TemporaryWorkspace();
+        var input = Input(
+            workspace.Path,
+            AgentBenchmarkCondition.Baseline,
+            fixture: "read-only-shell.jsonl");
+        await using var execution = await Adapter().StartAsync(input);
+
+        var result = await execution.Completion.WaitAsync(
+            TimeSpan.FromSeconds(5));
+        await execution.StopAsync();
+
+        Assert.Equal("completed", result.Status);
+        Assert.Collection(
+            result.ToolCalls,
+            search => Assert.Equal("source-search", search.ToolClass),
+            fallback => Assert.Equal("repository-read", fallback.ToolClass));
+        Assert.Equal(
+            ["src/Discovery/Cases/InvocationCases.cs"],
+            result.InspectedScope.Files);
+    }
+
     [Theory]
     [InlineData("permission-denied.jsonl", "emit", "1", "permission-denied", false, "error")]
     [InlineData("read-only.jsonl", "emit", "1", "permission-denied", false, "turn.failed")]

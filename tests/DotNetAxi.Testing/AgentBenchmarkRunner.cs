@@ -256,8 +256,7 @@ public sealed partial class AgentBenchmarkRunner
                 timedOut = true;
                 progressAtTimeout = SnapshotAndValidateProgress(
                     execution.GetProgressSnapshot(),
-                    runId,
-                    task.Execution.PermittedTools);
+                    runId);
                 progress = progressAtTimeout;
                 duration = _timeProvider.GetElapsedTime(startedAt);
             }
@@ -283,6 +282,9 @@ public sealed partial class AgentBenchmarkRunner
                     condition,
                     promptHash,
                     runId);
+                adapterResult = ApplyToolPolicy(
+                    adapterResult,
+                    task.Execution.PermittedTools);
                 duration = _timeProvider.GetElapsedTime(startedAt);
             }
         }
@@ -298,8 +300,7 @@ public sealed partial class AgentBenchmarkRunner
         {
             var progressAfterCleanup = SnapshotAndValidateProgress(
                 execution.GetProgressSnapshot(),
-                runId,
-                task.Execution.PermittedTools);
+                runId);
             ValidateProgressExtension(
                 progressAtTimeout!,
                 progressAfterCleanup,
@@ -680,8 +681,7 @@ public sealed partial class AgentBenchmarkRunner
 
     private static AgentBenchmarkProgressSnapshot SnapshotAndValidateProgress(
         AgentBenchmarkProgressSnapshot? progress,
-        string runId,
-        IReadOnlyList<string> permittedTools)
+        string runId)
     {
         if (progress is null
             || progress.InputTokens < 0
@@ -694,7 +694,7 @@ public sealed partial class AgentBenchmarkRunner
                 $"Run '{runId}' returned malformed timeout progress.");
         }
 
-        ValidateToolCallShape(progress.ToolCalls, runId, permittedTools);
+        ValidateToolCallShape(progress.ToolCalls, runId);
         ValidateScope(progress.InspectedScope, runId);
         ValidateTokenTotal(
             progress.InputTokens,
@@ -797,10 +797,7 @@ public sealed partial class AgentBenchmarkRunner
                 $"Run '{runId}' returned malformed normalized metrics.");
         }
 
-        ValidateToolCallShape(
-            result.ToolCalls,
-            runId,
-            task.Execution.PermittedTools);
+        ValidateToolCallShape(result.ToolCalls, runId);
         ValidateTokenTotal(result.InputTokens, result.OutputTokens, runId);
 
         ValidateScope(result.InspectedScope, runId);
@@ -827,18 +824,13 @@ public sealed partial class AgentBenchmarkRunner
 
     private static void ValidateToolCallShape(
         IReadOnlyList<AgentBenchmarkToolCall> toolCalls,
-        string runId,
-        IReadOnlyList<string>? permittedTools)
+        string runId)
     {
         for (var index = 0; index < toolCalls.Count; index++)
         {
             var call = toolCalls[index];
             if (call.Sequence != index
                 || string.IsNullOrWhiteSpace(call.ToolClass)
-                || (permittedTools is not null
-                    && !permittedTools.Contains(
-                        call.ToolClass,
-                        StringComparer.Ordinal))
                 || string.IsNullOrWhiteSpace(call.Name)
                 || !AgentBenchmarkHash.IsHash(call.InputHash))
             {
@@ -847,6 +839,19 @@ public sealed partial class AgentBenchmarkRunner
             }
         }
     }
+
+    private static AgentBenchmarkAdapterResult ApplyToolPolicy(
+        AgentBenchmarkAdapterResult result,
+        IReadOnlyList<string> permittedTools) =>
+        result.ToolCalls.All(call => permittedTools.Contains(
+            call.ToolClass,
+            StringComparer.Ordinal))
+            ? result
+            : result with
+            {
+                Status = "failed",
+                ClaimsSupported = false,
+            };
 
     private static void ValidateScope(
         AgentBenchmarkInspectedScope scope,
