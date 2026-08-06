@@ -44,7 +44,7 @@ flags[3]:
     minimum_values: 0
     maximum_values: 0
     inherited: false
-    description: Show the installed tool and output-schema versions.
+    description: Show installed versions and passive compatibility capabilities.
 subcommands[1]{name,description,classification}:
   inspect,Inspect one registered target.,executing
 examples[2]{command}:

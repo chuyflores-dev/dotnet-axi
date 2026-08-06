@@ -8,7 +8,7 @@ internal static class VersionOptionBinding
 {
     public static void BindVersionOutput(
         this RootCommand rootCommand,
-        Func<ICommandResult> resultFactory,
+        Func<CancellationToken, ValueTask<ICommandResult>> resultFactory,
         ICommandResponseWriter responseWriter)
     {
         ArgumentNullException.ThrowIfNull(rootCommand);
@@ -24,7 +24,7 @@ internal static class VersionOptionBinding
         }
 
         versionOption.Description =
-            "Show the installed tool and output-schema versions.";
+            "Show installed versions and passive compatibility capabilities.";
         versionOption.Action = new StructuredVersionAction(
             versionOption,
             resultFactory,
@@ -35,12 +35,12 @@ internal static class VersionOptionBinding
         AsynchronousCommandLineAction
     {
         private readonly VersionOption _versionOption;
-        private readonly Func<ICommandResult> _resultFactory;
+        private readonly Func<CancellationToken, ValueTask<ICommandResult>> _resultFactory;
         private readonly ICommandResponseWriter _responseWriter;
 
         public StructuredVersionAction(
             VersionOption versionOption,
-            Func<ICommandResult> resultFactory,
+            Func<CancellationToken, ValueTask<ICommandResult>> resultFactory,
             ICommandResponseWriter responseWriter)
         {
             _versionOption = versionOption;
@@ -80,9 +80,17 @@ internal static class VersionOptionBinding
                     .AsTask();
             }
 
-            return _responseWriter
-                .WriteAsync(_resultFactory(), cancellationToken)
-                .AsTask();
+            return WriteResultAsync(cancellationToken);
+        }
+
+        private async Task<int> WriteResultAsync(
+            CancellationToken cancellationToken)
+        {
+            var result = await _resultFactory(cancellationToken)
+                .ConfigureAwait(false);
+            return await _responseWriter
+                .WriteAsync(result, cancellationToken)
+                .ConfigureAwait(false);
         }
     }
 }

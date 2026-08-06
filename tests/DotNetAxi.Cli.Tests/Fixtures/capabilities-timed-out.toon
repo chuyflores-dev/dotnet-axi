@@ -1,0 +1,30 @@
+schema: dotnet-axi/v1
+command: version
+status: success
+tool: dotnet-axi
+tool_version: 1.2.3-test
+output_schema: dotnet-axi/v1
+capabilities:
+  selected_host:
+    path: /tools/dotnet
+    availability: present
+  sdk:
+    availability: unverified
+    compatibility: unverified
+    probe: timed_out
+  ms_build:
+    availability: unverified
+    compatibility: unverified
+    probe: timed_out
+  roslyn:
+    availability: unverified
+    compatibility: unverified
+    probe: timed_out
+  git:
+    version: 2.50.1
+    availability: present
+    compatibility: supported
+  optional_engines[1]{name,version,availability,compatibility}:
+    rg,15.2.0,present,supported
+  command_engines[1]{command,preferred_engine,selected_engine,degradation}:
+    search text,rg,rg,built_in

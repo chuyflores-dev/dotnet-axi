@@ -62,12 +62,14 @@ internal sealed class HomeCommandHandler : ICommandHandler<HomeRequest>
     private readonly WorkspaceDiscoverer _workspaceDiscoverer;
     private readonly WorkspaceEntryPointSelector _entryPointSelector;
     private readonly WorktreeStateInspector _worktreeStateInspector;
+    private readonly ICapabilityReporter _capabilityReporter;
 
     public HomeCommandHandler(
         HomeInvocationContext context,
         WorkspaceDiscoverer workspaceDiscoverer,
         WorkspaceEntryPointSelector entryPointSelector,
-        WorktreeStateInspector worktreeStateInspector)
+        WorktreeStateInspector worktreeStateInspector,
+        ICapabilityReporter capabilityReporter)
     {
         _context = context
             ?? throw new ArgumentNullException(nameof(context));
@@ -77,6 +79,8 @@ internal sealed class HomeCommandHandler : ICommandHandler<HomeRequest>
             ?? throw new ArgumentNullException(nameof(entryPointSelector));
         _worktreeStateInspector = worktreeStateInspector
             ?? throw new ArgumentNullException(nameof(worktreeStateInspector));
+        _capabilityReporter = capabilityReporter
+            ?? throw new ArgumentNullException(nameof(capabilityReporter));
     }
 
     public async ValueTask<ICommandResult> HandleAsync(
@@ -89,9 +93,15 @@ internal sealed class HomeCommandHandler : ICommandHandler<HomeRequest>
         var workspace = _workspaceDiscoverer.Discover(
             _context.CurrentDirectory);
         var selection = SelectEntryPoint(workspace);
-        var worktree = await _worktreeStateInspector
-            .InspectAsync(workspace, cancellationToken)
+        var worktreeTask = _worktreeStateInspector
+            .InspectAsync(workspace, cancellationToken);
+        var capabilitiesTask = _capabilityReporter
+            .ReportAsync(workspace.RootPath, cancellationToken)
+            .AsTask();
+        await Task.WhenAll(worktreeTask, capabilitiesTask)
             .ConfigureAwait(false);
+        var worktree = await worktreeTask.ConfigureAwait(false);
+        var capabilities = await capabilitiesTask.ConfigureAwait(false);
         var git = CreateGitPayload(worktree);
         var suggestions = CreateSuggestions();
 
@@ -103,6 +113,9 @@ internal sealed class HomeCommandHandler : ICommandHandler<HomeRequest>
                     _context.CurrentDirectory,
                     _context.HomeDirectory),
                 "Search, analyze, validate, and safely change the current .NET workspace",
+                "dotnet-axi",
+                ToolVersion.Current,
+                OutputSchema.Current,
                 AgentGuidanceCatalog.Command,
                 new HomeWorkspacePayload(
                     DisplayPath(
@@ -114,6 +127,7 @@ internal sealed class HomeCommandHandler : ICommandHandler<HomeRequest>
                     workspace.Projects.Count,
                     workspace.CSharpFileCount),
                 git,
+                capabilities,
                 new HomeAnalysisPayload(
                     HomeAnalysisStatus.NotLoaded,
                     HomeCompilerErrorState.Unknown)),
@@ -258,9 +272,13 @@ internal sealed class HomeCommandHandler : ICommandHandler<HomeRequest>
     private sealed record HomePayload(
         string Bin,
         string Description,
+        string Tool,
+        string ToolVersion,
+        string OutputSchema,
         AgentCommandGuidance Guidance,
         HomeWorkspacePayload Workspace,
         HomeGitPayload Git,
+        CapabilityReport Capabilities,
         HomeAnalysisPayload Analysis);
 
     private sealed record HomeWorkspacePayload(
