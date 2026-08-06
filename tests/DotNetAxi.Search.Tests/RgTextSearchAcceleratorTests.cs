@@ -266,6 +266,17 @@ public sealed class RgTextSearchAcceleratorTests
         }
     }
 
+    [Theory]
+    [InlineData("12.1.0", RgVersionCompatibility.Unsupported)]
+    [InlineData("13.0.0", RgVersionCompatibility.Supported)]
+    [InlineData("15.2.0", RgVersionCompatibility.Supported)]
+    [InlineData("16.0.0", RgVersionCompatibility.Unverified)]
+    [InlineData("15.2oops", RgVersionCompatibility.Unverified)]
+    public void Version_classification_is_strict_and_shared_with_routing(
+        string version,
+        RgVersionCompatibility expected) =>
+        Assert.Equal(expected, RgTextSearchAccelerator.ClassifyVersion(version));
+
     [Fact]
     public async Task Dependency_failure_and_raw_diagnostics_fall_back_silently()
     {

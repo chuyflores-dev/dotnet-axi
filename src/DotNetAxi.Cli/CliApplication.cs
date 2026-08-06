@@ -12,18 +12,35 @@ internal static class CliApplication
             error,
             static () => HomeInvocationContext.Capture(),
             static () => new WorkspaceDiscoverer(),
-            static () => new WorktreeStateInspector());
+            static () => new WorktreeStateInspector(),
+            static () => CapabilityReporter.CreateDefault());
 
     internal static CommandHost Create(
         TextWriter output,
         TextWriter error,
         Func<HomeInvocationContext> homeContextFactory,
         Func<WorkspaceDiscoverer> workspaceDiscovererFactory,
-        Func<WorktreeStateInspector> worktreeStateInspectorFactory)
+        Func<WorktreeStateInspector> worktreeStateInspectorFactory) =>
+        Create(
+            output,
+            error,
+            homeContextFactory,
+            workspaceDiscovererFactory,
+            worktreeStateInspectorFactory,
+            static () => CapabilityReporter.CreateDefault());
+
+    internal static CommandHost Create(
+        TextWriter output,
+        TextWriter error,
+        Func<HomeInvocationContext> homeContextFactory,
+        Func<WorkspaceDiscoverer> workspaceDiscovererFactory,
+        Func<WorktreeStateInspector> worktreeStateInspectorFactory,
+        Func<ICapabilityReporter> capabilityReporterFactory)
     {
         ArgumentNullException.ThrowIfNull(homeContextFactory);
         ArgumentNullException.ThrowIfNull(workspaceDiscovererFactory);
         ArgumentNullException.ThrowIfNull(worktreeStateInspectorFactory);
+        ArgumentNullException.ThrowIfNull(capabilityReporterFactory);
         var rootCommand = new RootCommand(
             "Deterministic .NET discovery, analysis, validation, and safe modification.");
         var host = new CommandHost(
@@ -37,7 +54,16 @@ internal static class CliApplication
             output,
             error);
         rootCommand.BindVersionOutput(
-            static () => VersionResult.Create(ToolVersion.Current),
+            async cancellationToken =>
+            {
+                var workspace = workspaceDiscovererFactory().Discover(
+                    homeContextFactory().CurrentDirectory);
+                return VersionResult.Create(
+                    ToolVersion.Current,
+                    await capabilityReporterFactory()
+                        .ReportAsync(workspace.RootPath, cancellationToken)
+                        .ConfigureAwait(false));
+            },
             host.ResponseWriter);
         rootCommand.BindHandler(
             static _ => HomeRequest.Instance,
@@ -45,7 +71,8 @@ internal static class CliApplication
                 homeContextFactory(),
                 workspaceDiscovererFactory(),
                 new WorkspaceEntryPointSelector(),
-                worktreeStateInspectorFactory()),
+                worktreeStateInspectorFactory(),
+                capabilityReporterFactory()),
             host.ResponseWriter);
 
         var searchCommand = new Command("search", "Search the current workspace.");

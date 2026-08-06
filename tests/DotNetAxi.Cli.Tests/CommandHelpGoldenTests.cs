@@ -57,7 +57,8 @@ public sealed class CommandHelpGoldenTests
             output,
             new StringWriter());
         rootCommand.BindVersionOutput(
-            static () => VersionResult.Create("1.2.3-test"),
+            static _ => ValueTask.FromResult(
+                VersionResult.Create("1.2.3-test")),
             host.ResponseWriter);
 
         var targetArgument = new Argument<string>("target")

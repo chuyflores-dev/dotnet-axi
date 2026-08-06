@@ -13,8 +13,9 @@ var host = new CommandHost(
     Console.Out,
     Console.Error);
 rootCommand.BindVersionOutput(
-    static () => VersionResult.Create(
-        ToolVersion.FromAssembly(typeof(ScenarioHandler).Assembly)),
+    static _ => ValueTask.FromResult(
+        VersionResult.Create(
+            ToolVersion.FromAssembly(typeof(ScenarioHandler).Assembly))),
     host.ResponseWriter);
 
 AddScenario("success", Scenario.Success, includeKnownOption: true);

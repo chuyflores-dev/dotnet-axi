@@ -2,6 +2,13 @@ using DotNetAxi.Contracts;
 
 namespace DotNetAxi.Search;
 
+public enum RgVersionCompatibility
+{
+    Supported,
+    Unsupported,
+    Unverified,
+}
+
 /// <summary>
 /// Uses a compatible ripgrep installation to prefilter files for supported
 /// literal text searches. The built-in engine remains responsible for reading
@@ -323,9 +330,25 @@ public sealed class RgTextSearchAccelerator
         var versionText = firstLine["ripgrep ".Length..]
             .Split(' ', StringSplitOptions.RemoveEmptyEntries)
             .FirstOrDefault();
-        return Version.TryParse(versionText, out var version)
-               && version.Major is >= MinimumSupportedMajorVersion
-                   and <= MaximumSupportedMajorVersion;
+        return ClassifyVersion(versionText) is RgVersionCompatibility.Supported;
+    }
+
+    public static RgVersionCompatibility ClassifyVersion(string? versionText)
+    {
+        if (!Version.TryParse(versionText, out var version)
+            || version is null)
+        {
+            return RgVersionCompatibility.Unverified;
+        }
+
+        if (version.Major < MinimumSupportedMajorVersion)
+        {
+            return RgVersionCompatibility.Unsupported;
+        }
+
+        return version.Major <= MaximumSupportedMajorVersion
+            ? RgVersionCompatibility.Supported
+            : RgVersionCompatibility.Unverified;
     }
 
     private async Task<ProcessRunResult> RunSearchAsync(

@@ -1,0 +1,30 @@
+schema: dotnet-axi/v1
+command: version
+status: success
+tool: dotnet-axi
+tool_version: 1.2.3-test
+output_schema: dotnet-axi/v1
+capabilities:
+  selected_host:
+    path: /tools/dotnet
+    availability: present
+  sdk:
+    version: 7.0.410
+    availability: present
+    compatibility: unsupported
+  ms_build:
+    version: 17.7.0
+    availability: present
+    compatibility: unsupported
+  roslyn:
+    version: 4.7.0
+    availability: present
+    compatibility: unsupported
+  git:
+    version: 1.10.0
+    availability: present
+    compatibility: unsupported
+  optional_engines[1]{name,version,availability,compatibility}:
+    rg,12.1.0,present,unsupported
+  command_engines[1]{command,preferred_engine,selected_engine,degradation}:
+    search text,rg,built_in,built_in
