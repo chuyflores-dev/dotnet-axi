@@ -827,9 +827,10 @@ internal static partial class CodexDiscoveryBenchmarkPreparation
             environment,
             cancellationToken);
         if (!string.Equals(
-                version.Trim(),
+                version.StandardOutput.Trim(),
                 CodexCliVersion,
-                StringComparison.Ordinal))
+                StringComparison.Ordinal)
+            || !string.IsNullOrWhiteSpace(version.StandardError))
         {
             throw new AgentBenchmarkException(
                 "The pinned Codex executable did not report the required CLI version.");
@@ -841,15 +842,23 @@ internal static partial class CodexDiscoveryBenchmarkPreparation
             ["login", "status"],
             environment,
             cancellationToken);
-        if (!authentication.Contains("ChatGPT", StringComparison.OrdinalIgnoreCase)
-            || authentication.Contains("API", StringComparison.OrdinalIgnoreCase))
+        var authenticationLines = string.Concat(
+                authentication.StandardOutput,
+                "\n",
+                authentication.StandardError)
+            .ReplaceLineEndings("\n")
+            .Split('\n', StringSplitOptions.RemoveEmptyEntries
+                         | StringSplitOptions.TrimEntries);
+        if (!authenticationLines.SequenceEqual(
+                ["Logged in using ChatGPT"],
+                StringComparer.Ordinal))
         {
             throw new AgentBenchmarkException(
                 "The isolated Codex home must report active ChatGPT authentication; API-key authentication is not accepted.");
         }
     }
 
-    private static async ValueTask<string> RunCodexProbeAsync(
+    private static async ValueTask<CodexProbeOutput> RunCodexProbeAsync(
         string executablePath,
         string workingDirectory,
         IReadOnlyList<string> arguments,
@@ -875,7 +884,9 @@ internal static partial class CodexDiscoveryBenchmarkPreparation
                 "The pinned Codex executable failed its bounded local identity probe.");
         }
 
-        return result.StandardOutput.Text;
+        return new CodexProbeOutput(
+            result.StandardOutput.Text,
+            result.StandardError.Text);
     }
 
     private static async ValueTask<T> LoadPinnedJsonAsync<T>(
@@ -996,6 +1007,10 @@ internal static partial class CodexDiscoveryBenchmarkPreparation
 internal sealed record CodexDiscoveryArtifactPin(
     string Path,
     string Sha256);
+
+internal sealed record CodexProbeOutput(
+    string StandardOutput,
+    string StandardError);
 
 internal sealed record CodexDiscoveryCorpusPin(
     string Id,

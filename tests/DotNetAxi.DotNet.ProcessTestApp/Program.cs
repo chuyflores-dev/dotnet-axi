@@ -76,7 +76,7 @@ static int CodexDiscoveryProbe(IReadOnlyList<string> values)
 
     if (values.SequenceEqual(["login", "status"]))
     {
-        Console.WriteLine(ReadProbeValue(
+        Console.Error.WriteLine(ReadProbeValue(
             codexHome,
             "probe-authentication.txt",
             "Logged in using ChatGPT"));
