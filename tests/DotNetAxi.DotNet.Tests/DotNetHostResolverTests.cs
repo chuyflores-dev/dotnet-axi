@@ -85,7 +85,7 @@ public sealed class DotNetHostResolverTests
             fixture.Runner.Requests.Select(static request => request.Arguments));
         Assert.All(
             fixture.Runner.Requests,
-            request => Assert.Equal("en-US", request.Environment["DOTNET_CLI_UI_LANGUAGE"]));
+            AssertSafeDotNetEnvironment);
     }
 
     [Fact]
@@ -414,6 +414,25 @@ public sealed class DotNetHostResolverTests
     }
 
     private static string HostName => OperatingSystem.IsWindows() ? "dotnet.exe" : "dotnet";
+
+    private static void AssertSafeDotNetEnvironment(ProcessRunRequest request)
+    {
+        Assert.Equal(
+            ProcessEnvironmentPolicy.InheritParent,
+            request.EnvironmentPolicy);
+        Assert.Equal(
+            ChildProcessEnvironment.DotNetDefaults.Count,
+            request.Environment.Count);
+        foreach (var expected in ChildProcessEnvironment.DotNetDefaults)
+        {
+            Assert.Equal(expected.Value, request.Environment[expected.Key]);
+        }
+
+        Assert.Equal(
+            "true",
+            request.Environment["DOTNET_CLI_WORKLOAD_UPDATE_NOTIFY_DISABLE"]);
+        Assert.False(request.Environment.ContainsKey("PATH"));
+    }
 
     private static ProcessRunResult Completed(string output, int exitCode = 0) =>
         new(

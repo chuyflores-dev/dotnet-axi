@@ -390,9 +390,10 @@ public sealed class RgTextSearchAccelerator
             _executablePath!,
             workingDirectory,
             arguments,
-            new Dictionary<string, string>(StringComparer.Ordinal),
+            ChildProcessEnvironment.RipgrepDefaults,
             new ProcessOutputLimits(standardOutputLimit, OutputLimit),
-            timeout);
+            timeout,
+            ProcessEnvironmentPolicy.InheritParent);
 
     private static IEnumerable<IReadOnlyList<string>?> CreateBatches(
         IEnumerable<string> paths)

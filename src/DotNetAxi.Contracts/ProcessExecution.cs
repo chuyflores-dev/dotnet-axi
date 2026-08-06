@@ -228,6 +228,12 @@ public sealed record ProcessOutputLimits
     public int StandardErrorCharacters { get; }
 }
 
+public enum ProcessEnvironmentPolicy
+{
+    Isolated,
+    InheritParent,
+}
+
 public sealed class ProcessRunRequest
 {
     public ProcessRunRequest(
@@ -236,7 +242,9 @@ public sealed class ProcessRunRequest
         IEnumerable<string> arguments,
         IReadOnlyDictionary<string, string> environment,
         ProcessOutputLimits outputLimits,
-        TimeSpan timeout)
+        TimeSpan timeout,
+        ProcessEnvironmentPolicy environmentPolicy =
+            ProcessEnvironmentPolicy.Isolated)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(executablePath);
         ArgumentException.ThrowIfNullOrWhiteSpace(workingDirectory);
@@ -266,12 +274,18 @@ public sealed class ProcessRunRequest
                 "The process timeout must be positive and finite.");
         }
 
+        if (!Enum.IsDefined(environmentPolicy))
+        {
+            throw new ArgumentOutOfRangeException(nameof(environmentPolicy));
+        }
+
         ExecutablePath = Path.GetFullPath(executablePath);
         WorkingDirectory = Path.GetFullPath(workingDirectory);
         Arguments = CopyArguments(arguments);
         Environment = CopyEnvironment(environment);
         OutputLimits = outputLimits;
         Timeout = timeout;
+        EnvironmentPolicy = environmentPolicy;
     }
 
     public string ExecutablePath { get; }
@@ -285,6 +299,8 @@ public sealed class ProcessRunRequest
     public ProcessOutputLimits OutputLimits { get; }
 
     public TimeSpan Timeout { get; }
+
+    public ProcessEnvironmentPolicy EnvironmentPolicy { get; }
 
     public override string ToString() => nameof(ProcessRunRequest);
 

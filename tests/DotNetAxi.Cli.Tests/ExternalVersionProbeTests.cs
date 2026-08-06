@@ -38,6 +38,20 @@ public sealed class ExternalVersionProbeTests
         Assert.Equal(TimeSpan.FromSeconds(2), request.Timeout);
         Assert.Equal(4 * 1024, request.OutputLimits.StandardOutputCharacters);
         Assert.Equal("C", request.Environment["LC_ALL"]);
+        Assert.Equal(
+            capability is ExternalCapability.Ripgrep
+                ? ProcessEnvironmentPolicy.InheritParent
+                : ProcessEnvironmentPolicy.Isolated,
+            request.EnvironmentPolicy);
+        if (capability is ExternalCapability.Ripgrep)
+        {
+            Assert.Equal("1", request.Environment["NO_COLOR"]);
+            Assert.Equal(
+                ChildProcessEnvironment.RipgrepDefaults.Count,
+                request.Environment.Count);
+            Assert.False(request.Environment.ContainsKey("PATH"));
+        }
+
         Assert.DoesNotContain(
             request.Arguments,
             static argument => argument.Contains(

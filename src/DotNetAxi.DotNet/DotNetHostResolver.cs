@@ -279,15 +279,10 @@ public sealed class DotNetHostResolver : IDotNetHostResolver
                     executablePath,
                     workspaceRoot,
                     arguments,
-                    new Dictionary<string, string>(StringComparer.Ordinal)
-                    {
-                        ["DOTNET_CLI_TELEMETRY_OPTOUT"] = "1",
-                        ["DOTNET_NOLOGO"] = "1",
-                        ["DOTNET_SKIP_FIRST_TIME_EXPERIENCE"] = "1",
-                        ["DOTNET_CLI_UI_LANGUAGE"] = "en-US",
-                    },
+                    ChildProcessEnvironment.DotNetDefaults,
                     new ProcessOutputLimits(OutputLimit, OutputLimit),
-                    CommandTimeout),
+                    CommandTimeout,
+                    ProcessEnvironmentPolicy.InheritParent),
                 cancellationToken)
             .ConfigureAwait(false);
 
