@@ -5,6 +5,20 @@ namespace DotNetAxi.DotNet.Tests;
 public sealed class DotNetHostResolverTests
 {
     [Fact]
+    public void Host_failure_reason_ordinals_remain_compatible()
+    {
+        Assert.Equal(0, (int)DotNetHostFailureReason.HostNotFound);
+        Assert.Equal(1, (int)DotNetHostFailureReason.HostUnsupported);
+        Assert.Equal(2, (int)DotNetHostFailureReason.SdkProbeTimedOut);
+        Assert.Equal(3, (int)DotNetHostFailureReason.SdkProbeFailed);
+        Assert.Equal(4, (int)DotNetHostFailureReason.SdkUnavailable);
+        Assert.Equal(5, (int)DotNetHostFailureReason.SdkUnsupported);
+        Assert.Equal(6, (int)DotNetHostFailureReason.SdkSelectionInvalid);
+        Assert.Equal(7, (int)DotNetHostFailureReason.MsBuildUnavailable);
+        Assert.Equal(8, (int)DotNetHostFailureReason.ProcessPolicyDenied);
+    }
+
+    [Fact]
     public async Task Path_host_reports_its_executable_selected_sdk_and_supported_compatibility()
     {
         using var fixture = new HostFixture();
@@ -398,6 +412,29 @@ public sealed class DotNetHostResolverTests
     }
 
     [Fact]
+    public async Task Policy_denied_sdk_probe_is_not_reported_as_retryable_failure()
+    {
+        using var fixture = new HostFixture();
+        var resolver = fixture.Resolver(
+            fixture.ToolsRoot,
+            [fixture.HostPath],
+            PolicyDenied());
+
+        var result = await resolver.ResolveAsync(
+            new DotNetHostResolutionRequest(fixture.Root));
+
+        Assert.Equal(
+            DotNetHostFailureReason.ProcessPolicyDenied,
+            result.Failure?.Reason);
+        Assert.Equal("sdk.probe_policy_denied", result.Failure?.Code);
+        Assert.Contains(
+            "do not retry",
+            result.Failure?.Correction,
+            StringComparison.OrdinalIgnoreCase);
+        Assert.Single(fixture.Runner.Requests);
+    }
+
+    [Fact]
     public async Task Missing_path_host_has_an_actionable_structured_failure()
     {
         using var fixture = new HostFixture();
@@ -470,6 +507,16 @@ public sealed class DotNetHostResolverTests
             ProcessRunOutcome.RuntimeFailed,
             ProcessStartFailure.None,
             new ProcessExitEvidence(1, null),
+            new ProcessCapturedOutput(string.Empty, limitExceeded: false),
+            new ProcessCapturedOutput(string.Empty, limitExceeded: false),
+            TimeSpan.Zero);
+
+    private static ProcessRunResult PolicyDenied() =>
+        new(
+            ProcessLifecycle.NotStarted,
+            ProcessRunOutcome.StartFailed,
+            ProcessStartFailure.PolicyDenied,
+            exit: null,
             new ProcessCapturedOutput(string.Empty, limitExceeded: false),
             new ProcessCapturedOutput(string.Empty, limitExceeded: false),
             TimeSpan.Zero);

@@ -12,8 +12,8 @@ internal static class CliApplication
             error,
             static () => HomeInvocationContext.Capture(),
             static () => new WorkspaceDiscoverer(),
-            static () => new WorktreeStateInspector(),
-            static () => CapabilityReporter.CreateDefault());
+            static () => WorktreeStateInspector.CreatePassive(),
+            static () => PassiveCapabilityReporterFactory.Create());
 
     internal static CommandHost Create(
         TextWriter output,
@@ -27,7 +27,7 @@ internal static class CliApplication
             homeContextFactory,
             workspaceDiscovererFactory,
             worktreeStateInspectorFactory,
-            static () => CapabilityReporter.CreateDefault());
+            static () => PassiveCapabilityReporterFactory.Create());
 
     internal static CommandHost Create(
         TextWriter output,

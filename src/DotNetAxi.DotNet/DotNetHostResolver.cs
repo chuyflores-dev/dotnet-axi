@@ -20,6 +20,15 @@ public sealed class DotNetHostResolver : IDotNetHostResolver
     {
     }
 
+    public DotNetHostResolver(IProcessRunner runner)
+        : this(
+            runner,
+            static () => Environment.GetEnvironmentVariable("PATH"),
+            File.Exists,
+            IsExecutable)
+    {
+    }
+
     internal DotNetHostResolver(
         IProcessRunner runner,
         Func<string?> pathValue,
@@ -66,6 +75,16 @@ public sealed class DotNetHostResolver : IDotNetHostResolver
             .ConfigureAwait(false);
         ThrowIfCancelled(sdkInfo, cancellationToken);
         cancellationToken.ThrowIfCancellationRequested();
+        if (sdkInfo.Outcome is ProcessRunOutcome.StartFailed
+            && sdkInfo.StartFailure is ProcessStartFailure.PolicyDenied)
+        {
+            return Failed(
+                DotNetHostFailureReason.ProcessPolicyDenied,
+                "sdk.probe_policy_denied",
+                "Continue with built-in passive capabilities; do not retry the SDK probe from this passive operation.",
+                executablePath);
+        }
+
         if (sdkInfo.Outcome is ProcessRunOutcome.TimedOut)
         {
             return Failed(

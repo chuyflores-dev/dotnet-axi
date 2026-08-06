@@ -10,6 +10,7 @@ public enum DotNetHostFailureReason
     SdkUnsupported,
     SdkSelectionInvalid,
     MsBuildUnavailable,
+    ProcessPolicyDenied,
 }
 
 public enum DotNetHostCompatibility

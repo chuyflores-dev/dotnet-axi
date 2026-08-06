@@ -221,7 +221,7 @@ public sealed class TextSearchCommandTests
     }
 
     [Fact]
-    public async Task Changed_scope_reports_conflicts_and_traversal_exclusions_as_explicit_coverage_observations()
+    public async Task Changed_scope_reports_the_passive_process_boundary()
     {
         var workspace = CreateWorkspace();
         try
@@ -248,10 +248,9 @@ public sealed class TextSearchCommandTests
 
             var result = await RunAsync(workspace, "search", "text", "needle", "--changed", "--full");
 
-            Assert.Equal(0, result.ExitCode);
-            Assert.Contains("conflicted", result.Output);
-            Assert.Contains("generated", result.Output);
-            Assert.Contains("changed_coverage", result.Output);
+            Assert.Equal(1, result.ExitCode);
+            Assert.Contains("operation.passive_process_denied", result.Output);
+            Assert.Contains("Omit --changed", result.Output);
         }
         finally { Directory.Delete(workspace, recursive: true); }
     }
