@@ -596,6 +596,319 @@ function Assert-SameOutput {
     }
 }
 
+function New-OptionalDependencyShim {
+    param(
+        [Parameter(Mandatory)]
+        [string] $Directory,
+
+        [Parameter(Mandatory)]
+        [ValidateSet("git", "rg")]
+        [string] $Command,
+
+        [Parameter(Mandatory)]
+        [string] $ApplicationDirectory
+    )
+
+    [System.IO.Directory]::CreateDirectory($Directory) | Out-Null
+    $applicationName = "DotNetAxi.DotNet.ProcessTestApp"
+    $applicationFileName = if ([System.OperatingSystem]::IsWindows()) {
+        "$applicationName.exe"
+    }
+    else {
+        $applicationName
+    }
+    $applicationPath = [System.IO.Path]::Combine(
+        $ApplicationDirectory,
+        $applicationFileName)
+    if (-not [System.IO.File]::Exists($applicationPath)) {
+        throw "Optional-dependency shim application '$applicationPath' is missing."
+    }
+
+    foreach ($extension in @(".dll", ".deps.json", ".runtimeconfig.json")) {
+        $source = [System.IO.Path]::Combine(
+            $ApplicationDirectory,
+            "$applicationName$extension")
+        if (-not [System.IO.File]::Exists($source)) {
+            throw "Optional-dependency shim asset '$source' is missing."
+        }
+        [System.IO.File]::Copy(
+            $source,
+            [System.IO.Path]::Combine($Directory, "$applicationName$extension"),
+            $true)
+    }
+
+    $fileName = if ([System.OperatingSystem]::IsWindows()) {
+        "$Command.exe"
+    }
+    else {
+        $Command
+    }
+    $path = [System.IO.Path]::Combine($Directory, $fileName)
+    [System.IO.File]::Copy($applicationPath, $path, $true)
+    if (-not [System.OperatingSystem]::IsWindows()) {
+        $mode = [System.IO.UnixFileMode]::UserRead -bor
+            [System.IO.UnixFileMode]::UserWrite -bor
+            [System.IO.UnixFileMode]::UserExecute -bor
+            [System.IO.UnixFileMode]::GroupRead -bor
+            [System.IO.UnixFileMode]::GroupExecute -bor
+            [System.IO.UnixFileMode]::OtherRead -bor
+            [System.IO.UnixFileMode]::OtherExecute
+        [System.IO.File]::SetUnixFileMode($path, $mode)
+    }
+
+    return $path
+}
+
+function Assert-OptionalDependencyScenarios {
+    param(
+        [Parameter(Mandatory)]
+        [string] $Executable,
+
+        [Parameter(Mandatory)]
+        [hashtable] $BaseEnvironment,
+
+        [Parameter(Mandatory)]
+        [string] $TemporaryRoot,
+
+        [Parameter(Mandatory)]
+        [string] $ShimApplicationDirectory
+    )
+
+    $scenarioRoot = [System.IO.Path]::Combine(
+        $TemporaryRoot,
+        "optional-dependencies")
+    $workspace = [System.IO.Path]::Combine($scenarioRoot, "workspace")
+    $sourceDirectory = [System.IO.Path]::Combine($workspace, "src")
+    $markerDirectory = [System.IO.Path]::Combine($scenarioRoot, "markers")
+    [System.IO.Directory]::CreateDirectory($sourceDirectory) | Out-Null
+    [System.IO.Directory]::CreateDirectory($markerDirectory) | Out-Null
+    [System.IO.File]::WriteAllText(
+        [System.IO.Path]::Combine($workspace, "OptionalDependencies.csproj"),
+        "<Project Sdk=`"Microsoft.NET.Sdk`" />`n")
+    [System.IO.File]::WriteAllText(
+        [System.IO.Path]::Combine($sourceDirectory, "OptionalDependency.cs"),
+        "internal static class OptionalDependency { private const string Value = `"optional-dependency-needle`"; }`n")
+
+    $present = [System.IO.Path]::Combine($scenarioRoot, "present")
+    $absent = [System.IO.Path]::Combine($scenarioRoot, "absent")
+    $incompatible = [System.IO.Path]::Combine(
+        $scenarioRoot,
+        "incompatible")
+    $failing = [System.IO.Path]::Combine($scenarioRoot, "failing")
+    [System.IO.Directory]::CreateDirectory($absent) | Out-Null
+
+    $scenarios = @()
+    foreach ($definition in @(
+            [pscustomobject]@{
+                Name = "present"
+                Directory = $present
+                GitVersion = "git version 2.50.1"
+                RgVersion = "ripgrep 15.2.0"
+                ExitCode = 74
+            },
+            [pscustomobject]@{
+                Name = "incompatible"
+                Directory = $incompatible
+                GitVersion = "git version 1.10.0"
+                RgVersion = "ripgrep 12.1.0"
+                ExitCode = 74
+            },
+            [pscustomobject]@{
+                Name = "failing"
+                Directory = $failing
+                GitVersion = $null
+                RgVersion = $null
+                ExitCode = 74
+            },
+            [pscustomobject]@{
+                Name = "shadowed"
+                Directory = $workspace
+                GitVersion = "git version 2.50.1"
+                RgVersion = "ripgrep 15.2.0"
+                ExitCode = 74
+            })) {
+        $markers = @()
+        foreach ($command in @("git", "rg")) {
+            $marker = [System.IO.Path]::Combine(
+                $markerDirectory,
+                "$($definition.Name)-$command")
+            New-OptionalDependencyShim `
+                -Directory $definition.Directory `
+                -Command $command `
+                -ApplicationDirectory $ShimApplicationDirectory | Out-Null
+            $markers += $marker
+        }
+
+        $scenarios += [pscustomobject]@{
+            Name = $definition.Name
+            Path = $definition.Directory
+            Markers = $markers
+            GitVersion = $definition.GitVersion
+            RgVersion = $definition.RgVersion
+            ExitCode = $definition.ExitCode
+        }
+    }
+    $scenarios += [pscustomobject]@{
+        Name = "absent"
+        Path = $absent
+        Markers = @()
+        GitVersion = $null
+        RgVersion = $null
+        ExitCode = 74
+    }
+
+    $expectedFile = $null
+    $expectedLiteral = $null
+    $expectedRegex = $null
+    foreach ($scenario in $scenarios) {
+        $environment = @{}
+        foreach ($entry in $BaseEnvironment.GetEnumerator()) {
+            $environment[$entry.Key] = $entry.Value
+        }
+        $environment["PATH"] = $scenario.Path
+        $environment["DNAXI_OPTIONAL_DEPENDENCY_SHIM"] = "1"
+        $environment["DNAXI_OPTIONAL_DEPENDENCY_GIT_MARKER"] =
+            [System.IO.Path]::Combine(
+                $markerDirectory,
+                "$($scenario.Name)-git")
+        $environment["DNAXI_OPTIONAL_DEPENDENCY_RG_MARKER"] =
+            [System.IO.Path]::Combine(
+                $markerDirectory,
+                "$($scenario.Name)-rg")
+        $environment["DNAXI_OPTIONAL_DEPENDENCY_GIT_VERSION"] =
+            $scenario.GitVersion ?? ""
+        $environment["DNAXI_OPTIONAL_DEPENDENCY_RG_VERSION"] =
+            $scenario.RgVersion ?? ""
+        $environment["DNAXI_OPTIONAL_DEPENDENCY_GIT_EXIT_CODE"] =
+            [string] $scenario.ExitCode
+        $environment["DNAXI_OPTIONAL_DEPENDENCY_RG_EXIT_CODE"] =
+            [string] $scenario.ExitCode
+
+        if ($scenario.Name -ne "absent") {
+            foreach ($command in @("git", "rg")) {
+                $shimName = if ([System.OperatingSystem]::IsWindows()) {
+                    "$command.exe"
+                }
+                else {
+                    $command
+                }
+                $shim = [System.IO.Path]::Combine(
+                    $scenario.Path,
+                    $shimName)
+                $probe = Invoke-Captured `
+                    -FileName $shim `
+                    -Arguments @("--version") `
+                    -Environment $environment `
+                    -WorkingDirectory $scenarioRoot
+                $expectedVersion = if ($command -eq "git") {
+                    $scenario.GitVersion
+                }
+                else {
+                    $scenario.RgVersion
+                }
+                if ([string]::IsNullOrWhiteSpace($expectedVersion)) {
+                    if ($probe.ExitCode -ne $scenario.ExitCode) {
+                        throw "$($scenario.Name) $command shim did not fail as configured."
+                    }
+                }
+                else {
+                    Assert-Success `
+                        -Result $probe `
+                        -Operation "$($scenario.Name) $command shim probe"
+                    if ($probe.StandardOutput.Trim() -ne $expectedVersion) {
+                        throw "$($scenario.Name) $command shim reported an unexpected version."
+                    }
+                }
+            }
+            foreach ($marker in $scenario.Markers) {
+                [System.IO.File]::Delete($marker)
+            }
+        }
+
+        $file = Invoke-Captured `
+            -FileName $Executable `
+            -Arguments @(
+                "search", "file", "OptionalDependency",
+                "--path", "src", "--limit", "20"
+            ) `
+            -Environment $environment `
+            -WorkingDirectory $workspace
+        $literal = Invoke-Captured `
+            -FileName $Executable `
+            -Arguments @(
+                "search", "text", "optional-dependency-needle",
+                "--case-sensitive", "--path", "src", "--full"
+            ) `
+            -Environment $environment `
+            -WorkingDirectory $workspace
+        $regex = Invoke-Captured `
+            -FileName $Executable `
+            -Arguments @(
+                "search", "text", "optional-dependency-(needle|missing)",
+                "--regex", "--case-sensitive", "--path", "src", "--full"
+            ) `
+            -Environment $environment `
+            -WorkingDirectory $workspace
+        foreach ($result in @($file, $literal, $regex)) {
+            Assert-Success `
+                -Result $result `
+                -Operation "$($scenario.Name) non-Git discovery"
+            if ($result.StandardError.Length -ne 0 -or
+                $result.StandardOutput.Contains("`r")) {
+                throw "$($scenario.Name) discovery emitted non-portable output."
+            }
+        }
+
+        if ($null -eq $expectedFile) {
+            $expectedFile = $file
+            $expectedLiteral = $literal
+            $expectedRegex = $regex
+        }
+        else {
+            Assert-SameOutput `
+                -Expected $expectedFile `
+                -Actual $file `
+                -Comparison "$($scenario.Name) file-search degradation"
+            Assert-SameOutput `
+                -Expected $expectedLiteral `
+                -Actual $literal `
+                -Comparison "$($scenario.Name) literal-search degradation"
+            Assert-SameOutput `
+                -Expected $expectedRegex `
+                -Actual $regex `
+                -Comparison "$($scenario.Name) regex-search degradation"
+        }
+
+        if (-not $file.StandardOutput.Contains("src/OptionalDependency.cs") -or
+            -not $literal.StandardOutput.Contains("optional-dependency-needle") -or
+            -not $regex.StandardOutput.Contains("optional-dependency-needle")) {
+            throw "$($scenario.Name) discovery did not retain the built-in result."
+        }
+
+        $gitOnly = Invoke-Captured `
+            -FileName $Executable `
+            -Arguments @(
+                "search", "file", "OptionalDependency", "--changed"
+            ) `
+            -Environment $environment `
+            -WorkingDirectory $workspace
+        if ($gitOnly.ExitCode -eq 0 -or
+            -not $gitOnly.StandardOutput.Contains(
+                "code: workspace.git_required")) {
+            throw "$($scenario.Name) Git-only discovery did not return the non-Git capability error. Output: $($gitOnly.StandardOutput)"
+        }
+        if ($gitOnly.StandardError.Length -ne 0) {
+            throw "$($scenario.Name) Git-only capability error wrote stderr."
+        }
+
+        foreach ($marker in $scenario.Markers) {
+            if (Test-Path -LiteralPath $marker) {
+                throw "$($scenario.Name) non-Git discovery executed optional command marker '$marker'."
+            }
+        }
+    }
+}
+
 $resolvedPackageDirectory = (
     Resolve-Path -LiteralPath $PackageDirectory
 ).Path
@@ -861,6 +1174,20 @@ try {
     Assert-VersionOutput `
         -Result $globalVersion `
         -Version $version
+
+    Assert-OptionalDependencyScenarios `
+        -Executable $globalExecutable `
+        -BaseEnvironment $globalEnvironment `
+        -TemporaryRoot $temporaryRoot `
+        -ShimApplicationDirectory ([System.IO.Path]::GetFullPath(
+            [System.IO.Path]::Combine(
+                $PSScriptRoot,
+                "..",
+                "tests",
+                "DotNetAxi.DotNet.ProcessTestApp",
+                "bin",
+                "Release",
+                "net10.0")))
 
     $globalHelp = Invoke-Captured `
         -FileName "dnaxi" `
