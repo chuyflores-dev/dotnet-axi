@@ -24,6 +24,7 @@ public sealed record AgentBenchmarkExecutionSettings(
     string ModelId,
     string ReasoningSetting,
     string SettingsHash,
+    string Sandbox,
     string PermissionProfile,
     string NetworkPolicy);
 
@@ -129,6 +130,7 @@ public sealed record AgentBenchmarkObservedConfiguration(
     string ModelId,
     string ReasoningSetting,
     string SettingsHash,
+    string Sandbox,
     string PermissionProfile,
     string NetworkPolicy,
     string TaskContentHash,
@@ -232,6 +234,7 @@ public sealed class AgentBenchmarkRunResult
         IReadOnlyList<AgentBenchmarkValidationResult> validations,
         AgentBenchmarkRunVersions versions,
         AgentBenchmarkRunHashes hashes,
+        string sandbox,
         string permissionProfile,
         string networkPolicy,
         IReadOnlyList<AgentBenchmarkRawEvent> rawEvents)
@@ -261,6 +264,7 @@ public sealed class AgentBenchmarkRunResult
             validations.Select(static validation => validation with { }));
         Versions = versions with { };
         Hashes = hashes with { };
+        Sandbox = sandbox;
         PermissionProfile = permissionProfile;
         NetworkPolicy = networkPolicy;
         RawEvents = AgentBenchmarkSnapshots.List(
@@ -316,6 +320,8 @@ public sealed class AgentBenchmarkRunResult
     public AgentBenchmarkRunHashes Hashes { get; }
 
     public string PermissionProfile { get; }
+
+    public string Sandbox { get; }
 
     public string NetworkPolicy { get; }
 

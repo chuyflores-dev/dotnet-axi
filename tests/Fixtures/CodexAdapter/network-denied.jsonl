@@ -1,0 +1,4 @@
+{"type":"thread.started","thread_id":"thread-network"}
+{"type":"turn.started"}
+{"type":"item.completed","item":{"id":"command-1","type":"command_execution","command":"curl https://example.invalid","aggregated_output":"network access denied by sandbox\n","exit_code":7,"status":"failed"}}
+{"type":"turn.failed","error":{"message":"network access denied by sandbox"}}

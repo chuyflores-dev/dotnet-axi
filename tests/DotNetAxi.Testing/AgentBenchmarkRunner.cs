@@ -158,6 +158,7 @@ public sealed partial class AgentBenchmarkRunner
 
         AgentBenchmarkAdapterResult? adapterResult = null;
         AgentBenchmarkProgressSnapshot? progress = null;
+        AgentBenchmarkProgressSnapshot? progressAtTimeout = null;
         var timedOut = false;
         TimeSpan duration;
         try
@@ -186,10 +187,11 @@ public sealed partial class AgentBenchmarkRunner
             if (ReferenceEquals(completedTask, timeoutTask))
             {
                 timedOut = true;
-                progress = SnapshotAndValidateProgress(
+                progressAtTimeout = SnapshotAndValidateProgress(
                     execution.GetProgressSnapshot(),
                     runId,
                     task.Execution.PermittedTools);
+                progress = progressAtTimeout;
                 duration = _timeProvider.GetElapsedTime(startedAt);
             }
             else
@@ -223,6 +225,19 @@ public sealed partial class AgentBenchmarkRunner
                 execution,
                 configuration.CleanupTimeout,
                 runId);
+        }
+
+        if (timedOut)
+        {
+            var progressAfterCleanup = SnapshotAndValidateProgress(
+                execution.GetProgressSnapshot(),
+                runId,
+                task.Execution.PermittedTools);
+            ValidateProgressExtension(
+                progressAtTimeout!,
+                progressAfterCleanup,
+                runId);
+            progress = progressAfterCleanup;
         }
 
         var workspaceInspection =
@@ -331,6 +346,7 @@ public sealed partial class AgentBenchmarkRunner
                 workspaceBaseline.InventoryHash,
                 workspaceInspection.Hash,
                 rawEvents),
+            configuration.Execution.Sandbox,
             configuration.Execution.PermissionProfile,
             configuration.Execution.NetworkPolicy,
             rawEvents);
@@ -393,6 +409,7 @@ public sealed partial class AgentBenchmarkRunner
                 workspaceBaseline.InventoryHash,
                 workspaceInspection.Hash,
                 rawEvents),
+            configuration.Execution.Sandbox,
             configuration.Execution.PermissionProfile,
             configuration.Execution.NetworkPolicy,
             rawEvents);
@@ -626,6 +643,38 @@ public sealed partial class AgentBenchmarkRunner
             SnapshotAndValidateRawEvents(progress.RawEvents, runId));
     }
 
+    private static void ValidateProgressExtension(
+        AgentBenchmarkProgressSnapshot beforeCleanup,
+        AgentBenchmarkProgressSnapshot afterCleanup,
+        string runId)
+    {
+        var toolCallsMatch = beforeCleanup.ToolCalls.Count
+                             <= afterCleanup.ToolCalls.Count
+                             && beforeCleanup.ToolCalls.SequenceEqual(
+                                 afterCleanup.ToolCalls.Take(
+                                     beforeCleanup.ToolCalls.Count));
+        var rawEventsMatch = beforeCleanup.RawEvents.Count
+                             <= afterCleanup.RawEvents.Count
+                             && beforeCleanup.RawEvents.SequenceEqual(
+                                 afterCleanup.RawEvents.Take(
+                                     beforeCleanup.RawEvents.Count));
+        var filesMatch = beforeCleanup.InspectedScope.Files.All(
+            afterCleanup.InspectedScope.Files.Contains);
+        var projectsMatch = beforeCleanup.InspectedScope.Projects.All(
+            afterCleanup.InspectedScope.Projects.Contains);
+        if (afterCleanup.InputTokens < beforeCleanup.InputTokens
+            || afterCleanup.OutputTokens < beforeCleanup.OutputTokens
+            || afterCleanup.Turns < beforeCleanup.Turns
+            || !toolCallsMatch
+            || !rawEventsMatch
+            || !filesMatch
+            || !projectsMatch)
+        {
+            throw new AgentBenchmarkException(
+                $"Run '{runId}' replaced timeout evidence during bounded cleanup.");
+        }
+    }
+
     private static AgentBenchmarkAdapterResult SnapshotAdapterResult(
         AgentBenchmarkAdapterResult? result,
         string runId)
@@ -694,6 +743,7 @@ public sealed partial class AgentBenchmarkRunner
                 configuration.Execution.ModelId,
                 configuration.Execution.ReasoningSetting,
                 configuration.Execution.SettingsHash,
+                configuration.Execution.Sandbox,
                 configuration.Execution.PermissionProfile,
                 configuration.Execution.NetworkPolicy,
                 task.Repository.ContentHash,
@@ -1233,6 +1283,8 @@ public sealed partial class AgentBenchmarkRunner
             || string.IsNullOrWhiteSpace(configuration.Execution.AgentVersion)
             || string.IsNullOrWhiteSpace(configuration.Execution.ModelId)
             || string.IsNullOrWhiteSpace(configuration.Execution.ReasoningSetting)
+            || configuration.Execution.Sandbox is not (
+                "read-only" or "workspace-write")
             || string.IsNullOrWhiteSpace(configuration.Execution.PermissionProfile)
             || !string.Equals(
                 configuration.Execution.NetworkPolicy,
@@ -1257,6 +1309,20 @@ public sealed partial class AgentBenchmarkRunner
 
         foreach (var task in corpus.Tasks)
         {
+            var expectedSandbox = task.Execution.PermittedTools.Contains(
+                "workspace-write",
+                StringComparer.Ordinal)
+                    ? "workspace-write"
+                    : "read-only";
+            if (!string.Equals(
+                    configuration.Execution.Sandbox,
+                    expectedSandbox,
+                    StringComparison.Ordinal))
+            {
+                throw new AgentBenchmarkException(
+                    $"Task '{task.Id}' requires the explicit '{expectedSandbox}' sandbox.");
+            }
+
             if (!string.Equals(
                     task.Execution.Network,
                     configuration.Execution.NetworkPolicy,

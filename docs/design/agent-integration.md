@@ -163,6 +163,14 @@ Codex guidance follows these rules:
 - For automated Codex workers, choose the sandbox explicitly: use `workspace-write` only for implementation and `read-only` for review.
   Prefer ephemeral JSONL execution, capture the final response separately, and bound event-stream silence and total runtime.
   Codex documents these controls in [non-interactive mode](https://learn.chatgpt.com/docs/non-interactive-mode).
+- The benchmark adapter additionally ignores ambient user configuration and
+  ambient user and project execution-policy rules, then supplies its exact
+  model, reasoning, approval, disabled-network, workspace, and condition
+  exposure through argument-list entries. It does not use
+  deprecated full-auto behavior or any approval/sandbox bypass. Ignoring user
+  configuration does not replace authentication: an isolated `CODEX_HOME` or
+  supported API credential is forwarded only when manual dispatch explicitly
+  supplies it to the owned Codex process.
 - Prefer Codex [subagents](https://learn.chatgpt.com/docs/agent-configuration/subagents) for clean-context delegation inside an active Codex turn because they inherit the parent turn's sandbox and live approval overrides.
   Treat standalone `codex exec` as an owning automation boundary, not a sandbox escape: start it only where the host already permits Codex initialization and access to the selected worktree.
   Do not probe a restricted sandbox with a nested launch and then repeat the same worker outside it.

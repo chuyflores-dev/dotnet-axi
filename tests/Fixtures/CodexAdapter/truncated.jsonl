@@ -1,0 +1,2 @@
+{"type":"thread.started","thread_id":"thread-truncated"}
+{"type":"item.completed","item":{"id":"message-1","type":"agent_message","text":"partial"}}
