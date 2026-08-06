@@ -248,8 +248,11 @@ event stream, and reported usage. Runs are ephemeral and isolate user-level
 configuration from the controlled benchmark condition.
 
 The adapter launches one absolute, version-pinned Codex executable as `codex
-exec --ephemeral --json --ignore-user-config --ignore-rules`. Every argument is
-passed without a shell. Each run also passes the exact model, workspace, and `read-only` or
+exec --ephemeral --json --ignore-user-config --ignore-rules
+--skip-git-repo-check`. Controlled benchmark fixtures are content-hashed clean
+directories rather than Git repositories, so the explicit skip affects only
+Codex's repository-presence preflight. Every argument is passed without a
+shell. Each run also passes the exact model, workspace, and `read-only` or
 `workspace-write` sandbox explicitly; fixes the reasoning and `never` approval
 settings; and disables web search and workspace-sandbox network access. A task
 receives `workspace-write` only when its abstract permitted tools declare

@@ -271,6 +271,7 @@ public sealed class CodexAgentBenchmarkAdapter : IAgentBenchmarkAdapter
         arguments.Add("--json");
         arguments.Add("--ignore-user-config");
         arguments.Add("--ignore-rules");
+        arguments.Add("--skip-git-repo-check");
         arguments.Add("--model");
         arguments.Add(input.Execution.ModelId);
         arguments.Add("--cd");

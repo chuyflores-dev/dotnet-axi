@@ -27,6 +27,7 @@ public sealed class CodexAgentBenchmarkAdapterTests
         Assert.Contains("--json", baselineArguments);
         Assert.Contains("--ignore-user-config", baselineArguments);
         Assert.Contains("--ignore-rules", baselineArguments);
+        Assert.Contains("--skip-git-repo-check", baselineArguments);
         AssertOption(baselineArguments, "--model", "gpt-5.6-codex");
         AssertOption(baselineArguments, "--cd", workspace.Path);
         AssertOption(baselineArguments, "--sandbox", "read-only");
