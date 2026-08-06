@@ -13,6 +13,7 @@ public sealed class CapabilityReportingGoldenTests
     [InlineData("unsupported")]
     [InlineData("unverified")]
     [InlineData("timed-out")]
+    [InlineData("policy-denied")]
     public async Task Controlled_version_probes_match_the_golden_contract(
         string scenario)
     {
@@ -127,6 +128,16 @@ public sealed class CapabilityReportingGoldenTests
                         Failure(
                             DotNetHostFailureReason.SdkProbeTimedOut,
                             "sdk.probe_timed_out")),
+                    new ExternalVersionProbeResult(git, "2.50.1"),
+                    new ExternalVersionProbeResult(ripgrep, "15.2.0"),
+                    new Dictionary<string, AssemblyVersionProbeResult>()),
+                "policy-denied" => new ProbeFixture(
+                    new DotNetHostResolution(
+                        dotnet,
+                        null,
+                        Failure(
+                            DotNetHostFailureReason.ProcessPolicyDenied,
+                            "sdk.probe_policy_denied")),
                     new ExternalVersionProbeResult(git, "2.50.1"),
                     new ExternalVersionProbeResult(ripgrep, "15.2.0"),
                     new Dictionary<string, AssemblyVersionProbeResult>()),

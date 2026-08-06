@@ -8,7 +8,7 @@ public sealed class HomeViewIntegrationTests
     private readonly RepositoryFixtureFactory _fixtures = new();
 
     [Fact]
-    public async Task Git_workspace_renders_live_catalog_and_worktree_state()
+    public async Task Git_workspace_catalog_degrades_without_starting_git()
     {
         await using var fixture = await _fixtures.CreateAsync(
             CatalogManifestPath("git-worktree"),
@@ -30,7 +30,7 @@ public sealed class HomeViewIntegrationTests
             "workspace:\n  root: ~/workspace\n  project: Workspace.csproj\n  projects: 1\n  csharp_files: 4\n",
             result.StandardOutput);
         Assert.Contains(
-            "git:\n  branch: main\n  changed_files: 5\n",
+            "git:\n  branch: unknown\n  changed_files: unknown\n",
             result.StandardOutput);
         AssertOnlyAvailableSuggestion(result.StandardOutput);
     }
@@ -325,7 +325,7 @@ public sealed class HomeViewIntegrationTests
                     "dnaxi"),
                 fixture.RootPath),
             static () => new WorkspaceDiscoverer(),
-            static () => new WorktreeStateInspector());
+            static () => WorktreeStateInspector.CreatePassive());
 
         var exitCode = await host.InvokeAsync([]);
         return new HomeInvocationResult(

@@ -82,6 +82,20 @@ internal sealed record FileSearchCommandRequest(
 internal sealed class FileSearchCommandHandler :
     ICommandHandler<FileSearchCommandRequest>
 {
+    private readonly ChangedScopeResolver _changedScopeResolver;
+
+    public FileSearchCommandHandler()
+        : this(ChangedScopeResolver.CreatePassive())
+    {
+    }
+
+    internal FileSearchCommandHandler(
+        ChangedScopeResolver changedScopeResolver)
+    {
+        _changedScopeResolver = changedScopeResolver
+            ?? throw new ArgumentNullException(nameof(changedScopeResolver));
+    }
+
     public async ValueTask<ICommandResult> HandleAsync(
         FileSearchCommandRequest request,
         CancellationToken cancellationToken)
@@ -120,7 +134,7 @@ internal sealed class FileSearchCommandHandler :
         {
             try
             {
-                changedScope = await new ChangedScopeResolver()
+                changedScope = await _changedScopeResolver
                     .ResolveAsync(
                         workspace,
                         cancellationToken: cancellationToken)

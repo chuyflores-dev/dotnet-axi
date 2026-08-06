@@ -2,6 +2,16 @@ using System.CommandLine;
 using DotNetAxi.Cli;
 using DotNetAxi.Contracts;
 
+var passiveBoundaryMarker = Environment.GetEnvironmentVariable(
+    "DNAXI_PASSIVE_BOUNDARY_PROCESS_MARKER");
+if (!string.IsNullOrWhiteSpace(passiveBoundaryMarker))
+{
+    await File.AppendAllTextAsync(
+        passiveBoundaryMarker,
+        $"{Environment.ProcessPath}{Environment.NewLine}");
+    return 97;
+}
+
 var rootCommand = new RootCommand();
 var host = new CommandHost(
     rootCommand,

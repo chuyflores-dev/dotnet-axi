@@ -11,6 +11,35 @@ public sealed class ChangedScopeResolverTests
     private readonly RepositoryFixtureFactory _fixtures = new();
 
     [Fact]
+    public void Passive_boundary_enum_ordinals_remain_compatible()
+    {
+        Assert.Equal(0, (int)WorktreeInspectionFailureKind.GitExecutableNotFound);
+        Assert.Equal(1, (int)WorktreeInspectionFailureKind.GitProcessStartFailed);
+        Assert.Equal(2, (int)WorktreeInspectionFailureKind.GitProcessFailed);
+        Assert.Equal(3, (int)WorktreeInspectionFailureKind.GitProcessTimedOut);
+        Assert.Equal(
+            4,
+            (int)WorktreeInspectionFailureKind.GitFilterCommandsConfigured);
+        Assert.Equal(5, (int)WorktreeInspectionFailureKind.InvalidGitOutput);
+        Assert.Equal(6, (int)WorktreeInspectionFailureKind.ProcessPolicyDenied);
+
+        Assert.Equal(0, (int)ChangedScopeErrorKind.GitRequired);
+        Assert.Equal(1, (int)ChangedScopeErrorKind.HeadRequiresBase);
+        Assert.Equal(2, (int)ChangedScopeErrorKind.InvalidBaseReference);
+        Assert.Equal(3, (int)ChangedScopeErrorKind.InvalidHeadReference);
+        Assert.Equal(4, (int)ChangedScopeErrorKind.HeadUnavailable);
+        Assert.Equal(5, (int)ChangedScopeErrorKind.NoMergeBase);
+        Assert.Equal(6, (int)ChangedScopeErrorKind.GitExecutableNotFound);
+        Assert.Equal(7, (int)ChangedScopeErrorKind.GitProcessStartFailed);
+        Assert.Equal(8, (int)ChangedScopeErrorKind.GitProcessFailed);
+        Assert.Equal(9, (int)ChangedScopeErrorKind.GitProcessTimedOut);
+        Assert.Equal(10, (int)ChangedScopeErrorKind.GitFilterCommandsConfigured);
+        Assert.Equal(11, (int)ChangedScopeErrorKind.InvalidGitOutput);
+        Assert.Equal(12, (int)ChangedScopeErrorKind.ProcessPolicyDenied);
+    }
+
+
+    [Fact]
     public async Task Default_scope_returns_all_non_conflicted_worktree_paths()
     {
         await using var fixture = await CatalogGitFixtureAsync(

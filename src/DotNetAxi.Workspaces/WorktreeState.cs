@@ -16,6 +16,7 @@ public enum WorktreeInspectionFailureKind
     GitProcessTimedOut,
     GitFilterCommandsConfigured,
     InvalidGitOutput,
+    ProcessPolicyDenied,
 }
 
 public sealed record WorktreeInspectionFailure(

@@ -24,6 +24,7 @@ internal enum CapabilityProbeOutcome
 {
     TimedOut,
     Failed,
+    PolicyDenied,
 }
 
 internal sealed record SelectedHostCapability(
@@ -320,6 +321,8 @@ internal sealed class CapabilityReporter : ICapabilityReporter
                 CapabilityProbeOutcome.TimedOut,
             DotNetHostFailureReason.SdkProbeFailed =>
                 CapabilityProbeOutcome.Failed,
+            DotNetHostFailureReason.ProcessPolicyDenied =>
+                CapabilityProbeOutcome.PolicyDenied,
             _ => null,
         };
 

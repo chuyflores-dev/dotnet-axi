@@ -28,6 +28,7 @@ public enum ProcessStartFailure
     WorkingDirectoryPermissionDenied,
     PermissionDenied,
     Other,
+    PolicyDenied,
 }
 
 public sealed record ProcessExitEvidence

@@ -166,6 +166,12 @@ Product telemetry is disabled by default. Child `dotnet` processes opt out of
 .NET CLI telemetry. Any future explicit telemetry opt-in describes fields and
 destinations and excludes source, paths, symbols, arguments, and transcripts.
 
+The passive CLI composition cannot start child processes. Optional capability
+probes and Git inspection receive rejecting process guards, text search uses
+the built-in engine, and a process-dependent selector returns a typed policy
+denial with a non-executing correction. Missing tools or assets never broaden
+the operation into process or network access.
+
 ### Process and secret safety
 
 External processes use argument-list APIs without shell string concatenation.
@@ -219,6 +225,12 @@ Commands capable of running MSBuild targets, tests, applications, configured
 analyzers, source generators, templates, tools, workloads, or package scripts
 are classified as executing. The home view, setup hook, file/text/syntax
 search, and passive project catalog never trigger repository-code execution.
+
+Passive command handlers are composed without executing dependencies. Where a
+shared service requires a process-shaped interface, the composition supplies a
+guard that returns typed not-started evidence and never delegates to the
+operating system. Passive commands do not substitute restore, project
+evaluation, analyzers, or generators when coverage inputs are unavailable.
 
 Executing commands run with the caller's operating-system permissions and say
 they are not a security sandbox unless an enforced sandbox is active.
