@@ -498,7 +498,10 @@ internal sealed class ExternalVersionProbe : IExternalVersionProbe
                     ["--version"],
                     ProbeEnvironment(capability),
                     new ProcessOutputLimits(OutputLimit, OutputLimit),
-                    ProbeTimeout),
+                    ProbeTimeout,
+                    capability is ExternalCapability.Ripgrep
+                        ? ProcessEnvironmentPolicy.InheritParent
+                        : ProcessEnvironmentPolicy.Isolated),
                 cancellationToken)
             .ConfigureAwait(false);
         ThrowIfCancelled(result, capability, cancellationToken);
@@ -698,6 +701,11 @@ internal sealed class ExternalVersionProbe : IExternalVersionProbe
     private static IReadOnlyDictionary<string, string> ProbeEnvironment(
         ExternalCapability capability)
     {
+        if (capability is ExternalCapability.Ripgrep)
+        {
+            return ChildProcessEnvironment.RipgrepDefaults;
+        }
+
         var environment = new Dictionary<string, string>(StringComparer.Ordinal)
         {
             ["LC_ALL"] = "C",
