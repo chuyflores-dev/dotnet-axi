@@ -42,6 +42,8 @@ story does not create `v0.3.0`, publish to NuGet, or create a GitHub Release.
 - `MVP-E12-S17`
 - `MVP-E11-S02`
 - `MVP-E11-S04`
+- `MVP-E11-S12`
+- `MVP-E11-S13`
 - `MVP-E12-S03`
 - `MVP-E12-S04`
 - `MVP-E09-S12`

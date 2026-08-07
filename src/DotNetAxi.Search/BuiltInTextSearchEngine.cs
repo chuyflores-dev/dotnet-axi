@@ -539,6 +539,8 @@ internal sealed class RegexTextMatcher(
     RegexOptions options,
     TimeSpan perFileTimeout) : ITextSearchMatcher
 {
+    private readonly Regex _regex = new(pattern, options, perFileTimeout);
+
     public bool IsRegularExpression => true;
     public TimeSpan? PerFileTimeout => perFileTimeout;
 
@@ -550,8 +552,7 @@ internal sealed class RegexTextMatcher(
         var matches = new List<TextSearchSpan>(Math.Min(maximumMatches, 256));
         try
         {
-            var regex = new Regex(pattern, options, perFileTimeout);
-            foreach (var match in regex.EnumerateMatches(text.AsSpan()))
+            foreach (var match in _regex.EnumerateMatches(text.AsSpan()))
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 matches.Add(new TextSearchSpan(match.Index, match.Length));
