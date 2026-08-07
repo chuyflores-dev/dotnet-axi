@@ -23,34 +23,78 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Classify changed files
+        id: filter
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+
+          code=true
+          if [[ ! "$BASE_SHA" =~ ^0+$ ]] &&
+             git cat-file -e "$BASE_SHA^{commit}" &&
+             git cat-file -e "$HEAD_SHA^{commit}"; then
+            changed_files="$RUNNER_TEMP/ci-changed-files"
+            git diff --name-only --no-renames -z \
+              "$BASE_SHA" "$HEAD_SHA" > "$changed_files"
+
+            code=false
+            while IFS= read -r -d '' file; do
+              case "$file" in
+                docs/*|.github/ISSUE_TEMPLATE/*|.github/pull_request_template.md|AGENTS.md|CLAUDE.md|REQUIREMENTS.md|LICENSE|.gitattributes|.gitignore)
+                  ;;
+                *)
+                  code=true
+                  break
+                  ;;
+              esac
+            done < "$changed_files"
+          fi
+
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+
+      - name: Report skipped code validation
+        if: steps.filter.outputs.code != 'true'
+        run: echo "Only non-code files changed; skipping code validation."
+
       - name: Install .NET SDK
+        if: steps.filter.outputs.code == 'true'
         uses: actions/setup-dotnet@v6
         with:
           global-json-file: global.json
 
       - name: Restore build tools
+        if: steps.filter.outputs.code == 'true'
         run: dotnet tool restore
 
       - name: Resolve tag-derived version
+        if: steps.filter.outputs.code == 'true'
         shell: pwsh
         run: |
           $version = ./eng/resolve-build-version.ps1
           "DotNetAxiBuildVersion=$version" >> $env:GITHUB_ENV
 
       - name: Restore
+        if: steps.filter.outputs.code == 'true'
         run: dotnet restore dotnet-axi.slnx
 
       - name: Verify release versioning and publication controls
+        if: steps.filter.outputs.code == 'true'
         shell: pwsh
         run: ./eng/verify-versioning.ps1
 
       - name: Build
+        if: steps.filter.outputs.code == 'true'
         run: dotnet build dotnet-axi.slnx --configuration Release --no-restore
 
       - name: Test
+        if: steps.filter.outputs.code == 'true'
         run: dotnet test dotnet-axi.slnx --configuration Release --no-build
 
       - name: Pack local .NET tool
+        if: steps.filter.outputs.code == 'true'
         run: >-
           dotnet pack src/DotNetAxi.Cli/DotNetAxi.Cli.csproj
           --configuration Release
@@ -58,6 +102,7 @@ jobs:
           --output artifacts/packages
 
       - name: Verify local .NET tool package
+        if: steps.filter.outputs.code == 'true'
         shell: pwsh
         run: >-
           ./eng/verify-tool-package.ps1
@@ -65,11 +110,13 @@ jobs:
           -ExpectedVersion $env:DotNetAxiBuildVersion
 
       - name: Install Node.js for TOON conformance
+        if: steps.filter.outputs.code == 'true'
         uses: actions/setup-node@v6
         with:
           node-version: 24
 
       - name: Strict-decode production TOON v4.1 documents
+        if: steps.filter.outputs.code == 'true'
         run: |
           set -euo pipefail
           test -f artifacts/toon-conformance/fuzz-untrusted-strings.toon
