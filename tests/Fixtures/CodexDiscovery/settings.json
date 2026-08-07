@@ -1,0 +1,10 @@
+{
+  "schema": "dotnet-axi/codex-discovery-settings/v1",
+  "codexCliVersion": "codex-cli 0.146.0",
+  "modelId": "gpt-5.6-sol",
+  "reasoningSetting": "low",
+  "sandbox": "read-only",
+  "permissionProfile": "never",
+  "networkPolicy": "disabled",
+  "authenticationMethod": "chatgpt"
+}

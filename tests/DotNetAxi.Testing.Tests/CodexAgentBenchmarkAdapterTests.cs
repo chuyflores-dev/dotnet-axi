@@ -27,6 +27,7 @@ public sealed class CodexAgentBenchmarkAdapterTests
         Assert.Contains("--json", baselineArguments);
         Assert.Contains("--ignore-user-config", baselineArguments);
         Assert.Contains("--ignore-rules", baselineArguments);
+        Assert.Contains("--skip-git-repo-check", baselineArguments);
         AssertOption(baselineArguments, "--model", "gpt-5.6-codex");
         AssertOption(baselineArguments, "--cd", workspace.Path);
         AssertOption(baselineArguments, "--sandbox", "read-only");
@@ -116,6 +117,30 @@ public sealed class CodexAgentBenchmarkAdapterTests
             static value => value.Kind == "adapter.process.exited");
         using var exitPayload = JsonDocument.Parse(exited.Payload);
         Assert.Equal(0, exitPayload.RootElement.GetProperty("exitCode").GetInt32());
+    }
+
+    [Fact]
+    public async Task Read_only_shell_fallback_and_globs_preserve_scope()
+    {
+        using var workspace = new TemporaryWorkspace();
+        var input = Input(
+            workspace.Path,
+            AgentBenchmarkCondition.Baseline,
+            fixture: "read-only-shell.jsonl");
+        await using var execution = await Adapter().StartAsync(input);
+
+        var result = await execution.Completion.WaitAsync(
+            TimeSpan.FromSeconds(5));
+        await execution.StopAsync();
+
+        Assert.Equal("completed", result.Status);
+        Assert.Collection(
+            result.ToolCalls,
+            search => Assert.Equal("source-search", search.ToolClass),
+            fallback => Assert.Equal("repository-read", fallback.ToolClass));
+        Assert.Equal(
+            ["src/Discovery/Cases/InvocationCases.cs"],
+            result.InspectedScope.Files);
     }
 
     [Theory]

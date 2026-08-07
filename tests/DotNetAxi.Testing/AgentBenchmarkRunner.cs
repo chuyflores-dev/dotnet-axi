@@ -26,7 +26,78 @@ public sealed partial class AgentBenchmarkRunner
         AgentTaskCorpus corpus,
         AgentBenchmarkConfiguration configuration,
         IAgentBenchmarkAdapter adapter,
+        CancellationToken cancellationToken = default) =>
+        await RunCoreAsync(
+            corpus,
+            configuration,
+            adapter,
+            runSink: null,
+            cancellationToken);
+
+    internal async ValueTask<AgentBenchmarkSeriesResult> RunRetainedAsync(
+        AgentTaskCorpus corpus,
+        AgentBenchmarkConfiguration configuration,
+        IAgentBenchmarkAdapter adapter,
+        IAgentBenchmarkRunSink runSink,
         CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(runSink);
+        return await RunCoreAsync(
+            corpus,
+            configuration,
+            adapter,
+            runSink,
+            cancellationToken);
+    }
+
+    internal AgentBenchmarkPreparedSeries Prepare(
+        AgentTaskCorpus corpus,
+        AgentBenchmarkConfiguration configuration,
+        IAgentBenchmarkAdapter adapter) =>
+        PrepareCore(corpus, configuration, adapter).Prepared;
+
+    private async ValueTask<AgentBenchmarkSeriesResult> RunCoreAsync(
+        AgentTaskCorpus corpus,
+        AgentBenchmarkConfiguration configuration,
+        IAgentBenchmarkAdapter adapter,
+        IAgentBenchmarkRunSink? runSink,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(corpus);
+        ArgumentNullException.ThrowIfNull(configuration);
+        ArgumentNullException.ThrowIfNull(adapter);
+        var prepared = PrepareCore(corpus, configuration, adapter);
+        var runs = new List<AgentBenchmarkRunResult>(
+            prepared.Schedule.Count);
+        foreach (var scheduledRun in prepared.Schedule)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var run = await RunOnceAsync(
+                    prepared.Corpus,
+                    prepared.Configuration,
+                    adapter,
+                    prepared.Descriptor,
+                    scheduledRun,
+                    cancellationToken);
+            runs.Add(run);
+            if (runSink is not null)
+            {
+                await runSink.RetainAsync(
+                    prepared.Prepared.Manifest,
+                    run,
+                    CancellationToken.None);
+            }
+        }
+
+        return new AgentBenchmarkSeriesResult(
+            prepared.Prepared.Manifest,
+            runs);
+    }
+
+    private static PreparedState PrepareCore(
+        AgentTaskCorpus corpus,
+        AgentBenchmarkConfiguration configuration,
+        IAgentBenchmarkAdapter adapter)
     {
         ArgumentNullException.ThrowIfNull(corpus);
         ArgumentNullException.ThrowIfNull(configuration);
@@ -35,37 +106,33 @@ public sealed partial class AgentBenchmarkRunner
         configuration = SnapshotConfiguration(configuration);
         corpus = SnapshotAndValidateCorpus(corpus);
         Validate(corpus, configuration, descriptor, adapter);
-
         var schedule = CreateSchedule(corpus.Tasks, configuration);
-        var runs = new List<AgentBenchmarkRunResult>(schedule.Count);
-        foreach (var scheduledRun in schedule)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            runs.Add(
-                await RunOnceAsync(
-                    corpus,
-                    configuration,
-                    adapter,
-                    descriptor,
-                    scheduledRun,
-                    cancellationToken));
-        }
-
-        return new AgentBenchmarkSeriesResult(
-            new AgentBenchmarkSeriesManifest(
-                ResultSchema,
-                configuration.SeriesId,
-                corpus.Id,
-                corpus.Version,
-                configuration.Dispatch,
-                configuration.RunsPerTask,
-                configuration.RandomizationSeed,
-                configuration.Execution,
-                configuration.Provenance,
-                configuration.Baseline,
-                configuration.Candidate,
-                descriptor),
-            runs);
+        var manifest = new AgentBenchmarkSeriesManifest(
+            ResultSchema,
+            configuration.SeriesId,
+            corpus.Id,
+            corpus.Version,
+            configuration.Dispatch,
+            configuration.RunsPerTask,
+            configuration.RandomizationSeed,
+            configuration.Execution,
+            configuration.Provenance,
+            configuration.Baseline,
+            configuration.Candidate,
+            descriptor);
+        var publicSchedule = AgentBenchmarkSnapshots.List(
+            schedule.Select(run => new AgentBenchmarkScheduledRun(
+                $"{configuration.SeriesId}/{run.ExecutionOrder:D6}",
+                run.Task.Id,
+                run.Condition,
+                run.Repetition,
+                run.ExecutionOrder)));
+        return new PreparedState(
+            corpus,
+            configuration,
+            descriptor,
+            schedule,
+            new AgentBenchmarkPreparedSeries(manifest, publicSchedule));
     }
 
     private async ValueTask<AgentBenchmarkRunResult> RunOnceAsync(
@@ -189,8 +256,7 @@ public sealed partial class AgentBenchmarkRunner
                 timedOut = true;
                 progressAtTimeout = SnapshotAndValidateProgress(
                     execution.GetProgressSnapshot(),
-                    runId,
-                    task.Execution.PermittedTools);
+                    runId);
                 progress = progressAtTimeout;
                 duration = _timeProvider.GetElapsedTime(startedAt);
             }
@@ -216,6 +282,9 @@ public sealed partial class AgentBenchmarkRunner
                     condition,
                     promptHash,
                     runId);
+                adapterResult = ApplyToolPolicy(
+                    adapterResult,
+                    task.Execution.PermittedTools);
                 duration = _timeProvider.GetElapsedTime(startedAt);
             }
         }
@@ -231,8 +300,7 @@ public sealed partial class AgentBenchmarkRunner
         {
             var progressAfterCleanup = SnapshotAndValidateProgress(
                 execution.GetProgressSnapshot(),
-                runId,
-                task.Execution.PermittedTools);
+                runId);
             ValidateProgressExtension(
                 progressAtTimeout!,
                 progressAfterCleanup,
@@ -613,8 +681,7 @@ public sealed partial class AgentBenchmarkRunner
 
     private static AgentBenchmarkProgressSnapshot SnapshotAndValidateProgress(
         AgentBenchmarkProgressSnapshot? progress,
-        string runId,
-        IReadOnlyList<string> permittedTools)
+        string runId)
     {
         if (progress is null
             || progress.InputTokens < 0
@@ -627,7 +694,7 @@ public sealed partial class AgentBenchmarkRunner
                 $"Run '{runId}' returned malformed timeout progress.");
         }
 
-        ValidateToolCallShape(progress.ToolCalls, runId, permittedTools);
+        ValidateToolCallShape(progress.ToolCalls, runId);
         ValidateScope(progress.InspectedScope, runId);
         ValidateTokenTotal(
             progress.InputTokens,
@@ -730,10 +797,7 @@ public sealed partial class AgentBenchmarkRunner
                 $"Run '{runId}' returned malformed normalized metrics.");
         }
 
-        ValidateToolCallShape(
-            result.ToolCalls,
-            runId,
-            task.Execution.PermittedTools);
+        ValidateToolCallShape(result.ToolCalls, runId);
         ValidateTokenTotal(result.InputTokens, result.OutputTokens, runId);
 
         ValidateScope(result.InspectedScope, runId);
@@ -760,18 +824,13 @@ public sealed partial class AgentBenchmarkRunner
 
     private static void ValidateToolCallShape(
         IReadOnlyList<AgentBenchmarkToolCall> toolCalls,
-        string runId,
-        IReadOnlyList<string>? permittedTools)
+        string runId)
     {
         for (var index = 0; index < toolCalls.Count; index++)
         {
             var call = toolCalls[index];
             if (call.Sequence != index
                 || string.IsNullOrWhiteSpace(call.ToolClass)
-                || (permittedTools is not null
-                    && !permittedTools.Contains(
-                        call.ToolClass,
-                        StringComparer.Ordinal))
                 || string.IsNullOrWhiteSpace(call.Name)
                 || !AgentBenchmarkHash.IsHash(call.InputHash))
             {
@@ -780,6 +839,19 @@ public sealed partial class AgentBenchmarkRunner
             }
         }
     }
+
+    private static AgentBenchmarkAdapterResult ApplyToolPolicy(
+        AgentBenchmarkAdapterResult result,
+        IReadOnlyList<string> permittedTools) =>
+        result.ToolCalls.All(call => permittedTools.Contains(
+            call.ToolClass,
+            StringComparer.Ordinal))
+            ? result
+            : result with
+            {
+                Status = "failed",
+                ClaimsSupported = false,
+            };
 
     private static void ValidateScope(
         AgentBenchmarkInspectedScope scope,
@@ -1365,6 +1437,13 @@ public sealed partial class AgentBenchmarkRunner
         AgentBenchmarkCondition Condition,
         int Repetition,
         int ExecutionOrder);
+
+    private sealed record PreparedState(
+        AgentTaskCorpus Corpus,
+        AgentBenchmarkConfiguration Configuration,
+        AgentBenchmarkAdapterDescriptor Descriptor,
+        IReadOnlyList<ScheduledRun> Schedule,
+        AgentBenchmarkPreparedSeries Prepared);
 
     private sealed class StableRandom
     {

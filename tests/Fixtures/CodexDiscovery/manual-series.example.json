@@ -1,0 +1,71 @@
+{
+  "schema": "dotnet-axi/codex-discovery-request/v1",
+  "seriesId": "codex-030-discovery-20260806",
+  "codexExecutable": {
+    "path": "/absolute/path/to/version-pinned/codex-executable-not-a-symlink",
+    "sha256": "replace-with-64-lowercase-hex-codex-executable-hash"
+  },
+  "codexHomePath": "/absolute/path/to/isolated-authenticated-codex-home",
+  "settings": {
+    "path": "/absolute/path/to/checked-settings.json",
+    "sha256": "replace-with-64-lowercase-hex-settings-hash"
+  },
+  "corpus": {
+    "id": "source-discovery",
+    "version": "1.0.0",
+    "productMilestone": "0.3.0",
+    "artifact": {
+      "path": "/absolute/path/to/source-discovery/corpus.json",
+      "sha256": "replace-with-64-lowercase-hex-corpus-hash"
+    },
+    "availableCapabilities": [
+      "search.file",
+      "search.syntax.attributed-class",
+      "search.syntax.catch",
+      "search.syntax.invocation",
+      "search.syntax.object-creation",
+      "search.text.literal",
+      "search.text.regex"
+    ]
+  },
+  "product": {
+    "packageId": "dotnet-axi",
+    "packageVersion": "0.3.0",
+    "productSchema": "dotnet-axi/v1",
+    "package": {
+      "path": "/absolute/path/to/released/dnaxi",
+      "sha256": "replace-with-64-lowercase-hex-package-hash"
+    },
+    "skill": {
+      "path": "/absolute/path/to/released/dotnet-axi-skill",
+      "sha256": "replace-with-64-lowercase-hex-skill-directory-hash"
+    }
+  },
+  "runsPerTask": 5,
+  "randomizationSeed": 20260806,
+  "maximumStartAttempts": 1,
+  "cleanupTimeoutSeconds": 10,
+  "harnessVersion": "1.0.0",
+  "fixtureCommit": "replace-with-40-or-64-lowercase-hex-fixture-commit",
+  "productCommit": "replace-with-40-or-64-lowercase-hex-product-commit",
+  "baseline": {
+    "instructions": {
+      "path": "/absolute/path/to/baseline-instructions-artifact",
+      "sha256": "replace-with-64-lowercase-hex-baseline-instructions-hash"
+    },
+    "toolConfiguration": {
+      "path": "/absolute/path/to/filled-baseline-tools.json",
+      "sha256": "replace-with-64-lowercase-hex-baseline-tools-hash"
+    }
+  },
+  "candidate": {
+    "instructions": {
+      "path": "/absolute/path/to/released/dotnet-axi-skill/SKILL.md",
+      "sha256": "replace-with-64-lowercase-hex-candidate-instructions-hash"
+    },
+    "toolConfiguration": {
+      "path": "/absolute/path/to/filled-candidate-tools.json",
+      "sha256": "replace-with-64-lowercase-hex-candidate-tools-hash"
+    }
+  }
+}

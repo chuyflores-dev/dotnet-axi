@@ -6,5 +6,11 @@
   <ItemGroup>
     <InternalsVisibleTo Include="DotNetAxi.Testing.Tests" />
     <InternalsVisibleTo Include="DotNetAxi.CodexSmoke" />
+    <InternalsVisibleTo Include="DotNetAxi.CodexBenchmark" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../src/DotNetAxi.Contracts/DotNetAxi.Contracts.csproj" />
+    <ProjectReference Include="../../src/DotNetAxi.DotNet/DotNetAxi.DotNet.csproj" />
   </ItemGroup>
 </Project>

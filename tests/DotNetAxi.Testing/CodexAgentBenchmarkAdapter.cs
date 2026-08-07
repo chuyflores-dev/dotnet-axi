@@ -9,7 +9,8 @@ public sealed record CodexBenchmarkConditionExposure(
     AgentBenchmarkCondition Condition,
     string InstructionsHash,
     string ToolConfigurationHash,
-    IReadOnlyList<string> ConfigurationOverrides);
+    IReadOnlyList<string> ConfigurationOverrides,
+    IReadOnlyList<string>? ExecutableSearchPathEntries = null);
 
 public sealed class CodexAgentBenchmarkAdapterOptions
 {
@@ -91,6 +92,8 @@ public sealed class CodexAgentBenchmarkAdapterOptions
         {
             ConfigurationOverrides = Array.AsReadOnly(
                 exposure.ConfigurationOverrides.ToArray()),
+            ExecutableSearchPathEntries = Array.AsReadOnly(
+                (exposure.ExecutableSearchPathEntries ?? []).ToArray()),
         };
 
     private static void ValidateExposure(
@@ -100,7 +103,9 @@ public sealed class CodexAgentBenchmarkAdapterOptions
         if (exposure.Condition != condition
             || !AgentBenchmarkHash.IsHash(exposure.InstructionsHash)
             || !AgentBenchmarkHash.IsHash(exposure.ToolConfigurationHash)
-            || exposure.ConfigurationOverrides is null)
+            || exposure.ConfigurationOverrides is null
+            || (exposure.ExecutableSearchPathEntries ?? []).Any(path =>
+                !Path.IsPathFullyQualified(path)))
         {
             throw new ArgumentException(
                 $"The {condition} Codex exposure is malformed.",
@@ -246,6 +251,14 @@ public sealed class CodexAgentBenchmarkAdapter : IAgentBenchmarkAdapter
             startInfo.Environment[variable.Key] = variable.Value;
         }
 
+        var exposure = Exposure(input.Condition);
+        if (exposure.ExecutableSearchPathEntries is { Count: > 0 })
+        {
+            startInfo.Environment["PATH"] = string.Join(
+                Path.PathSeparator,
+                exposure.ExecutableSearchPathEntries);
+        }
+
         return startInfo;
     }
 
@@ -258,6 +271,7 @@ public sealed class CodexAgentBenchmarkAdapter : IAgentBenchmarkAdapter
         arguments.Add("--json");
         arguments.Add("--ignore-user-config");
         arguments.Add("--ignore-rules");
+        arguments.Add("--skip-git-repo-check");
         arguments.Add("--model");
         arguments.Add(input.Execution.ModelId);
         arguments.Add("--cd");

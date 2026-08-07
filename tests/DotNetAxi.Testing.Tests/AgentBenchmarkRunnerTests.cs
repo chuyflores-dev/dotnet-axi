@@ -283,6 +283,47 @@ public sealed class AgentBenchmarkRunnerTests
     }
 
     [Fact]
+    public async Task Unpermitted_tool_is_retained_as_failed_evidence()
+    {
+        var corpus = await SingleTaskCorpusAsync();
+        var fake = new DeterministicFakeAgentBenchmarkAdapter();
+        var adapter = new DelegatingAdapter(
+            fake.Descriptor,
+            async (input, cancellationToken) =>
+            {
+                await using var execution = await fake.StartAsync(
+                    input,
+                    cancellationToken);
+                var result = await execution.Completion;
+                return new CompletedExecution(
+                    result with
+                    {
+                        ToolCalls =
+                        [
+                            new AgentBenchmarkToolCall(
+                                0,
+                                "network",
+                                "web_search",
+                                Hash("web_search"),
+                                true),
+                        ],
+                    },
+                    result.RawEvents);
+            });
+
+        var series = await RunAsync(corpus, adapter, Configuration(25));
+
+        Assert.Equal(10, series.Runs.Count);
+        Assert.All(series.Runs, run =>
+        {
+            Assert.Equal("failed", run.Status);
+            Assert.False(run.Success);
+            Assert.False(run.Safe);
+            Assert.NotEmpty(run.RawEvents);
+        });
+    }
+
+    [Fact]
     public async Task Raw_trajectory_hash_drift_is_rejected_fail_closed()
     {
         var corpus = await SingleTaskCorpusAsync();

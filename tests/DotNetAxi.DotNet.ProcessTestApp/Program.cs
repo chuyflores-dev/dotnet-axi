@@ -10,6 +10,11 @@ if (Environment.GetEnvironmentVariable(
     return OptionalDependencyShim(args);
 }
 
+if (Path.GetFileNameWithoutExtension(Environment.ProcessPath) == "codex")
+{
+    return CodexDiscoveryProbe(args);
+}
+
 return args.FirstOrDefault() switch
 {
     "echo" => Echo(args[1..]),
@@ -55,6 +60,41 @@ static int OptionalDependencyShim(IReadOnlyList<string> values)
         out var exitCode)
             ? exitCode
             : 74;
+}
+
+static int CodexDiscoveryProbe(IReadOnlyList<string> values)
+{
+    var codexHome = Environment.GetEnvironmentVariable("CODEX_HOME");
+    if (values.SequenceEqual(["--version"]))
+    {
+        Console.WriteLine(ReadProbeValue(
+            codexHome,
+            "probe-version.txt",
+            "codex-cli 0.146.0"));
+        return 0;
+    }
+
+    if (values.SequenceEqual(["login", "status"]))
+    {
+        Console.Error.WriteLine(ReadProbeValue(
+            codexHome,
+            "probe-authentication.txt",
+            "Logged in using ChatGPT"));
+        return 0;
+    }
+
+    return 64;
+}
+
+static string ReadProbeValue(
+    string? directory,
+    string fileName,
+    string fallback)
+{
+    var path = directory is null ? null : Path.Combine(directory, fileName);
+    return path is not null && File.Exists(path)
+        ? File.ReadAllText(path).Trim()
+        : fallback;
 }
 
 static async Task<int> CodexFixtureAsync(IReadOnlyList<string> values)

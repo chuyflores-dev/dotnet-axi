@@ -248,8 +248,11 @@ event stream, and reported usage. Runs are ephemeral and isolate user-level
 configuration from the controlled benchmark condition.
 
 The adapter launches one absolute, version-pinned Codex executable as `codex
-exec --ephemeral --json --ignore-user-config --ignore-rules`. Every argument is
-passed without a shell. Each run also passes the exact model, workspace, and `read-only` or
+exec --ephemeral --json --ignore-user-config --ignore-rules
+--skip-git-repo-check`. Controlled benchmark fixtures are content-hashed clean
+directories rather than Git repositories, so the explicit skip affects only
+Codex's repository-presence preflight. Every argument is passed without a
+shell. Each run also passes the exact model, workspace, and `read-only` or
 `workspace-write` sandbox explicitly; fixes the reasoning and `never` approval
 settings; and disables web search and workspace-sandbox network access. A task
 receives `workspace-write` only when its abstract permitted tools declare
@@ -445,6 +448,29 @@ deterministic C# fixture includes qualified forms, generated noise, textual
 false candidates, and syntax that must remain unresolved without semantic
 inference. The task prompt describes the outcome and response facts, not a
 condition-specific command.
+
+The measured `0.3.0` Codex series is prepared and dispatched only through the
+manual `DotNetAxi.CodexBenchmark` console. Its strict request pins the released
+package and skill, instruction and tool artifacts, authenticated `CODEX_HOME`
+path identity, executable, settings, commits, and the exact seven-task corpus.
+`prepare` recomputes every artifact hash, hashes every executable-search
+directory, verifies the exact CLI version and active ChatGPT authentication
+with bounded local `codex --version` and `codex login status` probes, and seals
+the deterministic 70-run schedule without dispatching a model. `run` accepts
+only that unchanged preparation and writes create-new preparation, per-run,
+report, and summary evidence; completed run evidence is flushed durably before
+the next run starts, and every execution artifact and tool-directory pin is
+revalidated after each retained run before another paid run may start.
+The baseline disables skills and replaces inherited `PATH` with an isolated
+raw-tool search path that contains no `dnaxi`. The candidate adds only the
+pinned released `dnaxi` executable directory and packaged `SKILL.md` to that
+same tool environment. It does not represent the CLI as an MCP server and
+does not accept API-key authentication or require an API-key artifact.
+`validate` reloads the request and artifacts, rejects unknown JSON fields or
+drift, reconciles normalized metrics with raw Codex events, and recomputes the
+documented comparison thresholds. Missing, failed, and timed-out trajectories
+remain explicit and make the comparison incomparable rather than contributing
+smoothed success or efficiency values.
 
 Exact fact sets must be nonempty, unique, and stored in ordinal order. Strict
 corpus loading rejects unknown fields, duplicate or unsorted outcomes, fixture
