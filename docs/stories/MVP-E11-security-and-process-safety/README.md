@@ -48,6 +48,7 @@ be a sandbox unless one is actually enforced.
 - [MVP-E11-S10 — Enforce setup trust boundaries](MVP-E11-S10-setup-trust.md)
 - [MVP-E11-S11 - Classify constrained-host failures](MVP-E11-S11-constrained-host-failures.md)
 - [MVP-E11-S12 — Restore safe passive tool execution](MVP-E11-S12-safe-passive-tool-execution.md)
+- [MVP-E11-S13 — Stabilize process-group termination](MVP-E11-S13-stabilize-process-group-termination.md)
 
 ## Complete when
 

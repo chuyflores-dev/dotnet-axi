@@ -195,8 +195,9 @@ with any available exit evidence and bounded output.
 
 Windows containment uses a job object and does not complete until the job has
 no active processes. Linux and macOS launch a new process group, retain the
-unreaped leader identity while terminating and observing its members, and do
-not report terminated until the owned group and output handles are clear.
+unreaped leader identity while terminating and observing its members, issue at
+most one successful termination request while that authority is retained, and
+do not report terminated until the owned group and output handles are clear.
 Portable POSIX process groups are not a security sandbox: repository code that
 deliberately creates a new session or process group can leave that authority.
 Callers requiring enforcement against hostile repository code must supply an

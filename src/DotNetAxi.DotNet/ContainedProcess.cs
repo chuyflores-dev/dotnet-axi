@@ -651,6 +651,7 @@ internal sealed class PosixOwnedProcessGroup(
     Action<int> waitForGroupExit)
 {
     private readonly object _gate = new();
+    private bool _terminationRequested;
     private bool _terminationAuthorityReleased;
     private ProcessExitEvidence? _exitEvidence;
 
@@ -679,7 +680,7 @@ internal sealed class PosixOwnedProcessGroup(
                     return ExitEvidence;
                 }
 
-                terminateGroup(processGroupId);
+                RequestTermination();
             }
 
             waitForGroupExit(processGroupId);
@@ -708,9 +709,20 @@ internal sealed class PosixOwnedProcessGroup(
         {
             if (!_terminationAuthorityReleased)
             {
-                terminateGroup(processGroupId);
+                RequestTermination();
             }
         }
+    }
+
+    private void RequestTermination()
+    {
+        if (_terminationRequested)
+        {
+            return;
+        }
+
+        terminateGroup(processGroupId);
+        _terminationRequested = true;
     }
 }
 
