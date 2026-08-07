@@ -1,43 +1,62 @@
-using System.ComponentModel;
-using System.Diagnostics;
-using System.Text;
+using DotNetAxi.Contracts;
 
 namespace DotNetAxi.Workspaces;
 
 public sealed class WorktreeStateInspector
 {
+    private const int ProcessOutputLimit = 16 * 1024 * 1024;
     private static readonly TimeSpan DefaultProcessTimeout =
         TimeSpan.FromSeconds(30);
 
-    private static readonly UTF8Encoding StrictUtf8 =
-        new(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
-
     private readonly string _gitExecutable;
     private readonly TimeSpan _processTimeout;
-    private readonly IWorktreeGitProcessFactory _processFactory;
+    private readonly IProcessRunner _processRunner;
+    private readonly bool _resolveExecutable;
+    private readonly bool _enforcePassiveBoundary;
 
     public WorktreeStateInspector(
+        IProcessRunner processRunner,
         string gitExecutable = "git",
         TimeSpan? processTimeout = null)
         : this(
             gitExecutable,
             processTimeout,
-            SystemWorktreeGitProcessFactory.Instance)
+            processRunner,
+            resolveExecutable: true,
+            enforcePassiveBoundary: false)
     {
     }
 
-    public static WorktreeStateInspector CreatePassive() => new(
+    public static WorktreeStateInspector CreatePassive(
+        IProcessRunner processRunner) => new(
         "git",
         processTimeout: null,
-        RejectingWorktreeGitProcessFactory.Instance);
+        processRunner,
+        resolveExecutable: true,
+        enforcePassiveBoundary: true);
 
     internal WorktreeStateInspector(
         string gitExecutable,
         TimeSpan? processTimeout,
-        IWorktreeGitProcessFactory processFactory)
+        IProcessRunner processRunner)
+        : this(
+            gitExecutable,
+            processTimeout,
+            processRunner,
+            resolveExecutable: false,
+            enforcePassiveBoundary: false)
+    {
+    }
+
+    internal WorktreeStateInspector(
+        string gitExecutable,
+        TimeSpan? processTimeout,
+        IProcessRunner processRunner,
+        bool resolveExecutable,
+        bool enforcePassiveBoundary)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(gitExecutable);
-        ArgumentNullException.ThrowIfNull(processFactory);
+        ArgumentNullException.ThrowIfNull(processRunner);
         if (processTimeout is { } timeout && timeout <= TimeSpan.Zero)
         {
             throw new ArgumentOutOfRangeException(nameof(processTimeout));
@@ -45,7 +64,9 @@ public sealed class WorktreeStateInspector
 
         _gitExecutable = gitExecutable;
         _processTimeout = processTimeout ?? DefaultProcessTimeout;
-        _processFactory = processFactory;
+        _processRunner = processRunner;
+        _resolveExecutable = resolveExecutable;
+        _enforcePassiveBoundary = enforcePassiveBoundary;
     }
 
     public async Task<WorktreeStateResult> InspectAsync(
@@ -156,152 +177,122 @@ public sealed class WorktreeStateInspector
         int? additionalSuccessExitCode = null)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        var startInfo = new ProcessStartInfo
-        {
-            FileName = _gitExecutable,
-            WorkingDirectory = workingDirectory,
-            RedirectStandardInput = true,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            StandardOutputEncoding = StrictUtf8,
-            UseShellExecute = false,
-            CreateNoWindow = true,
-        };
-        foreach (var argument in new[]
-                 {
-                     "--no-optional-locks",
-                     "--no-pager",
-                     "--literal-pathspecs",
-                     $"--work-tree={workingDirectory}",
-                     "-c",
-                     "core.fsmonitor=false",
-                     "-c",
-                     "core.untrackedCache=false",
-                     "-c",
-                     "submodule.recurse=false",
-                 })
-        {
-            startInfo.ArgumentList.Add(argument);
-        }
-
-        foreach (var argument in arguments)
-        {
-            startInfo.ArgumentList.Add(argument);
-        }
-
-        foreach (var variable in startInfo.Environment.Keys
-                     .Where(static name => name.StartsWith(
-                         "GIT_",
-                         StringComparison.OrdinalIgnoreCase))
-                     .ToArray())
-        {
-            startInfo.Environment.Remove(variable);
-        }
-
-        startInfo.Environment["GIT_ATTR_NOSYSTEM"] = "1";
-        startInfo.Environment["GIT_CONFIG_GLOBAL"] =
-            OperatingSystem.IsWindows() ? "NUL" : "/dev/null";
-        startInfo.Environment["GIT_CONFIG_NOSYSTEM"] = "1";
-        startInfo.Environment["GIT_NO_LAZY_FETCH"] = "1";
-        startInfo.Environment["GIT_OPTIONAL_LOCKS"] = "0";
-        startInfo.Environment["GIT_TERMINAL_PROMPT"] = "0";
-        startInfo.Environment["GCM_INTERACTIVE"] = "Never";
-        startInfo.Environment["LC_ALL"] = "C";
-
-        using var process = _processFactory.Create(startInfo);
-        try
-        {
-            if (!process.Start())
-            {
-                return GitProcessResult.StartFailure();
-            }
-        }
-        catch (PassiveProcessInvocationException)
+        if (_enforcePassiveBoundary
+            && !SafePassiveGitBoundary.IsAllowedArguments(arguments))
         {
             return GitProcessResult.PolicyDenied();
         }
-        catch (Win32Exception exception)
-            when (exception.NativeErrorCode is 2 or 3)
+
+        PassiveGitExecutableResolution executable;
+        if (_resolveExecutable)
+        {
+            executable = !_enforcePassiveBoundary
+                && Path.IsPathFullyQualified(_gitExecutable)
+                    ? new PassiveGitExecutableResolution(
+                        PassiveGitExecutableTrust.Trusted,
+                        Path.GetFullPath(_gitExecutable))
+                    : SafePassiveGitBoundary.ResolveExecutable(
+                        _gitExecutable,
+                        workingDirectory);
+        }
+        else
+        {
+            var path = Path.IsPathFullyQualified(_gitExecutable)
+                ? Path.GetFullPath(_gitExecutable)
+                : Path.GetFullPath(
+                    Path.Combine(workingDirectory, _gitExecutable));
+            executable = new PassiveGitExecutableResolution(
+                PassiveGitExecutableTrust.Trusted,
+                path);
+        }
+
+        if (executable.Trust is PassiveGitExecutableTrust.WorkspaceControlled)
+        {
+            return GitProcessResult.PolicyDenied();
+        }
+
+        if (executable.Trust is PassiveGitExecutableTrust.Missing)
         {
             return GitProcessResult.ExecutableNotFound();
         }
-        catch (Exception exception)
-            when (exception is Win32Exception
-                or InvalidOperationException)
-        {
-            return GitProcessResult.StartFailure();
-        }
 
-        process.CloseStandardInput();
-        using var timeout = new CancellationTokenSource(_processTimeout);
-        using var operation = CancellationTokenSource.CreateLinkedTokenSource(
-            cancellationToken,
-            timeout.Token);
-        var standardOutput = process.ReadStandardOutputToEndAsync(
-            operation.Token);
-        var standardError = process.ReadStandardErrorToEndAsync(
-            operation.Token);
-        var processExit = process.WaitForExitAsync(operation.Token);
-        var completion = Task.WhenAll(
-            processExit,
-            standardOutput,
-            standardError);
-        var cancellationSignal = Task.Delay(
-            Timeout.InfiniteTimeSpan,
-            operation.Token);
-        try
+        var processArguments = new List<string>(arguments.Count + 12)
         {
-            if (await Task.WhenAny(completion, cancellationSignal)
-                != completion)
-            {
-                throw new OperationCanceledException(operation.Token);
-            }
-
-            await completion;
-        }
-        catch (OperationCanceledException)
-            when (operation.IsCancellationRequested)
+            "--no-optional-locks",
+            "--no-pager",
+            "--literal-pathspecs",
+            $"--work-tree={workingDirectory}",
+            "-c",
+            "core.fsmonitor=false",
+            "-c",
+            "core.untrackedCache=false",
+            "-c",
+            "submodule.recurse=false",
+        };
+        processArguments.AddRange(arguments);
+        var environment = new Dictionary<string, string>(
+            StringComparer.Ordinal)
         {
-            TryTerminate(process);
-            Observe(completion);
+            ["GIT_ATTR_NOSYSTEM"] = "1",
+            ["GIT_CONFIG_GLOBAL"] =
+                OperatingSystem.IsWindows() ? "NUL" : "/dev/null",
+            ["GIT_CONFIG_NOSYSTEM"] = "1",
+            ["GIT_NO_LAZY_FETCH"] = "1",
+            ["GIT_OPTIONAL_LOCKS"] = "0",
+            ["GIT_TERMINAL_PROMPT"] = "0",
+            ["GCM_INTERACTIVE"] = "Never",
+            ["LC_ALL"] = "C",
+        };
+        var result = await _processRunner.RunAsync(
+            new ProcessRunRequest(
+                executable.Path!,
+                workingDirectory,
+                processArguments,
+                environment,
+                new ProcessOutputLimits(
+                    ProcessOutputLimit,
+                    ProcessOutputLimit),
+                _processTimeout,
+                ProcessEnvironmentPolicy.Isolated),
+            cancellationToken);
+        if (result.Outcome is ProcessRunOutcome.Cancelled)
+        {
             cancellationToken.ThrowIfCancellationRequested();
+            throw new OperationCanceledException(
+                "Git worktree inspection was cancelled.",
+                cancellationToken);
+        }
+
+        if (result.Outcome is ProcessRunOutcome.StartFailed)
+        {
+            return result.StartFailure switch
+            {
+                ProcessStartFailure.ExecutableNotFound =>
+                    GitProcessResult.ExecutableNotFound(),
+                ProcessStartFailure.PolicyDenied =>
+                    GitProcessResult.PolicyDenied(),
+                _ => GitProcessResult.StartFailure(),
+            };
+        }
+
+        if (result.Outcome is ProcessRunOutcome.TimedOut)
+        {
             return GitProcessResult.TimedOut();
         }
-        catch (DecoderFallbackException)
+
+        if (result.Outcome is not ProcessRunOutcome.Completed
+            || result.Lifecycle is not ProcessLifecycle.Completed
+            || result.Exit?.ExitCode is not { } exitCode
+            || result.StandardOutput.Text.Contains(
+                '\uFFFD',
+                StringComparison.Ordinal))
         {
             return GitProcessResult.InvalidOutput();
         }
 
-        var exitCode = process.ExitCode;
         return exitCode == 0 || exitCode == additionalSuccessExitCode
-            ? GitProcessResult.Success(standardOutput.Result, exitCode)
+            ? GitProcessResult.Success(result.StandardOutput.Text, exitCode)
             : GitProcessResult.ProcessFailure(exitCode);
-    }
-
-    private static void TryTerminate(IWorktreeGitProcess process)
-    {
-        try
-        {
-            if (!process.HasExited)
-            {
-                process.Kill(entireProcessTree: true);
-            }
-        }
-        catch (Exception exception)
-            when (exception is InvalidOperationException
-                or Win32Exception)
-        {
-        }
-    }
-
-    private static void Observe(Task task)
-    {
-        _ = task.ContinueWith(
-            static completed => _ = completed.Exception,
-            CancellationToken.None,
-            TaskContinuationOptions.OnlyOnFaulted
-                | TaskContinuationOptions.ExecuteSynchronously,
-            TaskScheduler.Default);
     }
 
     private static ParsedStatus ParseStatus(string output)
@@ -642,132 +633,294 @@ public sealed class WorktreeStateInspector
     }
 }
 
-internal interface IWorktreeGitProcessFactory
+internal enum PassiveGitExecutableTrust
 {
-    IWorktreeGitProcess Create(ProcessStartInfo startInfo);
+    Trusted,
+    Missing,
+    WorkspaceControlled,
 }
 
-internal interface IWorktreeGitProcess : IDisposable
+internal sealed record PassiveGitExecutableResolution(
+    PassiveGitExecutableTrust Trust,
+    string? Path);
+
+internal static class SafePassiveGitBoundary
 {
-    bool HasExited { get; }
-
-    int ExitCode { get; }
-
-    bool Start();
-
-    void CloseStandardInput();
-
-    Task<string> ReadStandardOutputToEndAsync(
-        CancellationToken cancellationToken);
-
-    Task<string> ReadStandardErrorToEndAsync(
-        CancellationToken cancellationToken);
-
-    Task WaitForExitAsync(CancellationToken cancellationToken);
-
-    void Kill(bool entireProcessTree);
-}
-
-internal sealed class SystemWorktreeGitProcessFactory
-    : IWorktreeGitProcessFactory
-{
-    public static SystemWorktreeGitProcessFactory Instance { get; } = new();
-
-    private SystemWorktreeGitProcessFactory()
+    internal static PassiveGitExecutableResolution ResolveExecutable(
+        string executable,
+        string workspaceRoot,
+        string? pathValue = null)
     {
-    }
+        ArgumentException.ThrowIfNullOrWhiteSpace(executable);
+        ArgumentException.ThrowIfNullOrWhiteSpace(workspaceRoot);
+        var windows = OperatingSystem.IsWindows();
+        var expectedName = windows ? "git.exe" : "git";
+        string? candidate = null;
 
-    public IWorktreeGitProcess Create(ProcessStartInfo startInfo) =>
-        new SystemWorktreeGitProcess(startInfo);
-}
-
-internal sealed class RejectingWorktreeGitProcessFactory
-    : IWorktreeGitProcessFactory
-{
-    public static RejectingWorktreeGitProcessFactory Instance { get; } = new();
-
-    private RejectingWorktreeGitProcessFactory()
-    {
-    }
-
-    public IWorktreeGitProcess Create(ProcessStartInfo startInfo)
-    {
-        ArgumentNullException.ThrowIfNull(startInfo);
-        return RejectingWorktreeGitProcess.Instance;
-    }
-}
-
-internal sealed class RejectingWorktreeGitProcess : IWorktreeGitProcess
-{
-    public static RejectingWorktreeGitProcess Instance { get; } = new();
-
-    private RejectingWorktreeGitProcess()
-    {
-    }
-
-    public bool HasExited => true;
-
-    public int ExitCode => throw Rejected();
-
-    public bool Start() => throw Rejected();
-
-    public void CloseStandardInput() => throw Rejected();
-
-    public Task<string> ReadStandardOutputToEndAsync(
-        CancellationToken cancellationToken) => throw Rejected();
-
-    public Task<string> ReadStandardErrorToEndAsync(
-        CancellationToken cancellationToken) => throw Rejected();
-
-    public Task WaitForExitAsync(
-        CancellationToken cancellationToken) => throw Rejected();
-
-    public void Kill(bool entireProcessTree) => throw Rejected();
-
-    public void Dispose()
-    {
-    }
-
-    private static PassiveProcessInvocationException Rejected() => new(
-        "Passive operation policy rejected Git process invocation.");
-}
-
-internal sealed class PassiveProcessInvocationException(string message)
-    : InvalidOperationException(message);
-
-internal sealed class SystemWorktreeGitProcess : IWorktreeGitProcess
-{
-    private readonly Process _process;
-
-    public SystemWorktreeGitProcess(ProcessStartInfo startInfo)
-    {
-        _process = new Process
+        if (Path.IsPathFullyQualified(executable))
         {
-            StartInfo = startInfo,
-        };
+            if (!Path.GetFileName(executable).Equals(
+                    expectedName,
+                    windows
+                        ? StringComparison.OrdinalIgnoreCase
+                        : StringComparison.Ordinal))
+            {
+                return Denied();
+            }
+
+            candidate = Path.GetFullPath(executable);
+            if (!File.Exists(candidate)
+                || (!windows && !IsExecutableFile(candidate)))
+            {
+                return Missing();
+            }
+        }
+        else
+        {
+            if (!executable.Equals(
+                    expectedName,
+                    windows
+                        ? StringComparison.OrdinalIgnoreCase
+                        : StringComparison.Ordinal))
+            {
+                return Denied();
+            }
+
+            pathValue ??= Environment.GetEnvironmentVariable("PATH");
+            if (pathValue is null)
+            {
+                return Missing();
+            }
+
+            foreach (var rawDirectory in pathValue.Split(Path.PathSeparator))
+            {
+                var directory = windows
+                    ? rawDirectory.Trim().Trim('"')
+                    : rawDirectory;
+                if (string.IsNullOrWhiteSpace(directory)
+                    || !Path.IsPathFullyQualified(directory))
+                {
+                    continue;
+                }
+
+                try
+                {
+                    var path = Path.GetFullPath(
+                        Path.Combine(directory, expectedName));
+                    if (File.Exists(path)
+                        && (windows || IsExecutableFile(path)))
+                    {
+                        candidate = path;
+                        break;
+                    }
+                }
+                catch (Exception exception)
+                    when (exception is ArgumentException
+                        or NotSupportedException
+                        or PathTooLongException
+                        or IOException
+                        or UnauthorizedAccessException)
+                {
+                    // Continue to the next absolute PATH entry.
+                }
+            }
+
+            if (candidate is null)
+            {
+                return Missing();
+            }
+        }
+
+        try
+        {
+            var fullWorkspaceRoot = Path.GetFullPath(workspaceRoot);
+            if (IsWithin(fullWorkspaceRoot, candidate)
+                || IsWithin(
+                    ResolvePhysicalPath(fullWorkspaceRoot),
+                    ResolvePhysicalPath(candidate)))
+            {
+                return Denied();
+            }
+        }
+        catch (Exception exception)
+            when (exception is ArgumentException
+                or NotSupportedException
+                or PathTooLongException
+                or IOException
+                or UnauthorizedAccessException)
+        {
+            return Denied();
+        }
+
+        return new PassiveGitExecutableResolution(
+            PassiveGitExecutableTrust.Trusted,
+            candidate);
     }
 
-    public bool HasExited => _process.HasExited;
+    internal static bool IsAllowedArguments(
+        IReadOnlyList<string> arguments)
+    {
+        ArgumentNullException.ThrowIfNull(arguments);
+        if (arguments.SequenceEqual(
+                [
+                    "config",
+                    "--includes",
+                    "--null",
+                    "--name-only",
+                    "--get-regexp",
+                    @"^filter\..*\.(clean|process)$",
+                ])
+            || arguments.SequenceEqual(
+                [
+                    "status",
+                    "--porcelain=v2",
+                    "--branch",
+                    "-z",
+                    "--untracked-files=all",
+                    "--renames",
+                    "--ignore-submodules=dirty",
+                ])
+            || arguments.SequenceEqual(
+                ["ls-files", "--cached", "-z"]))
+        {
+            return true;
+        }
 
-    public int ExitCode => _process.ExitCode;
+        if (arguments.Count == 4
+            && arguments[0].Equals("rev-parse", StringComparison.Ordinal)
+            && arguments[1].Equals("--verify", StringComparison.Ordinal)
+            && arguments[2].Equals("--end-of-options", StringComparison.Ordinal)
+            && arguments[3].Length is > 9 and <= 4096
+            && arguments[3].EndsWith("^{commit}", StringComparison.Ordinal))
+        {
+            return true;
+        }
 
-    public bool Start() => _process.Start();
+        if (arguments.Count == 3
+            && arguments[0].Equals("merge-base", StringComparison.Ordinal)
+            && IsObjectId(arguments[1])
+            && IsObjectId(arguments[2]))
+        {
+            return true;
+        }
 
-    public void CloseStandardInput() => _process.StandardInput.Close();
+        return arguments.Count == 10
+            && arguments[0].Equals("diff", StringComparison.Ordinal)
+            && arguments[1].Equals("--name-status", StringComparison.Ordinal)
+            && arguments[2].Equals("-z", StringComparison.Ordinal)
+            && arguments[3].Equals("--find-renames=50%", StringComparison.Ordinal)
+            && arguments[4].Equals("--no-ext-diff", StringComparison.Ordinal)
+            && arguments[5].Equals("--no-textconv", StringComparison.Ordinal)
+            && arguments[6].Equals("--ignore-submodules=dirty", StringComparison.Ordinal)
+            && IsObjectId(arguments[7])
+            && IsObjectId(arguments[8])
+            && arguments[9].Equals("--", StringComparison.Ordinal);
+    }
 
-    public Task<string> ReadStandardOutputToEndAsync(
-        CancellationToken cancellationToken) =>
-        _process.StandardOutput.ReadToEndAsync(cancellationToken);
+    private static bool IsObjectId(string value) =>
+        value.Length is 40 or 64
+        && value.All(static character => Uri.IsHexDigit(character));
 
-    public Task<string> ReadStandardErrorToEndAsync(
-        CancellationToken cancellationToken) =>
-        _process.StandardError.ReadToEndAsync(cancellationToken);
+    private static PassiveGitExecutableResolution Missing() => new(
+        PassiveGitExecutableTrust.Missing,
+        Path: null);
 
-    public Task WaitForExitAsync(CancellationToken cancellationToken) =>
-        _process.WaitForExitAsync(cancellationToken);
+    private static PassiveGitExecutableResolution Denied() => new(
+        PassiveGitExecutableTrust.WorkspaceControlled,
+        Path: null);
 
-    public void Kill(bool entireProcessTree) =>
-        _process.Kill(entireProcessTree);
+    private static bool IsWithin(string root, string path)
+    {
+        var relative = Path.GetRelativePath(root, path);
+        return relative.Equals(".", StringComparison.Ordinal)
+            || (!Path.IsPathFullyQualified(relative)
+                && !relative.Equals("..", StringComparison.Ordinal)
+                && !relative.StartsWith("../", StringComparison.Ordinal)
+                && !relative.StartsWith("..\\", StringComparison.Ordinal));
+    }
 
-    public void Dispose() => _process.Dispose();
+    private static string ResolvePhysicalPath(string path)
+    {
+        var currentPath = Path.GetFullPath(path);
+        var visited = new HashSet<string>(
+            OperatingSystem.IsWindows()
+                ? StringComparer.OrdinalIgnoreCase
+                : StringComparer.Ordinal)
+        {
+            currentPath,
+        };
+        for (var pass = 0; pass < 64; pass++)
+        {
+            var resolved = ResolvePhysicalPathPass(currentPath, out var changed);
+            if (!changed)
+            {
+                return resolved;
+            }
+
+            if (!visited.Add(resolved))
+            {
+                throw new IOException(
+                    "A symbolic-link cycle prevents physical path resolution.");
+            }
+
+            currentPath = resolved;
+        }
+
+        throw new IOException(
+            "The symbolic-link chain is too deep to resolve safely.");
+    }
+
+    private static string ResolvePhysicalPathPass(
+        string path,
+        out bool changed)
+    {
+        changed = false;
+        var fullPath = Path.GetFullPath(path);
+        var root = Path.GetPathRoot(fullPath)
+            ?? throw new ArgumentException(
+                "A fully qualified path requires a root.",
+                nameof(path));
+        var current = root;
+        foreach (var segment in fullPath[root.Length..].Split(
+                     [Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar],
+                     StringSplitOptions.RemoveEmptyEntries))
+        {
+            current = Path.Combine(current, segment);
+            FileSystemInfo entry = Directory.Exists(current)
+                ? new DirectoryInfo(current)
+                : new FileInfo(current);
+            var target = entry.ResolveLinkTarget(returnFinalTarget: false);
+            if (target is not null)
+            {
+                current = target.FullName;
+                changed = true;
+            }
+        }
+
+        return Path.GetFullPath(current);
+    }
+
+    private static bool IsExecutableFile(string path)
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return true;
+        }
+
+        try
+        {
+            var mode = File.GetUnixFileMode(path);
+            const UnixFileMode execute = UnixFileMode.UserExecute
+                | UnixFileMode.GroupExecute
+                | UnixFileMode.OtherExecute;
+            return (mode & execute) != 0;
+        }
+        catch (Exception exception)
+            when (exception is IOException
+                or UnauthorizedAccessException
+                or PlatformNotSupportedException)
+        {
+            return false;
+        }
+    }
 }

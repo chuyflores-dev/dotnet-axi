@@ -1,5 +1,6 @@
 using System.Text;
 using DotNetAxi.Axi;
+using DotNetAxi.DotNet;
 using DotNetAxi.Workspaces;
 
 namespace DotNetAxi.Cli.Tests;
@@ -190,7 +191,8 @@ public sealed class AgentSkillGenerationTests
                     Path.Combine(root, "dnaxi"),
                     root),
                 static () => new WorkspaceDiscoverer(),
-                static () => new WorktreeStateInspector());
+                static () => new WorktreeStateInspector(
+                    new ProcessRunner()));
 
             var homeExitCode = await homeHost.InvokeAsync([]);
 

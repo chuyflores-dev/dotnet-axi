@@ -176,7 +176,7 @@ public sealed class FileSearchCommandTests
     }
 
     [Fact]
-    public async Task Changed_scope_reports_the_passive_process_boundary()
+    public async Task Changed_scope_intersects_traversal_and_generated_policy()
     {
         var workspace = CreateWorkspace();
         try
@@ -208,11 +208,15 @@ public sealed class FileSearchCommandTests
                 "--changed",
                 "--include-generated");
 
-            Assert.Equal(1, normal.ExitCode);
-            Assert.Contains("operation.passive_process_denied", normal.Output);
-            Assert.Contains("Omit --changed", normal.Output);
-            Assert.Equal(1, generated.ExitCode);
-            Assert.Contains("operation.passive_process_denied", generated.Output);
+            Assert.Equal(0, normal.ExitCode);
+            Assert.Contains("count: 2", normal.Output);
+            Assert.Contains("Changed.cs", normal.Output);
+            Assert.Contains("New.cs", normal.Output);
+            Assert.DoesNotContain("Unchanged.cs", normal.Output);
+            Assert.DoesNotContain("Generated.g.cs", normal.Output);
+            Assert.Equal(0, generated.ExitCode);
+            Assert.Contains("count: 3", generated.Output);
+            Assert.Contains("Generated.g.cs", generated.Output);
         }
         finally
         {
@@ -388,6 +392,8 @@ public sealed class FileSearchCommandTests
             RedirectStandardError = true,
             UseShellExecute = false,
         };
+        start.ArgumentList.Add("-c");
+        start.ArgumentList.Add("commit.gpgsign=false");
         foreach (var argument in args)
         {
             start.ArgumentList.Add(argument);

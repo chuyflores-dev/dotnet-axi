@@ -393,7 +393,7 @@ public sealed class RgTextSearchAccelerator
             ChildProcessEnvironment.RipgrepDefaults,
             new ProcessOutputLimits(standardOutputLimit, OutputLimit),
             timeout,
-            ProcessEnvironmentPolicy.InheritParent);
+            ProcessEnvironmentPolicy.Isolated);
 
     private static IEnumerable<IReadOnlyList<string>?> CreateBatches(
         IEnumerable<string> paths)

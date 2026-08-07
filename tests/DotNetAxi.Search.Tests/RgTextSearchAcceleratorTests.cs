@@ -653,7 +653,7 @@ public sealed class RgTextSearchAcceleratorTests
     private static void AssertSafeRipgrepRequest(ProcessRunRequest request)
     {
         Assert.Equal(
-            ProcessEnvironmentPolicy.InheritParent,
+            ProcessEnvironmentPolicy.Isolated,
             request.EnvironmentPolicy);
         Assert.Equal(
             request.WorkingDirectory,

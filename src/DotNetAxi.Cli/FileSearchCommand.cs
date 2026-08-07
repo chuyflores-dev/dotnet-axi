@@ -1,4 +1,5 @@
 using DotNetAxi.Contracts;
+using DotNetAxi.DotNet;
 using DotNetAxi.Search;
 using DotNetAxi.Workspaces;
 
@@ -85,7 +86,7 @@ internal sealed class FileSearchCommandHandler :
     private readonly ChangedScopeResolver _changedScopeResolver;
 
     public FileSearchCommandHandler()
-        : this(ChangedScopeResolver.CreatePassive())
+        : this(ChangedScopeResolver.CreatePassive(new ProcessRunner()))
     {
     }
 

@@ -47,6 +47,7 @@ be a sandbox unless one is actually enforced.
 - [MVP-E11-S09 — Clean retained artifacts](MVP-E11-S09-artifact-cleanup.md)
 - [MVP-E11-S10 — Enforce setup trust boundaries](MVP-E11-S10-setup-trust.md)
 - [MVP-E11-S11 - Classify constrained-host failures](MVP-E11-S11-constrained-host-failures.md)
+- [MVP-E11-S12 — Restore safe passive tool execution](MVP-E11-S12-safe-passive-tool-execution.md)
 
 ## Complete when
 

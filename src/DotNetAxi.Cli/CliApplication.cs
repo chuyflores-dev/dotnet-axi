@@ -1,5 +1,6 @@
 using System.CommandLine;
 using DotNetAxi.Contracts;
+using DotNetAxi.DotNet;
 using DotNetAxi.Workspaces;
 
 namespace DotNetAxi.Cli;
@@ -12,8 +13,9 @@ internal static class CliApplication
             error,
             static () => HomeInvocationContext.Capture(),
             static () => new WorkspaceDiscoverer(),
-            static () => WorktreeStateInspector.CreatePassive(),
-            static () => PassiveCapabilityReporterFactory.Create());
+            static () => WorktreeStateInspector.CreatePassive(
+                new ProcessRunner()),
+            static () => CapabilityReporter.CreateDefault());
 
     internal static CommandHost Create(
         TextWriter output,
@@ -27,7 +29,7 @@ internal static class CliApplication
             homeContextFactory,
             workspaceDiscovererFactory,
             worktreeStateInspectorFactory,
-            static () => PassiveCapabilityReporterFactory.Create());
+            static () => CapabilityReporter.CreateDefault());
 
     internal static CommandHost Create(
         TextWriter output,

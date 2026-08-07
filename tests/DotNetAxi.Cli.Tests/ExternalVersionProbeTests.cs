@@ -39,9 +39,7 @@ public sealed class ExternalVersionProbeTests
         Assert.Equal(4 * 1024, request.OutputLimits.StandardOutputCharacters);
         Assert.Equal("C", request.Environment["LC_ALL"]);
         Assert.Equal(
-            capability is ExternalCapability.Ripgrep
-                ? ProcessEnvironmentPolicy.InheritParent
-                : ProcessEnvironmentPolicy.Isolated,
+            ProcessEnvironmentPolicy.Isolated,
             request.EnvironmentPolicy);
         if (capability is ExternalCapability.Ripgrep)
         {

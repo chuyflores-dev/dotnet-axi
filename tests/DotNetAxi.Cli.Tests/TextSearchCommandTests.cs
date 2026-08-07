@@ -221,7 +221,7 @@ public sealed class TextSearchCommandTests
     }
 
     [Fact]
-    public async Task Changed_scope_reports_the_passive_process_boundary()
+    public async Task Changed_scope_reports_conflicts_and_traversal_exclusions_as_explicit_coverage_observations()
     {
         var workspace = CreateWorkspace();
         try
@@ -248,9 +248,10 @@ public sealed class TextSearchCommandTests
 
             var result = await RunAsync(workspace, "search", "text", "needle", "--changed", "--full");
 
-            Assert.Equal(1, result.ExitCode);
-            Assert.Contains("operation.passive_process_denied", result.Output);
-            Assert.Contains("Omit --changed", result.Output);
+            Assert.Equal(0, result.ExitCode);
+            Assert.Contains("conflicted", result.Output);
+            Assert.Contains("generated", result.Output);
+            Assert.Contains("changed_coverage", result.Output);
         }
         finally { Directory.Delete(workspace, recursive: true); }
     }
@@ -294,6 +295,8 @@ public sealed class TextSearchCommandTests
     private static async Task<string> GitOutputAsync(string workingDirectory, int expectedExitCode, params string[] args)
     {
         var start = new System.Diagnostics.ProcessStartInfo { FileName = "git", WorkingDirectory = workingDirectory, RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false };
+        start.ArgumentList.Add("-c");
+        start.ArgumentList.Add("commit.gpgsign=false");
         foreach (var argument in args) start.ArgumentList.Add(argument);
         using var process = System.Diagnostics.Process.Start(start)!;
         var output = await process.StandardOutput.ReadToEndAsync();

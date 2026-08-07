@@ -121,7 +121,7 @@ internal sealed class CapabilityReporter : ICapabilityReporter
     }
 
     public static ICapabilityReporter CreateDefault() => new CapabilityReporter(
-        new DotNetHostResolver(),
+        DotNetHostResolver.CreatePassive(),
         new ExternalVersionProbe(new ProcessRunner()),
         new AssemblyVersionProbe());
 
@@ -502,9 +502,7 @@ internal sealed class ExternalVersionProbe : IExternalVersionProbe
                     ProbeEnvironment(capability),
                     new ProcessOutputLimits(OutputLimit, OutputLimit),
                     ProbeTimeout,
-                    capability is ExternalCapability.Ripgrep
-                        ? ProcessEnvironmentPolicy.InheritParent
-                        : ProcessEnvironmentPolicy.Isolated),
+                    ProcessEnvironmentPolicy.Isolated),
                 cancellationToken)
             .ConfigureAwait(false);
         ThrowIfCancelled(result, capability, cancellationToken);
