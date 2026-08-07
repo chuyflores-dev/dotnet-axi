@@ -17,15 +17,17 @@ instead of escalating implicitly.
 
 ## Acceptance
 
-- Passive services receive no executing dependencies except guarded interfaces
-  that reject invocation.
+- Passive services receive no repository-executing dependencies. Guarded tool
+  interfaces admit only documented read-only command shapes and reject every
+  untrusted executable or command.
 - Home, workspace catalog, file/text/syntax search, and passive semantics stay
   passive in degraded repositories.
 
 ## Verification
 
-- Integration monitors fail on process, network, restore, analyzer, generator,
-  telemetry, or source-write activity during representative passive commands.
+- Integration monitors fail on unapproved process, network, restore, analyzer,
+  generator, telemetry, or source-write activity during representative passive
+  commands.
 
 ## Dependencies
 

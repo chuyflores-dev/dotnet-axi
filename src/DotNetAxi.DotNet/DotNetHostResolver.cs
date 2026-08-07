@@ -1,4 +1,8 @@
+using System.ComponentModel;
+using System.Runtime.InteropServices;
+using System.Text.Json;
 using DotNetAxi.Contracts;
+using Microsoft.Win32.SafeHandles;
 
 namespace DotNetAxi.DotNet;
 
@@ -10,13 +14,15 @@ public sealed class DotNetHostResolver : IDotNetHostResolver
     private readonly Func<string?> _pathValue;
     private readonly Func<string, bool> _fileExists;
     private readonly Func<string, bool> _isExecutable;
+    private readonly bool _passive;
 
     public DotNetHostResolver()
         : this(
             new ProcessRunner(),
             static () => Environment.GetEnvironmentVariable("PATH"),
             File.Exists,
-            IsExecutable)
+            IsExecutable,
+            passive: false)
     {
     }
 
@@ -25,20 +31,30 @@ public sealed class DotNetHostResolver : IDotNetHostResolver
             runner,
             static () => Environment.GetEnvironmentVariable("PATH"),
             File.Exists,
-            IsExecutable)
+            IsExecutable,
+            passive: false)
     {
     }
+
+    public static IDotNetHostResolver CreatePassive() => new DotNetHostResolver(
+        new ProcessRunner(),
+        static () => Environment.GetEnvironmentVariable("PATH"),
+        File.Exists,
+        IsExecutable,
+        passive: true);
 
     internal DotNetHostResolver(
         IProcessRunner runner,
         Func<string?> pathValue,
         Func<string, bool> fileExists,
-        Func<string, bool> isExecutable)
+        Func<string, bool> isExecutable,
+        bool passive = false)
     {
         _runner = runner ?? throw new ArgumentNullException(nameof(runner));
         _pathValue = pathValue ?? throw new ArgumentNullException(nameof(pathValue));
         _fileExists = fileExists ?? throw new ArgumentNullException(nameof(fileExists));
         _isExecutable = isExecutable ?? throw new ArgumentNullException(nameof(isExecutable));
+        _passive = passive;
     }
 
     public async ValueTask<DotNetHostResolution> ResolveAsync(
@@ -67,12 +83,55 @@ public sealed class DotNetHostResolver : IDotNetHostResolver
                     : "Select an executable official dotnet host path named dotnet (or dotnet.exe on Windows).");
         }
 
-        var sdkInfo = await RunAsync(
-                executablePath,
-                request.WorkspaceRoot,
-                ["--info"],
-                cancellationToken)
-            .ConfigureAwait(false);
+        ProcessRunResult sdkInfo;
+        if (_passive)
+        {
+            PassiveSdkProbeContext context;
+            try
+            {
+                context = await PassiveSdkProbeContext.CreateAsync(
+                        request.WorkspaceRoot,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            catch (Exception exception)
+                when (exception is ArgumentException
+                    or InvalidDataException
+                    or IOException
+                    or JsonException
+                    or NotSupportedException
+                    or PathTooLongException
+                    or TimeoutException
+                    or UnauthorizedAccessException)
+            {
+                return Failed(
+                    DotNetHostFailureReason.ProcessPolicyDenied,
+                    "sdk.probe_policy_denied",
+                    "Continue with built-in passive capabilities; the workspace SDK policy could not be isolated safely.",
+                    executablePath);
+            }
+
+            using (context)
+            {
+                sdkInfo = await RunAsync(
+                        executablePath,
+                        context.WorkingDirectory,
+                        ["--info"],
+                        cancellationToken,
+                        passive: true)
+                    .ConfigureAwait(false);
+            }
+        }
+        else
+        {
+            sdkInfo = await RunAsync(
+                    executablePath,
+                    request.WorkspaceRoot,
+                    ["--info"],
+                    cancellationToken,
+                    passive: false)
+                .ConfigureAwait(false);
+        }
         ThrowIfCancelled(sdkInfo, cancellationToken);
         cancellationToken.ThrowIfCancellationRequested();
         if (sdkInfo.Outcome is ProcessRunOutcome.StartFailed
@@ -290,20 +349,38 @@ public sealed class DotNetHostResolver : IDotNetHostResolver
 
     private async ValueTask<ProcessRunResult> RunAsync(
         string executablePath,
-        string workspaceRoot,
+        string workingDirectory,
         IReadOnlyList<string> arguments,
-        CancellationToken cancellationToken) =>
+        CancellationToken cancellationToken,
+        bool passive)
+    {
+        IReadOnlyDictionary<string, string> environment =
+            ChildProcessEnvironment.DotNetDefaults;
+        if (passive)
+        {
+            environment = new Dictionary<string, string>(
+                ChildProcessEnvironment.DotNetDefaults,
+                StringComparer.Ordinal)
+            {
+                ["DOTNET_MULTILEVEL_LOOKUP"] = "0",
+            };
+        }
+
+        return
         await _runner.RunAsync(
                 new ProcessRunRequest(
                     executablePath,
-                    workspaceRoot,
+                    workingDirectory,
                     arguments,
-                    ChildProcessEnvironment.DotNetDefaults,
+                    environment,
                     new ProcessOutputLimits(OutputLimit, OutputLimit),
                     CommandTimeout,
-                    ProcessEnvironmentPolicy.InheritParent),
+                    passive
+                        ? ProcessEnvironmentPolicy.Isolated
+                        : ProcessEnvironmentPolicy.InheritParent),
                 cancellationToken)
             .ConfigureAwait(false);
+    }
 
     private string? ResolvePathHost(
         string? pathValue,
@@ -437,6 +514,373 @@ public sealed class DotNetHostResolver : IDotNetHostResolver
         }
 
         return Path.GetFullPath(current);
+    }
+
+    private sealed class PassiveSdkProbeContext : IDisposable
+    {
+        private const long MaximumGlobalJsonBytes = 1024 * 1024;
+        private static readonly TimeSpan GlobalJsonReadTimeout =
+            TimeSpan.FromSeconds(2);
+
+        private PassiveSdkProbeContext(string workingDirectory)
+        {
+            WorkingDirectory = workingDirectory;
+        }
+
+        public string WorkingDirectory { get; }
+
+        public static async Task<PassiveSdkProbeContext> CreateAsync(
+            string workspaceRoot,
+            CancellationToken cancellationToken)
+        {
+            var workspace = Path.GetFullPath(workspaceRoot);
+            var temporaryRoot = Path.GetFullPath(Path.GetTempPath());
+            if (IsWithin(workspace, temporaryRoot)
+                || IsWithin(
+                    ResolvePhysicalPath(workspace),
+                    ResolvePhysicalPath(temporaryRoot)))
+            {
+                throw new UnauthorizedAccessException(
+                    "The passive SDK probe temporary root is workspace-controlled.");
+            }
+
+            var directory = Directory.CreateTempSubdirectory(
+                "dnaxi-sdk-probe-").FullName;
+            try
+            {
+                var globalJson = FindGlobalJson(workspace);
+                if (globalJson is not null)
+                {
+                    var content = await ReadGlobalJsonAsync(
+                            globalJson,
+                            cancellationToken)
+                        .ConfigureAwait(false);
+                    WriteSanitizedGlobalJson(
+                        content,
+                        Path.Combine(directory, "global.json"));
+                }
+
+                return new PassiveSdkProbeContext(directory);
+            }
+            catch
+            {
+                TryDelete(directory);
+                throw;
+            }
+        }
+
+        public void Dispose() => TryDelete(WorkingDirectory);
+
+        private static string? FindGlobalJson(string workspaceRoot)
+        {
+            for (var directory = new DirectoryInfo(workspaceRoot);
+                 directory is not null;
+                 directory = directory.Parent)
+            {
+                var candidate = Path.Combine(directory.FullName, "global.json");
+                if (File.Exists(candidate))
+                {
+                    return candidate;
+                }
+            }
+
+            return null;
+        }
+
+        private static async Task<ReadOnlyMemory<byte>> ReadGlobalJsonAsync(
+            string path,
+            CancellationToken cancellationToken)
+        {
+            using var timeout = CancellationTokenSource
+                .CreateLinkedTokenSource(cancellationToken);
+            timeout.CancelAfter(GlobalJsonReadTimeout);
+            try
+            {
+                await using var source = PassiveRegularFile.OpenRead(path);
+                if (source.Length > MaximumGlobalJsonBytes)
+                {
+                    throw new InvalidDataException(
+                        "global.json exceeds the passive SDK probe limit.");
+                }
+
+                var content = new byte[MaximumGlobalJsonBytes + 1];
+                var length = 0;
+                while (length < content.Length)
+                {
+                    var read = await source.ReadAsync(
+                            content.AsMemory(length),
+                            timeout.Token)
+                        .ConfigureAwait(false);
+                    if (read == 0)
+                    {
+                        break;
+                    }
+
+                    length += read;
+                }
+
+                if (length > MaximumGlobalJsonBytes)
+                {
+                    throw new InvalidDataException(
+                        "global.json exceeds the passive SDK probe limit.");
+                }
+
+                return content.AsMemory(0, length);
+            }
+            catch (OperationCanceledException)
+                when (!cancellationToken.IsCancellationRequested)
+            {
+                throw new TimeoutException(
+                    "The passive global.json read timed out.");
+            }
+        }
+
+        private static void WriteSanitizedGlobalJson(
+            ReadOnlyMemory<byte> sourceContent,
+            string destinationPath)
+        {
+            using var document = JsonDocument.Parse(
+                sourceContent,
+                new JsonDocumentOptions
+                {
+                    AllowTrailingCommas = true,
+                    CommentHandling = JsonCommentHandling.Skip,
+                    MaxDepth = 64,
+                });
+            using var destination = new FileStream(
+                destinationPath,
+                FileMode.CreateNew,
+                FileAccess.Write,
+                FileShare.None,
+                bufferSize: 4096,
+                FileOptions.WriteThrough);
+            using var writer = new Utf8JsonWriter(destination);
+            WriteSanitizedRoot(document.RootElement, writer);
+            writer.Flush();
+            destination.Flush(flushToDisk: true);
+        }
+
+        private static class PassiveRegularFile
+        {
+            private const uint FileTypeMask = 0xF000;
+            private const uint RegularFileType = 0x8000;
+            private const int StatBufferBytes = 256;
+
+            public static FileStream OpenRead(string path)
+            {
+                if (OperatingSystem.IsWindows())
+                {
+                    return OpenWindows(path);
+                }
+
+                if (!OperatingSystem.IsLinux()
+                    && !OperatingSystem.IsMacOS())
+                {
+                    throw new PlatformNotSupportedException(
+                        "Passive global.json reads require a supported regular-file check.");
+                }
+
+                var descriptor = NativeMethods.Open(
+                    path,
+                    OperatingSystem.IsMacOS()
+                        ? 0x01000104
+                        : 0x000A0800);
+                if (descriptor < 0)
+                {
+                    throw NativeIOException("open", path);
+                }
+
+                var handle = new SafeFileHandle(
+                    new IntPtr(descriptor),
+                    ownsHandle: true);
+                try
+                {
+                    RequireRegularPosixFile(handle, path);
+                    return new FileStream(
+                        handle,
+                        FileAccess.Read,
+                        bufferSize: 4096,
+                        isAsync: false);
+                }
+                catch
+                {
+                    handle.Dispose();
+                    throw;
+                }
+            }
+
+            private static FileStream OpenWindows(string path)
+            {
+                var attributes = File.GetAttributes(path);
+                if ((attributes & (
+                        FileAttributes.Device
+                        | FileAttributes.Directory
+                        | FileAttributes.ReparsePoint)) != 0)
+                {
+                    throw new NotSupportedException(
+                        "Passive global.json reads require a regular file.");
+                }
+
+                var stream = new FileStream(
+                    path,
+                    FileMode.Open,
+                    FileAccess.Read,
+                    FileShare.Read,
+                    bufferSize: 4096,
+                    FileOptions.Asynchronous
+                    | FileOptions.SequentialScan);
+                if (!stream.CanSeek)
+                {
+                    stream.Dispose();
+                    throw new NotSupportedException(
+                        "Passive global.json reads require a regular file.");
+                }
+
+                return stream;
+            }
+
+            private static void RequireRegularPosixFile(
+                SafeFileHandle handle,
+                string path)
+            {
+                var buffer = Marshal.AllocHGlobal(StatBufferBytes);
+                try
+                {
+                    var result = OperatingSystem.IsMacOS()
+                        ? NativeMethods.FStatDarwin(
+                            handle.DangerousGetHandle().ToInt32(),
+                            buffer)
+                        : NativeMethods.FStatLinux(
+                            handle.DangerousGetHandle().ToInt32(),
+                            buffer);
+                    if (result != 0)
+                    {
+                        throw NativeIOException("fstat", path);
+                    }
+
+                    var mode = ReadMode(buffer);
+                    if ((mode & FileTypeMask) != RegularFileType)
+                    {
+                        throw new NotSupportedException(
+                            "Passive global.json reads require a regular file.");
+                    }
+                }
+                finally
+                {
+                    Marshal.FreeHGlobal(buffer);
+                }
+            }
+
+            private static uint ReadMode(IntPtr statBuffer)
+            {
+                if (OperatingSystem.IsMacOS())
+                {
+                    return unchecked((ushort)Marshal.ReadInt16(
+                        statBuffer,
+                        ofs: 4));
+                }
+
+                var offset = RuntimeInformation.ProcessArchitecture switch
+                {
+                    Architecture.X64 => 24,
+                    Architecture.Arm64 => 16,
+                    _ => throw new PlatformNotSupportedException(
+                        "Passive global.json reads require a supported process architecture."),
+                };
+                return unchecked((uint)Marshal.ReadInt32(statBuffer, offset));
+            }
+
+            private static IOException NativeIOException(
+                string operation,
+                string path)
+            {
+                var error = Marshal.GetLastPInvokeError();
+                return new IOException(
+                    $"Could not {operation} passive global.json '{path}': "
+                    + new Win32Exception(error).Message);
+            }
+
+            private static class NativeMethods
+            {
+                [DllImport("libc", EntryPoint = "open", SetLastError = true)]
+                internal static extern int Open(
+                    [MarshalAs(UnmanagedType.LPUTF8Str)] string path,
+                    int flags);
+
+                [DllImport("libc", EntryPoint = "fstat", SetLastError = true)]
+                internal static extern int FStatLinux(
+                    int descriptor,
+                    IntPtr buffer);
+
+                [DllImport(
+                    "libc",
+                    EntryPoint = "fstat",
+                    SetLastError = true)]
+                internal static extern int FStatDarwin(
+                    int descriptor,
+                    IntPtr buffer);
+            }
+        }
+
+        private static void WriteSanitizedRoot(
+            JsonElement root,
+            Utf8JsonWriter writer)
+        {
+            if (root.ValueKind is not JsonValueKind.Object)
+            {
+                root.WriteTo(writer);
+                return;
+            }
+
+            writer.WriteStartObject();
+            foreach (var property in root.EnumerateObject())
+            {
+                WriteProperty(
+                    property,
+                    writer,
+                    property.NameEquals("sdk")
+                    && property.Value.ValueKind is JsonValueKind.Object);
+            }
+
+            writer.WriteEndObject();
+        }
+
+        private static void WriteProperty(
+            JsonProperty property,
+            Utf8JsonWriter writer,
+            bool removeSdkPaths)
+        {
+            writer.WritePropertyName(property.Name);
+            if (!removeSdkPaths)
+            {
+                property.Value.WriteTo(writer);
+                return;
+            }
+
+            writer.WriteStartObject();
+            foreach (var sdkProperty in property.Value.EnumerateObject())
+            {
+                if (!sdkProperty.NameEquals("paths"))
+                {
+                    sdkProperty.WriteTo(writer);
+                }
+            }
+
+            writer.WriteEndObject();
+        }
+
+        private static void TryDelete(string directory)
+        {
+            try
+            {
+                Directory.Delete(directory, recursive: true);
+            }
+            catch (Exception exception)
+                when (exception is IOException
+                    or UnauthorizedAccessException)
+            {
+            }
+        }
     }
 
     private static DotNetHostResolution Failed(

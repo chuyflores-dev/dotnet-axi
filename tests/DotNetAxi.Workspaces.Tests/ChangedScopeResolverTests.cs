@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using DotNetAxi.DotNet;
 using DotNetAxi.Testing;
 
 namespace DotNetAxi.Workspaces.Tests;
@@ -7,7 +8,8 @@ namespace DotNetAxi.Workspaces.Tests;
 public sealed class ChangedScopeResolverTests
 {
     private readonly WorkspaceDiscoverer _discoverer = new();
-    private readonly ChangedScopeResolver _resolver = new();
+    private readonly ChangedScopeResolver _resolver =
+        new(new ProcessRunner());
     private readonly RepositoryFixtureFactory _fixtures = new();
 
     [Fact]
@@ -252,6 +254,7 @@ public sealed class ChangedScopeResolverTests
             CatalogManifestPath("single-project"));
         var workspace = _discoverer.Discover(fixture.WorkspacePath);
         var resolver = new ChangedScopeResolver(
+            new ProcessRunner(),
             Path.Combine(fixture.WorkspacePath, "git-does-not-exist"));
 
         var error = await Assert.ThrowsAsync<
@@ -275,6 +278,7 @@ public sealed class ChangedScopeResolverTests
             "git-worktree");
         var workspace = _discoverer.Discover(fixture.WorkspacePath);
         var resolver = new ChangedScopeResolver(
+            new ProcessRunner(),
             Path.Combine(fixture.WorkspacePath, "git-does-not-exist"));
 
         var error = await Assert.ThrowsAsync<

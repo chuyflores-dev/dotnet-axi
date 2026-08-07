@@ -1,4 +1,5 @@
 using DotNetAxi.Contracts;
+using DotNetAxi.DotNet;
 using DotNetAxi.Search;
 using DotNetAxi.Workspaces;
 
@@ -46,7 +47,7 @@ internal sealed class TextSearchCommandHandler : ICommandHandler<TextSearchComma
     private readonly ChangedScopeResolver _changedScopeResolver;
 
     public TextSearchCommandHandler()
-        : this(ChangedScopeResolver.CreatePassive())
+        : this(ChangedScopeResolver.CreatePassive(new ProcessRunner()))
     {
     }
 
@@ -127,10 +128,11 @@ internal sealed class TextSearchCommandHandler : ICommandHandler<TextSearchComma
         var skippedDetailLimit = request.Full && includeSkipDetails
             ? int.MaxValue
             : 50;
+        var accelerator = new RgTextSearchAccelerator(new ProcessRunner());
         TextSearchResult result;
         if (request.Regex)
         {
-            result = await new RegexTextSearcher(scoped).SearchAsync(
+            result = await new RegexTextSearcher(scoped, accelerator).SearchAsync(
                 new RegexTextSearchRequest(
                     request.Query,
                     traversal,
@@ -142,7 +144,7 @@ internal sealed class TextSearchCommandHandler : ICommandHandler<TextSearchComma
         }
         else
         {
-            result = await new LiteralTextSearcher(scoped).SearchAsync(
+            result = await new LiteralTextSearcher(scoped, accelerator).SearchAsync(
                 new TextSearchRequest(
                     request.Query,
                     traversal,

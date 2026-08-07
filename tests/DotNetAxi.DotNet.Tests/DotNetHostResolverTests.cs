@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using DotNetAxi.Contracts;
 
 namespace DotNetAxi.DotNet.Tests;
@@ -174,6 +175,100 @@ public sealed class DotNetHostResolverTests
         Assert.True(result.IsResolved);
         Assert.Equal(Path.GetFullPath(sdkPath), result.Sdk?.SdkPath);
         Assert.Single(fixture.Runner.Requests);
+    }
+
+    [Fact]
+    public async Task Passive_probe_removes_workspace_sdk_paths_before_starting_dotnet()
+    {
+        using var fixture = new HostFixture(
+            """
+            {
+              "sdk": {
+                "version": "10.0.302",
+                "rollForward": "latestPatch",
+                "paths": [".dotnet"]
+              }
+            }
+            """);
+        var externalSdk = Path.Combine(
+            fixture.ToolsRoot,
+            "sdk",
+            "10.0.302");
+        var resolver = fixture.PassiveResolver(
+            fixture.ToolsRoot,
+            [
+                fixture.HostPath,
+                Path.Combine(externalSdk, "Microsoft.Build.dll"),
+            ],
+            Completed(Info("10.0.302", externalSdk)));
+        string? probeDirectory = null;
+        string? sanitizedGlobalJson = null;
+        fixture.Runner.RequestInspector = request =>
+        {
+            probeDirectory = request.WorkingDirectory;
+            sanitizedGlobalJson = File.ReadAllText(
+                Path.Combine(request.WorkingDirectory, "global.json"));
+        };
+
+        var result = await resolver.ResolveAsync(
+            new DotNetHostResolutionRequest(fixture.Root));
+
+        Assert.True(result.IsResolved);
+        Assert.NotNull(probeDirectory);
+        Assert.NotEqual(fixture.Root, probeDirectory);
+        Assert.False(Directory.Exists(probeDirectory));
+        Assert.Contains("10.0.302", sanitizedGlobalJson);
+        Assert.Contains("latestPatch", sanitizedGlobalJson);
+        Assert.DoesNotContain("paths", sanitizedGlobalJson);
+        var request = Assert.Single(fixture.Runner.Requests);
+        Assert.Equal(
+            ProcessEnvironmentPolicy.Isolated,
+            request.EnvironmentPolicy);
+        Assert.Equal("0", request.Environment["DOTNET_MULTILEVEL_LOOKUP"]);
+    }
+
+    [Fact]
+    public async Task Passive_probe_rejects_a_non_regular_global_json_without_blocking()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        using var fixture = new HostFixture();
+        var globalJson = Path.Combine(fixture.Root, "global.json");
+        Assert.Equal(0, MakeFifo(globalJson, 0x180));
+        var resolver = fixture.PassiveResolver(
+            fixture.ToolsRoot,
+            [fixture.HostPath]);
+
+        var result = await resolver.ResolveAsync(
+                new DotNetHostResolutionRequest(fixture.Root))
+            .AsTask()
+            .WaitAsync(TimeSpan.FromSeconds(2));
+
+        Assert.Equal(
+            DotNetHostFailureReason.ProcessPolicyDenied,
+            result.Failure?.Reason);
+        Assert.Empty(fixture.Runner.Requests);
+    }
+
+    [Fact]
+    public async Task Passive_probe_rejects_an_oversized_global_json_as_policy_denied()
+    {
+        using var fixture = new HostFixture(
+            new string(' ', (1024 * 1024) + 1));
+        var resolver = fixture.PassiveResolver(
+            fixture.ToolsRoot,
+            [fixture.HostPath]);
+
+        var result = await resolver.ResolveAsync(
+            new DotNetHostResolutionRequest(fixture.Root));
+
+        Assert.Equal(
+            DotNetHostFailureReason.ProcessPolicyDenied,
+            result.Failure?.Reason);
+        Assert.Empty(fixture.Runner.Requests);
     }
 
     [Fact]
@@ -521,6 +616,11 @@ public sealed class DotNetHostResolverTests
             new ProcessCapturedOutput(string.Empty, limitExceeded: false),
             TimeSpan.Zero);
 
+    [DllImport("libc", EntryPoint = "mkfifo", SetLastError = true)]
+    private static extern int MakeFifo(
+        [MarshalAs(UnmanagedType.LPUTF8Str)] string path,
+        uint mode);
+
     private static string Info(string version, string sdkPath) =>
         $"""
         .NET SDK:
@@ -563,6 +663,27 @@ public sealed class DotNetHostResolverTests
             string? pathValue,
             IEnumerable<string> existingPaths,
             params ProcessRunResult[] results)
+            => CreateResolver(
+                pathValue,
+                existingPaths,
+                passive: false,
+                results);
+
+        public DotNetHostResolver PassiveResolver(
+            string? pathValue,
+            IEnumerable<string> existingPaths,
+            params ProcessRunResult[] results)
+            => CreateResolver(
+                pathValue,
+                existingPaths,
+                passive: true,
+                results);
+
+        private DotNetHostResolver CreateResolver(
+            string? pathValue,
+            IEnumerable<string> existingPaths,
+            bool passive,
+            params ProcessRunResult[] results)
         {
             _existingPaths.Clear();
             foreach (var path in existingPaths)
@@ -575,7 +696,8 @@ public sealed class DotNetHostResolverTests
                 Runner,
                 () => pathValue,
                 path => _existingPaths.Contains(Path.GetFullPath(path)),
-                static _ => true);
+                static _ => true,
+                passive);
         }
 
         public void Dispose()
@@ -595,6 +717,8 @@ public sealed class DotNetHostResolverTests
 
         public List<ProcessRunRequest> Requests { get; } = [];
 
+        public Action<ProcessRunRequest>? RequestInspector { get; set; }
+
         public void SetResults(IEnumerable<ProcessRunResult> results)
         {
             _results.Clear();
@@ -609,6 +733,7 @@ public sealed class DotNetHostResolverTests
             ProcessRunRequest request,
             CancellationToken cancellationToken)
         {
+            RequestInspector?.Invoke(request);
             Requests.Add(request);
             return ValueTask.FromResult(_results.Dequeue());
         }

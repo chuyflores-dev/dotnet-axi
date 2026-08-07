@@ -4,8 +4,16 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
 
-if (Environment.GetEnvironmentVariable(
-        "DNAXI_OPTIONAL_DEPENDENCY_SHIM") == "1")
+if (args.SequenceEqual(["--info"])
+    && Path.GetFileNameWithoutExtension(Environment.ProcessPath) == "dotnet")
+{
+    File.WriteAllText(
+        Path.Combine(AppContext.BaseDirectory, "workspace-sdk.executed"),
+        "executed");
+    return 97;
+}
+
+if (IsOptionalDependencyShim())
 {
     return OptionalDependencyShim(args);
 }
@@ -37,14 +45,20 @@ static int OptionalDependencyShim(IReadOnlyList<string> values)
         return 64;
     }
 
-    var prefix = $"DNAXI_OPTIONAL_DEPENDENCY_{command.ToUpperInvariant()}";
-    var marker = Environment.GetEnvironmentVariable($"{prefix}_MARKER");
-    if (!string.IsNullOrWhiteSpace(marker))
+    var directory = AppContext.BaseDirectory;
+    var markerPathFile = Path.Combine(directory, $"{command}.marker-path");
+    if (File.Exists(markerPathFile))
     {
-        File.WriteAllText(marker, "invoked");
+        var marker = File.ReadAllText(markerPathFile);
+        File.AppendAllText(
+            marker,
+            JsonSerializer.Serialize(values) + Environment.NewLine);
     }
 
-    var version = Environment.GetEnvironmentVariable($"{prefix}_VERSION");
+    var versionPath = Path.Combine(directory, $"{command}.version");
+    var version = File.Exists(versionPath)
+        ? File.ReadAllText(versionPath)
+        : null;
     if (values.Count == 1
         && values[0] == "--version"
         && !string.IsNullOrWhiteSpace(version))
@@ -54,12 +68,21 @@ static int OptionalDependencyShim(IReadOnlyList<string> values)
     }
 
     return int.TryParse(
-        Environment.GetEnvironmentVariable($"{prefix}_EXIT_CODE"),
+        File.ReadAllText(Path.Combine(directory, $"{command}.exit-code")),
         NumberStyles.Integer,
         CultureInfo.InvariantCulture,
         out var exitCode)
             ? exitCode
             : 74;
+}
+
+static bool IsOptionalDependencyShim()
+{
+    var command = Path.GetFileNameWithoutExtension(Environment.ProcessPath);
+    return command is "git" or "rg"
+        && File.Exists(Path.Combine(
+            AppContext.BaseDirectory,
+            $"{command}.exit-code"));
 }
 
 static int CodexDiscoveryProbe(IReadOnlyList<string> values)

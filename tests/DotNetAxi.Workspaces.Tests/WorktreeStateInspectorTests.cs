@@ -1,4 +1,6 @@
 using System.Diagnostics;
+using DotNetAxi.Contracts;
+using DotNetAxi.DotNet;
 using DotNetAxi.Testing;
 
 namespace DotNetAxi.Workspaces.Tests;
@@ -15,8 +17,146 @@ public sealed class EnvironmentSensitiveWorktreeCollection
 public sealed class WorktreeStateInspectorTests
 {
     private readonly WorkspaceDiscoverer _discoverer = new();
-    private readonly WorktreeStateInspector _inspector = new();
+    private readonly WorktreeStateInspector _inspector =
+        WorktreeStateInspector.CreatePassive(new ProcessRunner());
     private readonly RepositoryFixtureFactory _fixtures = new();
+
+    [Fact]
+    public void Passive_git_resolution_ignores_relative_entries_and_rejects_workspace_shadowing()
+    {
+        var root = Path.Combine(
+            Path.GetTempPath(),
+            $"dnaxi-git-trust-{Guid.NewGuid():N}");
+        var workspace = Path.Combine(root, "workspace");
+        var workspaceTools = Path.Combine(workspace, "tools");
+        var externalTools = Path.Combine(root, "external-tools");
+        var executableName = OperatingSystem.IsWindows() ? "git.exe" : "git";
+        var workspaceGit = Path.Combine(workspaceTools, executableName);
+        var externalGit = Path.Combine(externalTools, executableName);
+        Directory.CreateDirectory(workspaceTools);
+        Directory.CreateDirectory(externalTools);
+        File.WriteAllText(workspaceGit, "workspace-controlled");
+        File.WriteAllText(externalGit, "external");
+        if (!OperatingSystem.IsWindows())
+        {
+            const UnixFileMode executableMode = UnixFileMode.UserRead
+                | UnixFileMode.UserWrite
+                | UnixFileMode.UserExecute;
+            File.SetUnixFileMode(workspaceGit, executableMode);
+            File.SetUnixFileMode(externalGit, executableMode);
+        }
+
+        var pathValue = string.Join(
+            Path.PathSeparator,
+            "relative-tools",
+            workspaceTools,
+            externalTools);
+
+        try
+        {
+            var shadowed =
+                SafePassiveGitBoundary.ResolveExecutable(
+                    "git",
+                    workspace,
+                    pathValue);
+            var trusted =
+                SafePassiveGitBoundary.ResolveExecutable(
+                    "git",
+                    workspace,
+                    externalTools);
+
+            Assert.Equal(
+                PassiveGitExecutableTrust.WorkspaceControlled,
+                shadowed.Trust);
+            Assert.Null(shadowed.Path);
+            Assert.Equal(PassiveGitExecutableTrust.Trusted, trusted.Trust);
+            Assert.Equal(externalGit, trusted.Path);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Passive_git_resolution_rejects_an_external_symlink_to_workspace_git()
+    {
+        var root = Path.Combine(
+            Path.GetTempPath(),
+            $"dnaxi-git-link-{Guid.NewGuid():N}");
+        var workspace = Path.Combine(root, "workspace");
+        var tools = Path.Combine(root, "tools");
+        Directory.CreateDirectory(workspace);
+        Directory.CreateDirectory(tools);
+        var executableName = OperatingSystem.IsWindows() ? "git.exe" : "git";
+        var workspaceGit = Path.Combine(workspace, executableName);
+        var linkedGit = Path.Combine(tools, executableName);
+        File.WriteAllText(workspaceGit, "workspace-controlled");
+        if (!OperatingSystem.IsWindows())
+        {
+            File.SetUnixFileMode(
+                workspaceGit,
+                UnixFileMode.UserRead
+                    | UnixFileMode.UserWrite
+                    | UnixFileMode.UserExecute);
+        }
+
+        try
+        {
+            try
+            {
+                File.CreateSymbolicLink(linkedGit, workspaceGit);
+            }
+            catch (Exception exception)
+                when (exception is IOException
+                    or UnauthorizedAccessException
+                    or PlatformNotSupportedException)
+            {
+                return;
+            }
+
+            var resolution =
+                SafePassiveGitBoundary.ResolveExecutable(
+                    "git",
+                    workspace,
+                    tools);
+
+            Assert.Equal(
+                PassiveGitExecutableTrust.WorkspaceControlled,
+                resolution.Trust);
+            Assert.Null(resolution.Path);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task Passive_git_boundary_rejects_unapproved_commands_without_delegating()
+    {
+        var runner = new StubProcessRunner();
+        var inspector = new WorktreeStateInspector(
+            "git",
+            processTimeout: null,
+            runner,
+            resolveExecutable: true,
+            enforcePassiveBoundary: true);
+
+        var result = await inspector.RunGitAsync(
+            Path.GetFullPath(Path.GetTempPath()),
+            ["fetch", "origin"],
+            CancellationToken.None);
+
+        Assert.Equal(
+            WorktreeInspectionFailureKind.ProcessPolicyDenied,
+            result.Failure?.Kind);
+        Assert.Empty(runner.Requests);
+        Assert.False(SafePassiveGitBoundary.IsAllowedArguments(
+            ["commit", "--all"]));
+        Assert.False(SafePassiveGitBoundary.IsAllowedArguments(
+            ["-c", "alias.status=!payload", "status"]));
+    }
 
     [Fact]
     public async Task Mixed_worktree_state_is_typed_and_deterministically_ordered()
@@ -162,6 +302,7 @@ public sealed class WorktreeStateInspectorTests
             CatalogManifestPath("single-project"));
         var workspace = _discoverer.Discover(fixture.WorkspacePath);
         var inspector = new WorktreeStateInspector(
+            new ProcessRunner(),
             Path.Combine(fixture.WorkspacePath, "git-does-not-exist"));
 
         var result = await inspector.InspectAsync(workspace);
@@ -178,6 +319,7 @@ public sealed class WorktreeStateInspectorTests
         await using var fixture = await GitFixtureAsync("git-worktree");
         var workspace = _discoverer.Discover(fixture.WorkspacePath);
         var inspector = new WorktreeStateInspector(
+            new ProcessRunner(),
             Path.Combine(fixture.WorkspacePath, "git-does-not-exist"));
 
         var result = await inspector.InspectAsync(workspace);
@@ -281,21 +423,26 @@ public sealed class WorktreeStateInspectorTests
     {
         await using var fixture = await GitFixtureAsync("git-worktree");
         var workspace = _discoverer.Discover(fixture.WorkspacePath);
-        var processFactory = SuccessfulProcessFactory();
+        var processRunner = SuccessfulProcessRunner();
         var inspector = new WorktreeStateInspector(
             "fake-git",
             processTimeout: null,
-            processFactory);
+            processRunner);
 
         var result = await inspector.InspectAsync(workspace);
 
         Assert.Equal(WorktreeInspectionOutcome.Available, result.Outcome);
-        Assert.Equal(3, processFactory.StartInfos.Count);
+        Assert.Equal(3, processRunner.Requests.Count);
         Assert.All(
-            processFactory.StartInfos,
-            static startInfo => Assert.Equal(
+            processRunner.Requests,
+            static request => Assert.Equal(
                 "1",
-                startInfo.Environment["GIT_NO_LAZY_FETCH"]));
+                request.Environment["GIT_NO_LAZY_FETCH"]));
+        Assert.All(
+            processRunner.Requests,
+            static request => Assert.Equal(
+                ProcessEnvironmentPolicy.Isolated,
+                request.EnvironmentPolicy));
     }
 
     [Theory]
@@ -470,34 +617,32 @@ public sealed class WorktreeStateInspectorTests
     }
 
     [Fact]
-    public async Task Timeout_bounds_output_drain_after_process_exit()
+    public async Task Timeout_is_typed_and_uses_a_bounded_process_request()
     {
         await using var fixture = await GitFixtureAsync("git-worktree");
         var workspace = _discoverer.Discover(fixture.WorkspacePath);
-        var inheritedOutput = FakeGitProcess.WithInheritedStandardOutput();
-        var processFactory = new FakeGitProcessFactory(
-            FakeGitProcess.Completed(exitCode: 1),
-            inheritedOutput);
+        var processRunner = new StubProcessRunner(
+            Completed(exitCode: 1),
+            TimedOut());
         var inspector = new WorktreeStateInspector(
             "fake-git",
             TimeSpan.FromMilliseconds(100),
-            processFactory);
-        var stopwatch = Stopwatch.StartNew();
+            processRunner);
 
-        var result = await inspector
-            .InspectAsync(workspace)
-            .WaitAsync(TimeSpan.FromSeconds(3));
+        var result = await inspector.InspectAsync(workspace);
 
-        stopwatch.Stop();
         Assert.Equal(WorktreeInspectionOutcome.Failed, result.Outcome);
         Assert.Equal(
             WorktreeInspectionFailureKind.GitProcessTimedOut,
             Assert.IsType<WorktreeInspectionFailure>(result.Failure).Kind);
-        Assert.True(inheritedOutput.HasExited);
-        Assert.False(inheritedOutput.KillCalled);
-        Assert.True(
-            stopwatch.Elapsed < TimeSpan.FromSeconds(2),
-            $"Inspection took {stopwatch.Elapsed}.");
+        var request = Assert.Single(processRunner.Requests.Skip(1));
+        Assert.Equal(TimeSpan.FromMilliseconds(100), request.Timeout);
+        Assert.Equal(
+            16 * 1024 * 1024,
+            request.OutputLimits.StandardOutputCharacters);
+        Assert.Equal(
+            16 * 1024 * 1024,
+            request.OutputLimits.StandardErrorCharacters);
     }
 
     [Fact]
@@ -509,11 +654,11 @@ public sealed class WorktreeStateInspectorTests
             "# branch.oid 0123456789012345678901234567890123456789\0",
             "# branch.head main\0",
             "# future.extension supported\0");
-        var processFactory = SuccessfulProcessFactory(status);
+        var processRunner = SuccessfulProcessRunner(status);
         var inspector = new WorktreeStateInspector(
             "fake-git",
             processTimeout: null,
-            processFactory);
+            processRunner);
 
         var result = await inspector.InspectAsync(workspace);
 
@@ -555,19 +700,49 @@ public sealed class WorktreeStateInspectorTests
             fixtureName,
             "fixture.json");
 
-    private static FakeGitProcessFactory SuccessfulProcessFactory(
+    private static StubProcessRunner SuccessfulProcessRunner(
         string? status = null) =>
         new(
-            FakeGitProcess.Completed(exitCode: 1),
-            FakeGitProcess.Completed(
+            Completed(exitCode: 1),
+            Completed(
                 exitCode: 0,
                 standardOutput: status ?? string.Concat(
                     "# branch.oid ",
                     "0123456789012345678901234567890123456789\0",
                     "# branch.head main\0")),
-            FakeGitProcess.Completed(
+            Completed(
                 exitCode: 0,
                 standardOutput: "src/File.cs\0"));
+
+    private static ProcessRunResult Completed(
+        int exitCode,
+        string standardOutput = "") =>
+        new(
+            ProcessLifecycle.Completed,
+            ProcessRunOutcome.Completed,
+            ProcessStartFailure.None,
+            new ProcessExitEvidence(exitCode, signal: null),
+            new ProcessCapturedOutput(
+                standardOutput,
+                limitExceeded: false),
+            new ProcessCapturedOutput(
+                string.Empty,
+                limitExceeded: false),
+            TimeSpan.Zero);
+
+    private static ProcessRunResult TimedOut() =>
+        new(
+            ProcessLifecycle.Terminated,
+            ProcessRunOutcome.TimedOut,
+            ProcessStartFailure.None,
+            new ProcessExitEvidence(exitCode: 143, signal: null),
+            new ProcessCapturedOutput(
+                string.Empty,
+                limitExceeded: false),
+            new ProcessCapturedOutput(
+                string.Empty,
+                limitExceeded: false),
+            TimeSpan.FromMilliseconds(100));
 
     private static async Task RunGitAsync(
         RepositoryFixture fixture,
@@ -593,83 +768,20 @@ public sealed class WorktreeStateInspectorTests
             $"Git failed.\n{await standardOutput}\n{await standardError}");
     }
 
-    private sealed class FakeGitProcessFactory : IWorktreeGitProcessFactory
+    private sealed class StubProcessRunner(
+        params ProcessRunResult[] results) : IProcessRunner
     {
-        private readonly Queue<IWorktreeGitProcess> _processes;
+        private readonly Queue<ProcessRunResult> _results = new(results);
 
-        public FakeGitProcessFactory(params IWorktreeGitProcess[] processes)
+        public List<ProcessRunRequest> Requests { get; } = [];
+
+        public ValueTask<ProcessRunResult> RunAsync(
+            ProcessRunRequest request,
+            CancellationToken cancellationToken)
         {
-            _processes = new Queue<IWorktreeGitProcess>(processes);
-        }
-
-        public List<ProcessStartInfo> StartInfos { get; } = [];
-
-        public IWorktreeGitProcess Create(ProcessStartInfo startInfo)
-        {
-            StartInfos.Add(startInfo);
-            return _processes.Dequeue();
-        }
-    }
-
-    private sealed class FakeGitProcess : IWorktreeGitProcess
-    {
-        private readonly int _exitCode;
-        private readonly Task<string> _standardOutput;
-        private readonly Task<string> _standardError;
-
-        private FakeGitProcess(
-            int exitCode,
-            Task<string> standardOutput,
-            Task<string> standardError)
-        {
-            _exitCode = exitCode;
-            _standardOutput = standardOutput;
-            _standardError = standardError;
-        }
-
-        public bool HasExited { get; private init; } = true;
-
-        public int ExitCode => _exitCode;
-
-        public bool KillCalled { get; private set; }
-
-        public static FakeGitProcess Completed(
-            int exitCode,
-            string standardOutput = "",
-            string standardError = "") =>
-            new(
-                exitCode,
-                Task.FromResult(standardOutput),
-                Task.FromResult(standardError));
-
-        public static FakeGitProcess WithInheritedStandardOutput() =>
-            new(
-                exitCode: 0,
-                new TaskCompletionSource<string>(
-                    TaskCreationOptions.RunContinuationsAsynchronously).Task,
-                Task.FromResult(string.Empty));
-
-        public bool Start() => true;
-
-        public void CloseStandardInput()
-        {
-        }
-
-        public Task<string> ReadStandardOutputToEndAsync(
-            CancellationToken cancellationToken) =>
-            _standardOutput;
-
-        public Task<string> ReadStandardErrorToEndAsync(
-            CancellationToken cancellationToken) =>
-            _standardError;
-
-        public Task WaitForExitAsync(CancellationToken cancellationToken) =>
-            Task.CompletedTask;
-
-        public void Kill(bool entireProcessTree) => KillCalled = true;
-
-        public void Dispose()
-        {
+            cancellationToken.ThrowIfCancellationRequested();
+            Requests.Add(request);
+            return ValueTask.FromResult(_results.Dequeue());
         }
     }
 }

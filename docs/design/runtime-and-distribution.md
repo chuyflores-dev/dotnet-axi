@@ -166,11 +166,18 @@ Product telemetry is disabled by default. Child `dotnet` processes opt out of
 .NET CLI telemetry. Any future explicit telemetry opt-in describes fields and
 destinations and excludes source, paths, symbols, arguments, and transcripts.
 
-The passive CLI composition cannot start child processes. Optional capability
-probes and Git inspection receive rejecting process guards, text search uses
-the built-in engine, and a process-dependent selector returns a typed policy
-denial with a non-executing correction. Missing tools or assets never broaden
-the operation into process or network access.
+The passive CLI composition may start only product-owned, read-only command
+shapes for trusted `dotnet`, Git, and `rg` executables. Resolution ignores
+relative PATH entries and rejects executables lexically or physically
+controlled by the workspace. These commands use argument-list invocation,
+isolated environments, invalid-output rejection, bounded output and time, owned
+process-tree containment, and no shell. The Git boundary admits only the fixed
+inspection shapes used by worktree and changed-scope discovery. A passive SDK
+probe reads the nearest regular-file `global.json` under cancellation, timeout,
+and a 1 MiB hard cap, then copies it into task-scoped temporary storage while
+removing `sdk.paths`, so repository-provided SDK assemblies cannot load.
+Missing tools or assets never broaden the operation into repository-code
+execution or network access.
 
 ### Process and secret safety
 
@@ -226,11 +233,12 @@ analyzers, source generators, templates, tools, workloads, or package scripts
 are classified as executing. The home view, setup hook, file/text/syntax
 search, and passive project catalog never trigger repository-code execution.
 
-Passive command handlers are composed without executing dependencies. Where a
-shared service requires a process-shaped interface, the composition supplies a
-guard that returns typed not-started evidence and never delegates to the
-operating system. Passive commands do not substitute restore, project
-evaluation, analyzers, or generators when coverage inputs are unavailable.
+Passive command handlers are composed without repository-executing
+dependencies. Guarded process boundaries admit only the exact passive probe,
+Git-inspection, and optional-acceleration commands documented above and return
+typed not-started evidence for untrusted executables. Passive commands do not
+substitute restore, project evaluation, analyzers, or generators when coverage
+inputs are unavailable.
 
 Executing commands run with the caller's operating-system permissions and say
 they are not a security sandbox unless an enforced sandbox is active.
@@ -332,9 +340,12 @@ credential boundary.
 Self-update behavior is not fixed by the MVP design; normal .NET tool update
 mechanisms remain sufficient.
 
-The tool respects repository `global.json`, including roll-forward and
-prerelease policy, and the selected SDK/MSBuild context. It uses the official
-PATH-resolved `dotnet` unless the user selects another supported host path.
+Executing SDK selection respects repository `global.json`, including
+roll-forward, prerelease, and explicit SDK-path policy. Passive capability
+reporting preserves version, roll-forward, and prerelease selection in an
+owned sanitized context but omits repository-provided `sdk.paths`. Both use the
+official PATH-resolved `dotnet` unless the user selects another supported host
+path.
 
 ### Required and optional dependencies
 

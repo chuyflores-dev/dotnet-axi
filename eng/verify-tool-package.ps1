@@ -606,7 +606,16 @@ function New-OptionalDependencyShim {
         [string] $Command,
 
         [Parameter(Mandatory)]
-        [string] $ApplicationDirectory
+        [string] $ApplicationDirectory,
+
+        [Parameter(Mandatory)]
+        [string] $Marker,
+
+        [AllowNull()]
+        [string] $Version,
+
+        [Parameter(Mandatory)]
+        [int] $ExitCode
     )
 
     [System.IO.Directory]::CreateDirectory($Directory) | Out-Null
@@ -654,6 +663,22 @@ function New-OptionalDependencyShim {
             [System.IO.UnixFileMode]::OtherRead -bor
             [System.IO.UnixFileMode]::OtherExecute
         [System.IO.File]::SetUnixFileMode($path, $mode)
+    }
+
+    [System.IO.File]::WriteAllText(
+        [System.IO.Path]::Combine($Directory, "$Command.marker-path"),
+        $Marker)
+    [System.IO.File]::WriteAllText(
+        [System.IO.Path]::Combine($Directory, "$Command.exit-code"),
+        [string] $ExitCode)
+    $versionPath = [System.IO.Path]::Combine(
+        $Directory,
+        "$Command.version")
+    if ([string]::IsNullOrWhiteSpace($Version)) {
+        [System.IO.File]::Delete($versionPath)
+    }
+    else {
+        [System.IO.File]::WriteAllText($versionPath, $Version)
     }
 
     return $path
@@ -735,7 +760,14 @@ function Assert-OptionalDependencyScenarios {
             New-OptionalDependencyShim `
                 -Directory $definition.Directory `
                 -Command $command `
-                -ApplicationDirectory $ShimApplicationDirectory | Out-Null
+                -ApplicationDirectory $ShimApplicationDirectory `
+                -Marker $marker `
+                -Version $(if ($command -eq "git") {
+                    $definition.GitVersion
+                } else {
+                    $definition.RgVersion
+                }) `
+                -ExitCode $definition.ExitCode | Out-Null
             $markers += $marker
         }
 
@@ -901,10 +933,51 @@ function Assert-OptionalDependencyScenarios {
             throw "$($scenario.Name) Git-only capability error wrote stderr."
         }
 
-        foreach ($marker in $scenario.Markers) {
-            if (Test-Path -LiteralPath $marker) {
-                throw "$($scenario.Name) non-Git discovery executed optional command marker '$marker'."
+        $gitMarker = [System.IO.Path]::Combine(
+            $markerDirectory,
+            "$($scenario.Name)-git")
+        if (Test-Path -LiteralPath $gitMarker) {
+            throw "$($scenario.Name) non-Git discovery executed Git marker '$gitMarker'."
+        }
+
+        $rgMarker = [System.IO.Path]::Combine(
+            $markerDirectory,
+            "$($scenario.Name)-rg")
+        $expectsRgProbe = $scenario.Name -in @(
+            "present",
+            "incompatible",
+            "failing")
+        if ($expectsRgProbe) {
+            if (-not (Test-Path -LiteralPath $rgMarker)) {
+                throw "$($scenario.Name) text discovery did not probe trusted rg."
             }
+
+            $rgInvocations = @(
+                [System.IO.File]::ReadAllLines($rgMarker) |
+                    Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+            )
+            if (-not ($rgInvocations -contains '["--version"]')) {
+                throw "$($scenario.Name) text discovery did not run the bounded rg version probe."
+            }
+
+            $rgSearches = @(
+                $rgInvocations |
+                    Where-Object { $_ -ne '["--version"]' }
+            )
+            if ($scenario.Name -eq "present") {
+                if ($rgSearches.Count -eq 0 -or
+                    -not ($rgSearches | Where-Object {
+                        $_.Contains('"--files-with-matches"')
+                    })) {
+                    throw "present text discovery did not run the bounded rg accelerator."
+                }
+            }
+            elseif ($rgSearches.Count -ne 0) {
+                throw "$($scenario.Name) text discovery ran rg after an untrusted version result."
+            }
+        }
+        elseif (Test-Path -LiteralPath $rgMarker) {
+            throw "$($scenario.Name) discovery executed untrusted rg marker '$rgMarker'."
         }
     }
 }

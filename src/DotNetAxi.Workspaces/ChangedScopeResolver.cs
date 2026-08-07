@@ -1,3 +1,5 @@
+using DotNetAxi.Contracts;
+
 namespace DotNetAxi.Workspaces;
 
 public sealed class ChangedScopeResolver
@@ -5,14 +7,19 @@ public sealed class ChangedScopeResolver
     private readonly WorktreeStateInspector _worktreeInspector;
 
     public ChangedScopeResolver(
+        IProcessRunner processRunner,
         string gitExecutable = "git",
         TimeSpan? processTimeout = null)
-        : this(new WorktreeStateInspector(gitExecutable, processTimeout))
+        : this(new WorktreeStateInspector(
+            processRunner,
+            gitExecutable,
+            processTimeout))
     {
     }
 
-    public static ChangedScopeResolver CreatePassive() =>
-        new(WorktreeStateInspector.CreatePassive());
+    public static ChangedScopeResolver CreatePassive(
+        IProcessRunner processRunner) =>
+        new(WorktreeStateInspector.CreatePassive(processRunner));
 
     internal ChangedScopeResolver(
         WorktreeStateInspector worktreeInspector)

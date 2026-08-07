@@ -1,49 +1,28 @@
 using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
-using DotNetAxi.Contracts;
 
 namespace DotNetAxi.Cli.Tests;
 
 public sealed class PassiveOperationBoundaryTests
 {
     [Fact]
-    public async Task Passive_process_guard_returns_typed_denial_without_starting()
-    {
-        var root = Path.GetFullPath(Path.GetTempPath());
-        var request = new ProcessRunRequest(
-            Path.Combine(root, OperatingSystem.IsWindows() ? "tool.exe" : "tool"),
-            root,
-            ["--version"],
-            new Dictionary<string, string>(),
-            new ProcessOutputLimits(1, 1),
-            TimeSpan.FromSeconds(1));
-
-        var result = await PassiveProcessRunner.Instance.RunAsync(
-            request,
-            CancellationToken.None);
-
-        Assert.Equal(ProcessLifecycle.NotStarted, result.Lifecycle);
-        Assert.Equal(ProcessRunOutcome.StartFailed, result.Outcome);
-        Assert.Equal(ProcessStartFailure.PolicyDenied, result.StartFailure);
-        Assert.Null(result.Exit);
-        Assert.Equal(string.Empty, result.StandardOutput.Text);
-        Assert.Equal(string.Empty, result.StandardError.Text);
-    }
-
-    [Fact]
-    public async Task Representative_passive_commands_start_no_dependency_and_write_no_source()
+    public async Task Representative_passive_commands_reject_workspace_tools_and_have_no_forbidden_effects()
     {
         var root = Path.Combine(
             Path.GetTempPath(),
             $"dnaxi-passive-boundary-{Guid.NewGuid():N}");
         var workspace = Path.Combine(root, "workspace");
-        var tools = Path.Combine(root, "tools");
+        var tools = Path.Combine(workspace, "tools");
         var processMarker = Path.Combine(root, "dependency.started");
         await using var networkMonitor = new NetworkAttemptMonitor();
         Directory.CreateDirectory(workspace);
         PrepareGitMarker(workspace);
         PrepareSentinelTools(tools);
+        var workspaceSdkMarker = PrepareWorkspaceSdk(workspace);
+        await AssertWorkspaceSdkSentinelAsync(workspace, workspaceSdkMarker);
+        File.Delete(workspaceSdkMarker);
+        RemoveWorkspaceSdkRuntimeLink(workspace);
         await File.WriteAllTextAsync(
             Path.Combine(workspace, "App.csproj"),
             $"""
@@ -74,6 +53,7 @@ public sealed class PassiveOperationBoundaryTests
                 new[] { "--version" },
                 new[] { "search", "file", "Program" },
                 new[] { "search", "text", "needle" },
+                new[] { "search", "text", "needle", "--case-sensitive" },
                 new[] { "search", "syntax", "invocation", "--name", "WriteLine" },
             };
             foreach (var command in commands)
@@ -88,15 +68,10 @@ public sealed class PassiveOperationBoundaryTests
                 Assert.Equal(0, result.ExitCode);
                 Assert.Equal(string.Empty, result.StandardError);
                 Assert.Contains("status: success\n", result.StandardOutput);
-                if (command.Length == 0 || command[0] is "--version")
-                {
-                    Assert.Contains(
-                        "probe: policy_denied",
-                        result.StandardOutput);
-                }
             }
 
             Assert.False(File.Exists(processMarker));
+            Assert.False(File.Exists(workspaceSdkMarker));
             Assert.False(networkMonitor.ConnectionAttempted);
             var after = Snapshot(workspace);
             Assert.True(before.Keys.ToHashSet(PathComparer()).SetEquals(after.Keys));
@@ -126,21 +101,22 @@ public sealed class PassiveOperationBoundaryTests
     {
         var startInfo = new ProcessStartInfo
         {
-            FileName = Environment.GetEnvironmentVariable("DOTNET_HOST_PATH")
-                ?? "dotnet",
+            FileName = ProductionExecutablePath(),
             WorkingDirectory = workspace,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             UseShellExecute = false,
             CreateNoWindow = true,
         };
-        startInfo.ArgumentList.Add(ProductionApplicationPath());
         foreach (var argument in arguments)
         {
             startInfo.ArgumentList.Add(argument);
         }
 
-        startInfo.Environment["PATH"] = tools;
+        startInfo.Environment["PATH"] = string.Join(
+            Path.PathSeparator,
+            tools,
+            Environment.GetEnvironmentVariable("PATH"));
         startInfo.Environment["DNAXI_PASSIVE_BOUNDARY_PROCESS_MARKER"] =
             processMarker;
         startInfo.Environment["DOTNET_CLI_TELEMETRY_OPTOUT"] = "1";
@@ -197,6 +173,89 @@ public sealed class PassiveOperationBoundaryTests
         }
     }
 
+    private static string PrepareWorkspaceSdk(string workspace)
+    {
+        const string version = "10.0.302";
+        var sdkDirectory = Path.Combine(
+            workspace,
+            ".dotnet",
+            "sdk",
+            version);
+        Directory.CreateDirectory(sdkDirectory);
+        var sourceDirectory = ProcessTestApplicationDirectory();
+        const string sourceName = "DotNetAxi.DotNet.ProcessTestApp";
+        foreach (var extension in new[]
+                 {
+                     ".dll",
+                     ".deps.json",
+                     ".runtimeconfig.json",
+                 })
+        {
+            File.Copy(
+                Path.Combine(sourceDirectory, sourceName + extension),
+                Path.Combine(sdkDirectory, "dotnet" + extension));
+        }
+
+        File.WriteAllText(
+            Path.Combine(workspace, "global.json"),
+            $$"""
+            {
+              "sdk": {
+                "version": "{{version}}",
+                "paths": [".dotnet"]
+              }
+            }
+            """);
+        var sharedRoot = Path.Combine(workspace, ".dotnet", "shared");
+        Directory.CreateDirectory(sharedRoot);
+        var currentRuntime = Path.GetDirectoryName(
+            typeof(object).Assembly.Location)
+            ?? throw new InvalidOperationException(
+                "The current .NET runtime directory is unavailable.");
+        var frameworkRoot = Directory.GetParent(currentRuntime)?.FullName
+            ?? throw new InvalidOperationException(
+                "The current .NET framework root is unavailable.");
+        Directory.CreateSymbolicLink(
+            Path.Combine(sharedRoot, "Microsoft.NETCore.App"),
+            frameworkRoot);
+        return Path.Combine(sdkDirectory, "workspace-sdk.executed");
+    }
+
+    private static void RemoveWorkspaceSdkRuntimeLink(string workspace)
+    {
+        var sharedRoot = Path.Combine(workspace, ".dotnet", "shared");
+        Directory.Delete(Path.Combine(sharedRoot, "Microsoft.NETCore.App"));
+        Directory.Delete(sharedRoot);
+    }
+
+    private static async Task AssertWorkspaceSdkSentinelAsync(
+        string workspace,
+        string marker)
+    {
+        var startInfo = new ProcessStartInfo
+        {
+            FileName = Environment.GetEnvironmentVariable("DOTNET_HOST_PATH")
+                ?? "dotnet",
+            WorkingDirectory = workspace,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+        };
+        startInfo.ArgumentList.Add("--info");
+        startInfo.Environment.Remove("DOTNET_MULTILEVEL_LOOKUP");
+        using var process = Process.Start(startInfo)
+            ?? throw new InvalidOperationException(
+                "The workspace SDK sentinel did not start.");
+        var standardOutput = process.StandardOutput.ReadToEndAsync();
+        var standardError = process.StandardError.ReadToEndAsync();
+        await process.WaitForExitAsync();
+
+        Assert.True(
+            process.ExitCode == 97 && File.Exists(marker),
+            $"Workspace SDK sentinel did not execute (exit {process.ExitCode}).\n{await standardOutput}\n{await standardError}");
+    }
+
     private static Dictionary<string, byte[]> Snapshot(string workspace) =>
         Directory.EnumerateFiles(workspace, "*", SearchOption.AllDirectories)
             .ToDictionary(
@@ -204,14 +263,22 @@ public sealed class PassiveOperationBoundaryTests
                 File.ReadAllBytes,
                 PathComparer());
 
-    private static string ProductionApplicationPath() => Path.Combine(
+    private static string ProductionExecutablePath() => Path.Combine(
         RepositoryRoot(),
         "src",
         "DotNetAxi.Cli",
         "bin",
         Configuration(),
         "net10.0",
-        "dnaxi.dll");
+        OperatingSystem.IsWindows() ? "dnaxi.exe" : "dnaxi");
+
+    private static string ProcessTestApplicationDirectory() => Path.Combine(
+        RepositoryRoot(),
+        "tests",
+        "DotNetAxi.DotNet.ProcessTestApp",
+        "bin",
+        Configuration(),
+        "net10.0");
 
     private static string TestApplicationDirectory() => Path.Combine(
         RepositoryRoot(),
