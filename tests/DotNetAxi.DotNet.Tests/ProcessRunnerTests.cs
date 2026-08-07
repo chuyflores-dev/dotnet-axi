@@ -314,6 +314,50 @@ public sealed class ProcessRunnerTests
     }
 
     [Fact]
+    public void Posix_exit_observation_does_not_repeat_external_termination()
+    {
+        var terminationRequests = 0;
+        var group = new PosixOwnedProcessGroup(
+            123,
+            waitForLeaderExitWithoutReaping: static _ => { },
+            reapLeader: static _ => new ProcessExitEvidence(0, signal: null),
+            terminateGroup: _ => terminationRequests++,
+            waitForGroupExit: static _ => { });
+
+        group.Terminate();
+        var exit = group.WaitForExitAndContainDescendants();
+
+        Assert.Equal(1, terminationRequests);
+        Assert.Equal(0, exit.ExitCode);
+    }
+
+    [Fact]
+    public void Posix_failed_termination_request_remains_retryable()
+    {
+        var terminationRequests = 0;
+        var group = new PosixOwnedProcessGroup(
+            123,
+            waitForLeaderExitWithoutReaping: static _ => { },
+            reapLeader: static _ => new ProcessExitEvidence(0, signal: null),
+            terminateGroup: _ =>
+            {
+                terminationRequests++;
+                if (terminationRequests == 1)
+                {
+                    throw new Win32Exception(1);
+                }
+            },
+            waitForGroupExit: static _ => { });
+
+        Assert.Throws<Win32Exception>(group.Terminate);
+        group.Terminate();
+        var exit = group.WaitForExitAndContainDescendants();
+
+        Assert.Equal(2, terminationRequests);
+        Assert.Equal(0, exit.ExitCode);
+    }
+
+    [Fact]
     public void Posix_containment_fault_preserves_captured_exit_evidence()
     {
         var group = new PosixOwnedProcessGroup(
