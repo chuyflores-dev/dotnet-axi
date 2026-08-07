@@ -20,6 +20,8 @@ success by prose or partial evidence.
 
 - The report evaluates all required gates, identifies its exact artifacts and
   environments, and scopes every agent-experience claim.
+- Complete Codex and Claude series are evaluated independently; a missing or
+  incomparable series blocks its corresponding claim and cannot be pooled.
 - Safety-critical regression, success, token, tool-call, and performance
   calculations match the documented formulas and thresholds.
 
@@ -37,3 +39,5 @@ success by prose or partial evidence.
 - `MVP-E13-S09`
 - `MVP-E13-S13`
 - `MVP-E13-S14`
+- `MVP-E13-S28`
+- `MVP-E13-S29`

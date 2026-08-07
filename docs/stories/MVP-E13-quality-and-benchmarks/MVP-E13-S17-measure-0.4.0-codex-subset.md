@@ -33,4 +33,6 @@ relationship capability.
 ## Dependencies
 
 - `MVP-E13-S15`
+- `MVP-E13-S18`
 - `MVP-E13-S16`
+- `MVP-E09-S14`
