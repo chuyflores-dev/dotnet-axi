@@ -42,6 +42,7 @@ semantic or graph database.
 - [MVP-E05-S10 — Detect project cycles](MVP-E05-S10-cycle-detection.md)
 - [MVP-E05-S11 — Find graph paths](MVP-E05-S11-graph-paths.md)
 - [MVP-E05-S12 — Analyze impact](MVP-E05-S12-impact-analysis.md)
+- [MVP-E05-S13 — Compose relationship context](MVP-E05-S13-relationship-context.md)
 
 ## Complete when
 

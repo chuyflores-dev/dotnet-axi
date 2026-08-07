@@ -57,6 +57,18 @@ accelerators are outside the MVP.
 - [MVP-E12-S19 — Publish and verify 0.3.0](MVP-E12-S19-publish-0.3.0.md)
 - [MVP-E12-S20 — Prepare the 0.4.0 release candidate](MVP-E12-S20-prepare-0.4.0-release-candidate.md)
 - [MVP-E12-S21 — Publish and verify 0.4.0](MVP-E12-S21-publish-0.4.0.md)
+- [MVP-E12-S22 — Prepare the 0.5.0 release candidate](MVP-E12-S22-prepare-0.5.0-release-candidate.md)
+- [MVP-E12-S23 — Publish and verify 0.5.0](MVP-E12-S23-publish-0.5.0.md)
+- [MVP-E12-S24 — Prepare the 0.6.0 release candidate](MVP-E12-S24-prepare-0.6.0-release-candidate.md)
+- [MVP-E12-S25 — Publish and verify 0.6.0](MVP-E12-S25-publish-0.6.0.md)
+- [MVP-E12-S26 — Prepare the 0.7.0 release candidate](MVP-E12-S26-prepare-0.7.0-release-candidate.md)
+- [MVP-E12-S27 — Publish and verify 0.7.0](MVP-E12-S27-publish-0.7.0.md)
+- [MVP-E12-S28 — Prepare the 0.8.0 release candidate](MVP-E12-S28-prepare-0.8.0-release-candidate.md)
+- [MVP-E12-S29 — Publish and verify 0.8.0](MVP-E12-S29-publish-0.8.0.md)
+- [MVP-E12-S30 — Prepare the 0.9.0 release candidate](MVP-E12-S30-prepare-0.9.0-release-candidate.md)
+- [MVP-E12-S31 — Publish and verify 0.9.0](MVP-E12-S31-publish-0.9.0.md)
+- [MVP-E12-S32 — Prepare the 1.0.0 release candidate](MVP-E12-S32-prepare-1.0.0-release-candidate.md)
+- [MVP-E12-S33 — Publish and verify 1.0.0](MVP-E12-S33-publish-1.0.0.md)
 
 ## Complete when
 
