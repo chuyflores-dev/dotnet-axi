@@ -40,7 +40,11 @@ internal static partial class CodexBenchmarkCommandEvidence
     public static bool IsPinnedDnxInvocation(
         string command,
         string packageId,
-        string packageVersion)
+        string packageVersion,
+        string? packageSource = null,
+        string? packageSourceEnvironmentVariable = null,
+        string? expectedCapability = null,
+        string? expectedDnxExecutablePath = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(packageId);
         ArgumentException.ThrowIfNullOrWhiteSpace(packageVersion);
@@ -50,8 +54,11 @@ internal static partial class CodexBenchmarkCommandEvidence
             return false;
         }
 
-        var tokens = CommandArgumentRegex().Matches(invocation)
-            .Select(static match => Unquote(match.Value))
+        var rawTokens = CommandArgumentRegex().Matches(invocation)
+            .Select(static match => match.Value)
+            .ToArray();
+        var tokens = rawTokens
+            .Select(Unquote)
             .ToArray();
         var executable = FindExecutable(tokens);
         if (executable < 0
@@ -68,16 +75,223 @@ internal static partial class CodexBenchmarkCommandEvidence
             return false;
         }
 
+        if (expectedDnxExecutablePath is not null)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(
+                expectedDnxExecutablePath);
+            if (tokens.Take(executable).Any(static token =>
+                    token.StartsWith(
+                        "PATH=",
+                        StringComparison.OrdinalIgnoreCase)))
+            {
+                return false;
+            }
+
+            var expectedPath = Path.GetFullPath(expectedDnxExecutablePath);
+            var expectedName = Path.GetFileName(expectedPath);
+            var executableToken = tokens[executable];
+            var comparison = OperatingSystem.IsWindows()
+                ? StringComparison.OrdinalIgnoreCase
+                : StringComparison.Ordinal;
+            if (!string.Equals(executableToken, expectedName, comparison)
+                && !string.Equals(executableToken, expectedPath, comparison))
+            {
+                return false;
+            }
+        }
+
         var delimiter = Array.IndexOf(tokens, "--", executable + 2);
-        return delimiter >= 0
-               && !tokens
-                   .Skip(executable + 2)
-                   .Take(delimiter - executable - 2)
-                   .Any(static token =>
-                       token is "-?" or "-h" or "--help" or "--version"
-                       || token.StartsWith(
-                           "--version=",
-                           StringComparison.Ordinal));
+        if (delimiter < 0)
+        {
+            return false;
+        }
+
+        var options = tokens
+            .Skip(executable + 2)
+            .Take(delimiter - executable - 2)
+            .ToArray();
+        if (options.Any(static token =>
+                token is "-?" or "-h" or "--help" or "--version"
+                || token.StartsWith(
+                    "--version=",
+                    StringComparison.Ordinal)))
+        {
+            return false;
+        }
+
+        if (packageSource is null)
+        {
+            return true;
+        }
+
+        ArgumentException.ThrowIfNullOrWhiteSpace(
+            packageSourceEnvironmentVariable);
+        var sourceIndexes = options
+            .Select((token, index) => (token, index))
+            .Where(static item => item.token == "--source")
+            .Select(static item => item.index)
+            .ToArray();
+        var verbosityIndexes = options
+            .Select((token, index) => (token, index))
+            .Where(static item => item.token == "--verbosity")
+            .Select(static item => item.index)
+            .ToArray();
+        if (sourceIndexes.Length != 1
+            || verbosityIndexes.Length != 1
+            || sourceIndexes[0] + 1 >= options.Length
+            || verbosityIndexes[0] + 1 >= options.Length
+            || !string.Equals(
+                options[verbosityIndexes[0] + 1],
+                "quiet",
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        var source = options[sourceIndexes[0] + 1];
+        var rawSource = rawTokens[
+            executable + 2 + sourceIndexes[0] + 1];
+        var singleQuotedEnvironmentReference = rawSource.Length >= 2
+                                               && rawSource[0] == '\''
+                                               && rawSource[^1] == '\''
+                                               && !string.Equals(
+                                                   source,
+                                                   packageSource,
+                                                   StringComparison.Ordinal);
+        var sourceMatches = string.Equals(
+                                source,
+                                packageSource,
+                                StringComparison.Ordinal)
+                            || string.Equals(
+                                source,
+                                $"${packageSourceEnvironmentVariable}",
+                                StringComparison.Ordinal)
+                            || string.Equals(
+                                source,
+                                $"${{{packageSourceEnvironmentVariable}}}",
+                                StringComparison.Ordinal);
+        return !singleQuotedEnvironmentReference
+               && sourceMatches
+               && (expectedCapability is null
+                   || MatchesCapabilityRoute(
+                       tokens.Skip(delimiter + 1).ToArray(),
+                       expectedCapability));
+    }
+
+    private static bool MatchesCapabilityRoute(
+        IReadOnlyList<string> arguments,
+        string capability)
+    {
+        if (arguments.Any(static argument =>
+                argument is "-?" or "-h" or "--help"))
+        {
+            return false;
+        }
+
+        string[] route;
+        var requiresRegex = false;
+        switch (capability)
+        {
+            case "search.file":
+                route = ["search", "file"];
+                break;
+            case "search.text.literal":
+                route = ["search", "text"];
+                break;
+            case "search.text.regex":
+                route = ["search", "text"];
+                requiresRegex = true;
+                break;
+            case "search.syntax.attributed-class":
+                route = ["search", "syntax", "attributed-class"];
+                break;
+            case "search.syntax.catch":
+                route = ["search", "syntax", "catch"];
+                break;
+            case "search.syntax.invocation":
+                route = ["search", "syntax", "invocation"];
+                break;
+            case "search.syntax.object-creation":
+                route = ["search", "syntax", "object-creation"];
+                break;
+            default:
+                return false;
+        }
+
+        if (!arguments.Take(route.Length).SequenceEqual(
+                route,
+                StringComparer.Ordinal))
+        {
+            return false;
+        }
+
+        if (capability is not ("search.text.literal" or "search.text.regex"))
+        {
+            return true;
+        }
+
+        if (!TryGetBooleanOption(
+                arguments.Skip(route.Length).ToArray(),
+                "--regex",
+                out var regexPresent,
+                out var regexEnabled))
+        {
+            return false;
+        }
+
+        return requiresRegex
+            ? regexPresent && regexEnabled
+            : !regexPresent || !regexEnabled;
+    }
+
+    private static bool TryGetBooleanOption(
+        IReadOnlyList<string> arguments,
+        string option,
+        out bool present,
+        out bool enabled)
+    {
+        present = false;
+        enabled = false;
+        for (var index = 0; index < arguments.Count; index++)
+        {
+            var argument = arguments[index];
+            bool value;
+            if (string.Equals(argument, option, StringComparison.Ordinal))
+            {
+                value = true;
+                if (index + 1 < arguments.Count
+                    && bool.TryParse(arguments[index + 1], out var nextValue))
+                {
+                    value = nextValue;
+                    index++;
+                }
+            }
+            else if (argument.StartsWith(
+                         $"{option}=",
+                         StringComparison.Ordinal))
+            {
+                if (!bool.TryParse(
+                        argument[(option.Length + 1)..],
+                        out value))
+                {
+                    return false;
+                }
+            }
+            else
+            {
+                continue;
+            }
+
+            if (present)
+            {
+                return false;
+            }
+
+            present = true;
+            enabled = value;
+        }
+
+        return true;
     }
 
     public static bool ObserveCommandScope(
@@ -291,7 +505,15 @@ internal static partial class CodexBenchmarkCommandEvidence
     {
         var trimmed = command.Trim();
         var match = ShellWrapperRegex().Match(trimmed);
-        return match.Success ? match.Groups["body"].Value : trimmed;
+        if (!match.Success)
+        {
+            return trimmed;
+        }
+
+        var body = match.Groups["body"].Value;
+        return match.Groups["quote"].Value == "\""
+            ? body.Replace("\\\"", "\"", StringComparison.Ordinal)
+            : body.Replace("'\\''", "'", StringComparison.Ordinal);
     }
 
     private static string StripSupportedRedirections(string command)

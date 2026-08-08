@@ -9,7 +9,7 @@ internal sealed class CodexDiscoveryEvidenceStore : IAgentBenchmarkRunSink
     internal const string ReportSchema =
         "dotnet-axi/codex-discovery-report/v2";
     internal const string SummarySchema =
-        "dotnet-axi/codex-discovery-summary/v2";
+        "dotnet-axi/codex-discovery-summary/v3";
 
     private readonly string _evidenceDirectory;
     private readonly string _runsDirectory;
@@ -236,12 +236,28 @@ internal static class CodexDiscoveryEvidenceValidator
             AgentBenchmarkCondition.Baseline,
             baselineRuns,
             context.Request.Product.PackageId,
-            context.Request.Product.PackageVersion);
+            context.Request.Product.PackageVersion,
+            context.Request.Product.PackageSource.Path,
+            context.Request.DnxExecutable.Path);
         var candidate = Metrics(
             AgentBenchmarkCondition.Candidate,
             candidateRuns,
             context.Request.Product.PackageId,
-            context.Request.Product.PackageVersion);
+            context.Request.Product.PackageVersion,
+            context.Request.Product.PackageSource.Path,
+            context.Request.DnxExecutable.Path);
+        var routeActivations = context.Corpus.Tasks
+            .Select(task => RouteActivation(
+                task,
+                candidateRuns.Where(run => string.Equals(
+                    run.TaskId,
+                    task.Id,
+                    StringComparison.Ordinal)).ToArray(),
+                context.Request.Product.PackageId,
+                context.Request.Product.PackageVersion,
+                context.Request.Product.PackageSource.Path,
+                context.Request.DnxExecutable.Path))
+            .ToArray();
         var complete = report.Complete
                        && report.Runs.Count == report.ExpectedRunCount;
         var failed = report.Failure is not null
@@ -289,8 +305,13 @@ internal static class CodexDiscoveryEvidenceValidator
         var zeroActivation = complete
                              && !failed
                              && candidate.DnxInvocationCount == 0;
+        var routeActivationGap = complete
+                                 && !failed
+                                 && routeActivations.Any(static route =>
+                                     route.SuccessfulActivatedRunCount == 0);
         var improvement = complete
                           && !failed
+                          && !routeActivationGap
                           && candidate.SuccessfulDnxActivatedRunCount > 0
                           && safetyCriticalRegressions == 0
                           && !successRegression
@@ -303,6 +324,8 @@ internal static class CodexDiscoveryEvidenceValidator
             ? "incomparable"
             : zeroActivation
                 ? "zero-activation"
+                : routeActivationGap
+                    ? "activation-gap"
                 : safetyCriticalRegressions > 0
               || successRegression
               || tokenRegression
@@ -353,6 +376,12 @@ internal static class CodexDiscoveryEvidenceValidator
                 "The candidate exposed dnaxi but no run invoked an exact version-pinned dnx dnaxi command, so the product was not exercised.");
         }
 
+        if (routeActivationGap)
+        {
+            reasons.Add(
+                "At least one discovery route has no candidate run with a successful exact source-pinned dnx activation.");
+        }
+
         if (improvement)
         {
             reasons.Add(
@@ -384,6 +413,17 @@ internal static class CodexDiscoveryEvidenceValidator
                 tokenRegression,
                 toolCallRegression,
                 improvement),
+            routeActivations,
+            new CodexDiscoveryHistoricalComparison(
+                context.Request.PriorSeries.Summary.Path,
+                context.Request.PriorSeries.Summary.Sha256,
+                context.PriorSeries.Schema,
+                context.PriorSeries.RequestHash,
+                context.PriorSeries.ReportHash,
+                context.PriorSeries.EvidenceStatus,
+                context.PriorSeries.Comparison,
+                Comparable: false,
+                "The corrected 0.4.0 series retains the 0.3.0 result as failed/incomparable and does not reclassify or pool its metrics."),
             reasons.ToArray());
     }
 
@@ -1109,7 +1149,9 @@ internal static class CodexDiscoveryEvidenceValidator
         AgentBenchmarkCondition condition,
         IReadOnlyList<AgentBenchmarkRunResult> runs,
         string packageId,
-        string packageVersion) =>
+        string packageVersion,
+        string packageSource,
+        string dnxExecutablePath) =>
         new(
             condition,
             runs.Count,
@@ -1122,24 +1164,40 @@ internal static class CodexDiscoveryEvidenceValidator
                 CodexBenchmarkCommandEvidence.IsPinnedDnxInvocation(
                     call.Name,
                     packageId,
-                    packageVersion))),
+                    packageVersion,
+                    packageSource,
+                    CodexDiscoveryBenchmarkPreparation
+                        .PackageSourceEnvironmentVariable,
+                    expectedDnxExecutablePath: dnxExecutablePath))),
             runs.Count(run => run.ToolCalls.Any(call =>
                 call.Succeeded
                 && CodexBenchmarkCommandEvidence.IsPinnedDnxInvocation(
                     call.Name,
                     packageId,
-                    packageVersion))),
+                    packageVersion,
+                    packageSource,
+                    CodexDiscoveryBenchmarkPreparation
+                        .PackageSourceEnvironmentVariable,
+                    expectedDnxExecutablePath: dnxExecutablePath))),
             runs.Sum(run => run.ToolCalls.Count(call =>
                 CodexBenchmarkCommandEvidence.IsPinnedDnxInvocation(
                     call.Name,
                     packageId,
-                    packageVersion))),
+                    packageVersion,
+                    packageSource,
+                    CodexDiscoveryBenchmarkPreparation
+                        .PackageSourceEnvironmentVariable,
+                    expectedDnxExecutablePath: dnxExecutablePath))),
             runs.Sum(run => run.ToolCalls.Count(call =>
                 call.Succeeded
                 && CodexBenchmarkCommandEvidence.IsPinnedDnxInvocation(
                     call.Name,
                     packageId,
-                    packageVersion))),
+                    packageVersion,
+                    packageSource,
+                    CodexDiscoveryBenchmarkPreparation
+                        .PackageSourceEnvironmentVariable,
+                    expectedDnxExecutablePath: dnxExecutablePath))),
             runs.Count == 0
                 ? 0m
                 : decimal.Divide(
@@ -1150,6 +1208,38 @@ internal static class CodexDiscoveryEvidenceValidator
             Median(runs.Select(static run => (long)run.Turns)),
             Median(runs.Select(static run => run.Duration.Ticks))
             / TimeSpan.TicksPerMillisecond);
+
+    private static CodexDiscoveryRouteActivation RouteActivation(
+        AgentTaskDefinition task,
+        IReadOnlyList<AgentBenchmarkRunResult> runs,
+        string packageId,
+        string packageVersion,
+        string packageSource,
+        string dnxExecutablePath) =>
+        new(
+            task.Id,
+            runs.Count,
+            runs.Count(run => run.ToolCalls.Any(call =>
+                CodexBenchmarkCommandEvidence.IsPinnedDnxInvocation(
+                    call.Name,
+                    packageId,
+                    packageVersion,
+                    packageSource,
+                    CodexDiscoveryBenchmarkPreparation
+                        .PackageSourceEnvironmentVariable,
+                    task.RequiredCapabilities.Single(),
+                    dnxExecutablePath))),
+            runs.Count(run => run.ToolCalls.Any(call =>
+                call.Succeeded
+                && CodexBenchmarkCommandEvidence.IsPinnedDnxInvocation(
+                    call.Name,
+                    packageId,
+                    packageVersion,
+                    packageSource,
+                    CodexDiscoveryBenchmarkPreparation
+                        .PackageSourceEnvironmentVariable,
+                    task.RequiredCapabilities.Single(),
+                    dnxExecutablePath))));
 
     private static decimal Median(IEnumerable<long> source)
     {
@@ -1264,6 +1354,23 @@ internal sealed record CodexDiscoveryThresholdEvaluation(
     bool ToolCallRegression,
     bool ImprovementClaimSupported);
 
+internal sealed record CodexDiscoveryRouteActivation(
+    string TaskId,
+    int CandidateRunCount,
+    int ActivatedRunCount,
+    int SuccessfulActivatedRunCount);
+
+internal sealed record CodexDiscoveryHistoricalComparison(
+    string SummaryPath,
+    string SummaryHash,
+    string SummarySchema,
+    string RequestHash,
+    string ReportHash,
+    string EvidenceStatus,
+    string Comparison,
+    bool Comparable,
+    string Detail);
+
 internal sealed record CodexDiscoverySeriesSummary(
     string Schema,
     string RequestHash,
@@ -1275,6 +1382,8 @@ internal sealed record CodexDiscoverySeriesSummary(
     CodexDiscoveryConditionMetrics Baseline,
     CodexDiscoveryConditionMetrics Candidate,
     CodexDiscoveryThresholdEvaluation Thresholds,
+    IReadOnlyList<CodexDiscoveryRouteActivation> RouteActivations,
+    CodexDiscoveryHistoricalComparison PriorSeries,
     IReadOnlyList<string> Reasons);
 
 internal sealed record CodexDiscoveryRawReconciliation(

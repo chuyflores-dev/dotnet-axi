@@ -8,6 +8,32 @@ namespace DotNetAxi.Testing.Tests;
 public sealed class CodexAgentBenchmarkAdapterTests
 {
     [Fact]
+    public void Condition_environment_cannot_override_authentication()
+    {
+        var baseline = new CodexBenchmarkConditionExposure(
+            AgentBenchmarkCondition.Baseline,
+            Hash("baseline-instructions"),
+            Hash("baseline-tools"),
+            ["skills.config=[]"]);
+        var candidate = new CodexBenchmarkConditionExposure(
+            AgentBenchmarkCondition.Candidate,
+            Hash("candidate-instructions"),
+            Hash("candidate-tools"),
+            ["skills.config=[]"],
+            EnvironmentVariables: new Dictionary<string, string>
+            {
+                ["CODEX_HOME"] = "/tmp/override",
+            });
+
+        Assert.Throws<ArgumentException>(() =>
+            new CodexAgentBenchmarkAdapterOptions(
+                ProcessApplicationPath(),
+                "codex-cli-0.84.0",
+                baseline,
+                candidate));
+    }
+
+    [Fact]
     public void Invocation_is_ephemeral_machine_readable_and_condition_isolated()
     {
         using var workspace = new TemporaryWorkspace();
@@ -63,6 +89,52 @@ public sealed class CodexAgentBenchmarkAdapterTests
         Assert.Equal(
             baselineArguments.Where(static value => !IsExposureOverride(value)),
             candidateArguments.Where(static value => !IsExposureOverride(value)));
+    }
+
+    [Fact]
+    public async Task Login_shell_resolves_pinned_dnx_before_codex_starts()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        using var workspace = new TemporaryWorkspace();
+        var rawTools = Directory.CreateDirectory(
+            Path.Combine(workspace.Path, "raw-tools")).FullName;
+        var dnxExecutable = Path.Combine(rawTools, "dnx");
+        await File.WriteAllTextAsync(
+            dnxExecutable,
+            "#!/bin/sh\nexit 0\n");
+        File.SetUnixFileMode(
+            dnxExecutable,
+            UnixFileMode.UserRead
+            | UnixFileMode.UserWrite
+            | UnixFileMode.UserExecute
+            | UnixFileMode.GroupRead
+            | UnixFileMode.GroupExecute
+            | UnixFileMode.OtherRead
+            | UnixFileMode.OtherExecute);
+        var factory = new RepositoryFixtureFactory(
+            Path.Combine(workspace.Path, "materialized"));
+        await using var fixture = await factory.CreateAsync(
+            Path.Combine(
+                AppContext.BaseDirectory,
+                "Fixtures",
+                "Factory",
+                "basic",
+                "fixture.json"));
+        var adapter = Adapter([rawTools], dnxExecutable);
+
+        await using var execution = await adapter.StartAsync(Input(
+            fixture.WorkspacePath,
+            AgentBenchmarkCondition.Baseline,
+            fixture: "success.jsonl",
+            additionalEnvironment: fixture.EnvironmentVariables));
+
+        Assert.Contains(
+            execution.GetProgressSnapshot().RawEvents,
+            static value => value.Kind == "adapter.process.started");
     }
 
     [Fact]
@@ -359,7 +431,9 @@ public sealed class CodexAgentBenchmarkAdapterTests
         Assert.False(exception.Retryable);
     }
 
-    private static CodexAgentBenchmarkAdapter Adapter()
+    private static CodexAgentBenchmarkAdapter Adapter(
+        IReadOnlyList<string>? executableSearchPathEntries = null,
+        string? expectedDnxExecutablePath = null)
     {
         var baselineInstructions = Hash("baseline-instructions");
         var baselineTools = Hash("baseline-tools");
@@ -376,7 +450,8 @@ public sealed class CodexAgentBenchmarkAdapterTests
                     [
                         "skills.config=[]",
                         "mcp_servers.dnaxi.enabled=false",
-                    ]),
+                    ],
+                    executableSearchPathEntries),
                 new CodexBenchmarkConditionExposure(
                     AgentBenchmarkCondition.Candidate,
                     candidateInstructions,
@@ -384,8 +459,11 @@ public sealed class CodexAgentBenchmarkAdapterTests
                     [
                         "skills.config=[{path=\"skills/dotnet-axi\"}]",
                         "mcp_servers.dnaxi.enabled=true",
-                    ]),
-                ["codex-fixture"]));
+                    ],
+                    executableSearchPathEntries),
+                ["codex-fixture"],
+                expectedDnxExecutablePath:
+                    expectedDnxExecutablePath));
     }
 
     private static AgentBenchmarkAdapterInput Input(
@@ -395,7 +473,8 @@ public sealed class CodexAgentBenchmarkAdapterTests
         IReadOnlyList<string>? permittedTools = null,
         string? fixture = null,
         string behavior = "emit",
-        string exitCode = "0")
+        string exitCode = "0",
+        IReadOnlyDictionary<string, string>? additionalEnvironment = null)
     {
         var environment = new Dictionary<string, string>(StringComparer.Ordinal)
         {
@@ -406,6 +485,12 @@ public sealed class CodexAgentBenchmarkAdapterTests
         if (fixture is not null)
         {
             environment["CODEX_FIXTURE_PATH"] = FixturePath(fixture);
+        }
+
+        foreach (var variable in additionalEnvironment
+                     ?? new Dictionary<string, string>())
+        {
+            environment[variable.Key] = variable.Value;
         }
 
         var task = new AgentTaskDefinition(

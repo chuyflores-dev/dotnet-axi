@@ -1,3 +1,4 @@
+using System.IO.Compression;
 using System.Text.Json;
 
 namespace DotNetAxi.Testing.Tests;
@@ -66,6 +67,14 @@ public sealed class CodexDiscoveryBenchmarkTests
                 context.CandidateTools.ExecutableSearchPathEntries.Select(
                     static entry => entry.Path)),
             candidateStart.Environment["PATH"]);
+        Assert.Equal(
+            context.Request.Product.PackageSource.Path,
+            candidateStart.Environment[
+                CodexDiscoveryBenchmarkPreparation
+                    .PackageSourceEnvironmentVariable]);
+        Assert.False(baselineStart.Environment.ContainsKey(
+            CodexDiscoveryBenchmarkPreparation
+                .PackageSourceEnvironmentVariable));
         Assert.DoesNotContain(baselineStart.ArgumentList,
             argument => argument.Contains("mcp_servers.",
                 StringComparison.Ordinal));
@@ -119,6 +128,12 @@ public sealed class CodexDiscoveryBenchmarkTests
         Assert.Equal(35, summary.Candidate.SuccessfulDnxActivatedRunCount);
         Assert.Equal(35, summary.Candidate.DnxInvocationCount);
         Assert.Equal(35, summary.Candidate.SuccessfulDnxInvocationCount);
+        Assert.Equal(7, summary.RouteActivations.Count);
+        Assert.All(summary.RouteActivations, static route =>
+            Assert.Equal(5, route.SuccessfulActivatedRunCount));
+        Assert.False(summary.PriorSeries.Comparable);
+        Assert.Equal("failed", summary.PriorSeries.EvidenceStatus);
+        Assert.Equal("incomparable", summary.PriorSeries.Comparison);
         Assert.True(CodexDiscoveryEvidenceValidator.CanonicalEquals(
             summary,
             validated));
@@ -156,6 +171,41 @@ public sealed class CodexDiscoveryBenchmarkTests
             static reason => reason.Contains(
                 "product was not exercised",
                 StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Missing_route_activation_blocks_the_candidate()
+    {
+        using var fixture = await PreparedFixture.CreateAsync();
+        var context = await CodexDiscoveryBenchmarkPreparation.PrepareAsync(
+            fixture.RequestPath);
+        var evidencePath = Path.Combine(fixture.Root, "route-gap");
+        var store = await CodexDiscoveryEvidenceStore.CreateAsync(
+            evidencePath,
+            context);
+        var omittedTask = context.Corpus.Tasks[0].Id;
+        foreach (var scheduled in context.Preparation.Schedule)
+        {
+            await store.RetainAsync(
+                context.Preparation.Manifest,
+                CreateSuccessfulRun(
+                    context,
+                    scheduled,
+                    addToolCall: scheduled.Condition
+                                     is AgentBenchmarkCondition.Candidate
+                                 && !string.Equals(
+                                     scheduled.TaskId,
+                                     omittedTask,
+                                     StringComparison.Ordinal)));
+        }
+
+        var summary = await store.FinalizeAsync(true, null);
+
+        Assert.Equal("activation-gap", summary.Comparison);
+        var route = Assert.Single(summary.RouteActivations, candidate =>
+            candidate.TaskId == omittedTask);
+        Assert.Equal(0, route.SuccessfulActivatedRunCount);
+        Assert.False(summary.Thresholds.ImprovementClaimSupported);
     }
 
     [Fact]
@@ -209,6 +259,90 @@ public sealed class CodexDiscoveryBenchmarkTests
             "dnx dnaxi@0.4.0 --verbosity quiet -- --version & > /dev/null",
             "dnaxi",
             "0.4.0"));
+        Assert.True(CodexBenchmarkCommandEvidence.IsPinnedDnxInvocation(
+            "dnx dnaxi@0.4.0 --source \"$DNAXI_LOCAL_FEED\" --verbosity quiet -- search file marker",
+            "dnaxi",
+            "0.4.0",
+            "/tmp/feed",
+            "DNAXI_LOCAL_FEED"));
+        Assert.True(CodexBenchmarkCommandEvidence.IsPinnedDnxInvocation(
+            "/bin/zsh -lc \"dnx dnaxi@0.4.0 --source \\\"$DNAXI_LOCAL_FEED\\\" --verbosity quiet -- search file marker\"",
+            "dnaxi",
+            "0.4.0",
+            "/tmp/feed",
+            "DNAXI_LOCAL_FEED",
+            "search.file"));
+        Assert.False(CodexBenchmarkCommandEvidence.IsPinnedDnxInvocation(
+            "dnx dnaxi@0.4.0 --verbosity quiet -- search file marker",
+            "dnaxi",
+            "0.4.0",
+            "/tmp/feed",
+            "DNAXI_LOCAL_FEED"));
+        Assert.False(CodexBenchmarkCommandEvidence.IsPinnedDnxInvocation(
+            "dnx dnaxi@0.4.0 --source '$DNAXI_LOCAL_FEED' --verbosity quiet -- search file marker",
+            "dnaxi",
+            "0.4.0",
+            "/tmp/feed",
+            "DNAXI_LOCAL_FEED"));
+        Assert.False(CodexBenchmarkCommandEvidence.IsPinnedDnxInvocation(
+            "dnx dnaxi@0.4.0 --source \"$DNAXI_LOCAL_FEED\" --verbosity quiet -- search file marker",
+            "dnaxi",
+            "0.4.0",
+            "/tmp/feed",
+            "DNAXI_LOCAL_FEED",
+            "search.syntax.catch"));
+        Assert.True(CodexBenchmarkCommandEvidence.IsPinnedDnxInvocation(
+            "dnx dnaxi@0.4.0 --source \"$DNAXI_LOCAL_FEED\" --verbosity quiet -- search text marker --regex=true",
+            "dnaxi",
+            "0.4.0",
+            "/tmp/feed",
+            "DNAXI_LOCAL_FEED",
+            "search.text.regex"));
+        Assert.False(CodexBenchmarkCommandEvidence.IsPinnedDnxInvocation(
+            "dnx dnaxi@0.4.0 --source \"$DNAXI_LOCAL_FEED\" --verbosity quiet -- search text marker --regex=true",
+            "dnaxi",
+            "0.4.0",
+            "/tmp/feed",
+            "DNAXI_LOCAL_FEED",
+            "search.text.literal"));
+        Assert.True(CodexBenchmarkCommandEvidence.IsPinnedDnxInvocation(
+            "dnx dnaxi@0.4.0 --source \"$DNAXI_LOCAL_FEED\" --verbosity quiet -- search text marker --regex=false",
+            "dnaxi",
+            "0.4.0",
+            "/tmp/feed",
+            "DNAXI_LOCAL_FEED",
+            "search.text.literal"));
+        Assert.False(CodexBenchmarkCommandEvidence.IsPinnedDnxInvocation(
+            "dnx dnaxi@0.4.0 --source \"$DNAXI_LOCAL_FEED\" --verbosity quiet -- search text marker --regex=false",
+            "dnaxi",
+            "0.4.0",
+            "/tmp/feed",
+            "DNAXI_LOCAL_FEED",
+            "search.text.regex"));
+        Assert.False(CodexBenchmarkCommandEvidence.IsPinnedDnxInvocation(
+            "/tmp/shadow/dnx dnaxi@0.4.0 --source \"$DNAXI_LOCAL_FEED\" --verbosity quiet -- search file marker",
+            "dnaxi",
+            "0.4.0",
+            "/tmp/feed",
+            "DNAXI_LOCAL_FEED",
+            "search.file",
+            "/tmp/raw-tools/dnx"));
+        Assert.False(CodexBenchmarkCommandEvidence.IsPinnedDnxInvocation(
+            "env PATH=/tmp/shadow dnx dnaxi@0.4.0 --source \"$DNAXI_LOCAL_FEED\" --verbosity quiet -- search file marker",
+            "dnaxi",
+            "0.4.0",
+            "/tmp/feed",
+            "DNAXI_LOCAL_FEED",
+            "search.file",
+            "/tmp/raw-tools/dnx"));
+        Assert.True(CodexBenchmarkCommandEvidence.IsPinnedDnxInvocation(
+            "/tmp/raw-tools/dnx dnaxi@0.4.0 --source \"$DNAXI_LOCAL_FEED\" --verbosity quiet -- search file marker",
+            "dnaxi",
+            "0.4.0",
+            "/tmp/feed",
+            "DNAXI_LOCAL_FEED",
+            "search.file",
+            "/tmp/raw-tools/dnx"));
     }
 
     [Fact]
@@ -440,8 +574,30 @@ public sealed class CodexDiscoveryBenchmarkTests
                     fixture.RequestPath));
         }
 
+        using (var fixture = await PreparedFixture.CreateAsync())
+        {
+            var context = await CodexDiscoveryBenchmarkPreparation.PrepareAsync(
+                fixture.RequestPath);
+            File.WriteAllText(
+                Path.Combine(
+                    context.Request.Product.PackageSource.Path,
+                    "unexpected.nupkg"),
+                "unexpected");
+            await Assert.ThrowsAsync<AgentBenchmarkException>(async () =>
+                await CodexDiscoveryBenchmarkPreparation.PrepareAsync(
+                    fixture.RequestPath));
+        }
+
         using (var fixture = await PreparedFixture.CreateAsync(
                    rawToolsPathContainsSeparator: true))
+        {
+            await Assert.ThrowsAsync<AgentBenchmarkException>(async () =>
+                await CodexDiscoveryBenchmarkPreparation.PrepareAsync(
+                    fixture.RequestPath));
+        }
+
+        using (var fixture = await PreparedFixture.CreateAsync(
+                   shadowDnxBeforePinned: true))
         {
             await Assert.ThrowsAsync<AgentBenchmarkException>(async () =>
                 await CodexDiscoveryBenchmarkPreparation.PrepareAsync(
@@ -488,9 +644,26 @@ public sealed class CodexDiscoveryBenchmarkTests
         var toolCalls = new List<AgentBenchmarkToolCall>();
         if (addToolCall)
         {
+            var candidateRoute = task.RequiredCapabilities.Single() switch
+            {
+                "search.file" => "search file benchmark-marker",
+                "search.text.literal" => "search text benchmark-marker",
+                "search.text.regex" =>
+                    "search text benchmark-marker --regex",
+                "search.syntax.attributed-class" =>
+                    "search syntax attributed-class --name Benchmark",
+                "search.syntax.catch" =>
+                    "search syntax catch --name BenchmarkException",
+                "search.syntax.invocation" =>
+                    "search syntax invocation --name Benchmark",
+                "search.syntax.object-creation" =>
+                    "search syntax object-creation --name Benchmark",
+                var capability => throw new InvalidOperationException(
+                    $"Unexpected test capability '{capability}'."),
+            };
             var command = scheduled.Condition
                 is AgentBenchmarkCondition.Candidate
-                    ? $"dnx {context.Request.Product.PackageId}@{context.Request.Product.PackageVersion} --source /tmp/feed --verbosity quiet -- search file benchmark-marker"
+                    ? $"dnx {context.Request.Product.PackageId}@{context.Request.Product.PackageVersion} --source \"${CodexDiscoveryBenchmarkPreparation.PackageSourceEnvironmentVariable}\" --verbosity quiet -- {candidateRoute}"
                     : "rg benchmark-marker";
             var toolPayload = JsonSerializer.Serialize(new
             {
@@ -855,7 +1028,8 @@ public sealed class CodexDiscoveryBenchmarkTests
         public string RawToolsPath { get; }
 
         public static async ValueTask<PreparedFixture> CreateAsync(
-            bool rawToolsPathContainsSeparator = false)
+            bool rawToolsPathContainsSeparator = false,
+            bool shadowDnxBeforePinned = false)
         {
             var root = Path.Combine(
                 Path.GetTempPath(),
@@ -872,20 +1046,50 @@ public sealed class CodexDiscoveryBenchmarkTests
                     rawToolsPathContainsSeparator
                         ? $"raw{Path.PathSeparator}tools"
                         : "raw-tools")).FullName;
-            var candidateBinPath = Directory.CreateDirectory(
-                Path.Combine(root, "candidate-bin")).FullName;
             var executable = InstallCodexProbe(root);
-            var package = WriteExecutable(
+            var dnxExecutable = WriteExecutable(
                 Path.Combine(
-                    candidateBinPath,
-                    OperatingSystem.IsWindows() ? "dnaxi.exe" : "dnaxi"),
-                "package");
+                    rawToolsPath,
+                    OperatingSystem.IsWindows() ? "dnx.exe" : "dnx"),
+                "dnx probe");
+            var shadowToolsPath = shadowDnxBeforePinned
+                ? Directory.CreateDirectory(
+                    Path.Combine(root, "shadow-tools")).FullName
+                : null;
+            if (shadowToolsPath is not null)
+            {
+                WriteExecutable(
+                    Path.Combine(
+                        shadowToolsPath,
+                        OperatingSystem.IsWindows() ? "dnx.exe" : "dnx"),
+                    "shadow dnx probe");
+            }
             var candidateInstructions = Write(
                 Path.Combine(skillPath, "SKILL.md"),
-                "candidate skill instructions");
+                "Use dnx dnaxi@0.4.0 --source \"$DNAXI_LOCAL_FEED\" --verbosity quiet -- <command> for source discovery.");
+            var packageSource = Directory.CreateDirectory(
+                Path.Combine(root, "package-source")).FullName;
+            var package = WritePackage(
+                Path.Combine(packageSource, "dnaxi.0.4.0.nupkg"),
+                candidateInstructions);
             var baselineInstructions = Write(
                 Path.Combine(root, "baseline-instructions.txt"),
                 "no product instructions");
+            var priorRequestHash = new string('d', 64);
+            var priorReportHash = new string('e', 64);
+            var priorSummary = await WriteJsonAsync(
+                Path.Combine(root, "prior-summary.json"),
+                new
+                {
+                    schema = CodexDiscoveryBenchmarkPreparation
+                        .PriorSummarySchema,
+                    requestHash = priorRequestHash,
+                    reportHash = priorReportHash,
+                    evidenceStatus = "failed",
+                    comparison = "incomparable",
+                    expectedRunCount = 70,
+                    retainedRunCount = 70,
+                });
             var settings = await WriteJsonAsync(
                 Path.Combine(root, "settings.json"),
                 new CodexDiscoverySettings(
@@ -901,10 +1105,20 @@ public sealed class CodexDiscoveryBenchmarkTests
                 rawToolsPath,
                 await CodexDiscoveryBenchmarkPreparation.HashDirectoryAsync(
                     rawToolsPath));
-            var candidateBinPin = new CodexDiscoveryArtifactPin(
-                candidateBinPath,
+            var executableSearchPathEntries = shadowToolsPath is null
+                ? [rawToolsPin]
+                : new CodexDiscoveryArtifactPin[]
+                {
+                    new(
+                        shadowToolsPath,
+                        await CodexDiscoveryBenchmarkPreparation
+                            .HashDirectoryAsync(shadowToolsPath)),
+                    rawToolsPin,
+                };
+            var packageSourcePin = new CodexDiscoveryArtifactPin(
+                packageSource,
                 await CodexDiscoveryBenchmarkPreparation.HashDirectoryAsync(
-                    candidateBinPath));
+                    packageSource));
             var baselineTools = await WriteJsonAsync(
                 Path.Combine(root, "baseline-tools.json"),
                 new CodexDiscoveryToolConfiguration(
@@ -912,7 +1126,8 @@ public sealed class CodexDiscoveryBenchmarkTests
                     [
                         "skills.config=[]",
                     ],
-                    [rawToolsPin]));
+                    executableSearchPathEntries,
+                    new Dictionary<string, string>()));
             var candidateTools = await WriteJsonAsync(
                 Path.Combine(root, "candidate-tools.json"),
                 new CodexDiscoveryToolConfiguration(
@@ -920,7 +1135,12 @@ public sealed class CodexDiscoveryBenchmarkTests
                     [
                         $"skills.config=[{{path={JsonSerializer.Serialize(candidateInstructions)},enabled=true}}]",
                     ],
-                    [candidateBinPin, rawToolsPin]));
+                    executableSearchPathEntries,
+                    new Dictionary<string, string>(StringComparer.Ordinal)
+                    {
+                        [CodexDiscoveryBenchmarkPreparation
+                            .PackageSourceEnvironmentVariable] = packageSource,
+                    }));
             var corpus = Path.Combine(
                 AppContext.BaseDirectory,
                 "Fixtures",
@@ -929,8 +1149,9 @@ public sealed class CodexDiscoveryBenchmarkTests
                 "corpus.json");
             var request = new CodexDiscoveryBenchmarkRequest(
                 CodexDiscoveryBenchmarkPreparation.RequestSchema,
-                "codex-030-discovery-test",
+                "codex-040-discovery-test",
                 await PinFileAsync(executable),
+                await PinFileAsync(dnxExecutable),
                 codexHome,
                 await PinFileAsync(settings),
                 new CodexDiscoveryCorpusPin(
@@ -952,10 +1173,15 @@ public sealed class CodexDiscoveryBenchmarkTests
                     CodexDiscoveryBenchmarkPreparation.PackageVersion,
                     CodexDiscoveryBenchmarkPreparation.ProductSchema,
                     await PinFileAsync(package),
+                    packageSourcePin,
                     new CodexDiscoveryArtifactPin(
                         skillPath,
                         await CodexDiscoveryBenchmarkPreparation
                             .HashDirectoryAsync(skillPath))),
+                new CodexDiscoveryPriorSeriesPin(
+                    await PinFileAsync(priorSummary),
+                    priorRequestHash,
+                    priorReportHash),
                 5,
                 20260806,
                 1,
@@ -990,6 +1216,18 @@ public sealed class CodexDiscoveryBenchmarkTests
         private static string Write(string path, string value)
         {
             File.WriteAllText(path, value);
+            return path;
+        }
+
+        private static string WritePackage(
+            string path,
+            string skillPath)
+        {
+            using var archive = ZipFile.Open(path, ZipArchiveMode.Create);
+            archive.CreateEntryFromFile(
+                skillPath,
+                "skills/dotnet-axi/SKILL.md",
+                CompressionLevel.NoCompression);
             return path;
         }
 

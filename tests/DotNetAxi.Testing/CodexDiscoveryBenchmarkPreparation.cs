@@ -1,4 +1,5 @@
 using System.Buffers.Binary;
+using System.IO.Compression;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -12,13 +13,13 @@ namespace DotNetAxi.Testing;
 internal static partial class CodexDiscoveryBenchmarkPreparation
 {
     internal const string RequestSchema =
-        "dotnet-axi/codex-discovery-request/v1";
+        "dotnet-axi/codex-discovery-request/v2";
     internal const string PreparationSchema =
-        "dotnet-axi/codex-discovery-preparation/v1";
+        "dotnet-axi/codex-discovery-preparation/v2";
     internal const string SettingsSchema =
         "dotnet-axi/codex-discovery-settings/v1";
     internal const string ToolConfigurationSchema =
-        "dotnet-axi/codex-discovery-tool-configuration/v1";
+        "dotnet-axi/codex-discovery-tool-configuration/v2";
     internal const string CodexCliVersion = "codex-cli 0.146.0";
     internal const string ModelId = "gpt-5.6-sol";
     internal const string ReasoningSetting = "low";
@@ -29,9 +30,13 @@ internal static partial class CodexDiscoveryBenchmarkPreparation
     internal const string ProductMilestone = "0.3.0";
     internal const string CorpusId = "source-discovery";
     internal const string CorpusVersion = "1.0.0";
-    internal const string PackageId = "dotnet-axi";
-    internal const string PackageVersion = "0.3.0";
+    internal const string PackageId = "dnaxi";
+    internal const string PackageVersion = "0.4.0";
     internal const string ProductSchema = "dotnet-axi/v1";
+    internal const string PackageSourceEnvironmentVariable =
+        "DNAXI_LOCAL_FEED";
+    internal const string PriorSummarySchema =
+        "dotnet-axi/codex-discovery-summary/v1";
     internal const int RunsPerTask = 5;
 
     private static readonly string[] ExpectedTaskIds =
@@ -55,6 +60,21 @@ internal static partial class CodexDiscoveryBenchmarkPreparation
         "search.text.literal",
         "search.text.regex",
     ];
+
+    private static readonly IReadOnlyDictionary<string, string>
+        ExpectedCapabilityByTask = new Dictionary<string, string>(
+            StringComparer.Ordinal)
+        {
+            ["file-handler-paths"] = "search.file",
+            ["literal-archive-status"] = "search.text.literal",
+            ["regex-handler-methods"] = "search.text.regex",
+            ["syntax-attributed-classes"] =
+                "search.syntax.attributed-class",
+            ["syntax-catch-timeout"] = "search.syntax.catch",
+            ["syntax-invocation-record"] = "search.syntax.invocation",
+            ["syntax-object-creation-archive-client"] =
+                "search.syntax.object-creation",
+        };
 
     internal static JsonSerializerOptions JsonOptions { get; } = new()
     {
@@ -108,6 +128,9 @@ internal static partial class CodexDiscoveryBenchmarkPreparation
         }
 
         ValidateRequestShape(request);
+        var priorSeries = await LoadPriorSeriesSummaryAsync(
+            request.PriorSeries,
+            cancellationToken);
         var settings = await LoadPinnedJsonAsync<CodexDiscoverySettings>(
             request.Settings,
             "settings",
@@ -126,10 +149,12 @@ internal static partial class CodexDiscoveryBenchmarkPreparation
         await ValidateToolConfigurationAsync(
             baselineTools,
             AgentBenchmarkCondition.Baseline,
+            request,
             cancellationToken);
         await ValidateToolConfigurationAsync(
             candidateTools,
             AgentBenchmarkCondition.Candidate,
+            request,
             cancellationToken);
         ValidateConditionExposure(request, baselineTools, candidateTools);
 
@@ -138,17 +163,26 @@ internal static partial class CodexDiscoveryBenchmarkPreparation
             "Codex executable",
             cancellationToken);
         await ValidateFilePinAsync(
+            request.DnxExecutable,
+            "dnx executable",
+            cancellationToken);
+        await ValidateFilePinAsync(
             request.Corpus.Artifact,
             "corpus",
             cancellationToken);
         await ValidateFilePinAsync(
             request.Product.Package,
-            "dotnet-axi package",
+            "dnaxi package",
+            cancellationToken);
+        await ValidateDirectoryPinAsync(
+            request.Product.PackageSource,
+            "dnaxi package source",
             cancellationToken);
         await ValidateDirectoryPinAsync(
             request.Product.Skill,
-            "dotnet-axi skill",
+            "dnaxi packaged skill",
             cancellationToken);
+        await ValidatePackagedSkillAsync(request.Product, cancellationToken);
         await ValidateFilePinAsync(
             request.Baseline.Instructions,
             "baseline instructions",
@@ -192,6 +226,14 @@ internal static partial class CodexDiscoveryBenchmarkPreparation
             || applicable.Any(static task =>
                 !task.Applicability.Baseline
                 || !task.Applicability.Candidate
+                || task.RequiredCapabilities.Count != 1
+                || !ExpectedCapabilityByTask.TryGetValue(
+                    task.Id,
+                    out var expectedCapability)
+                || !string.Equals(
+                    task.RequiredCapabilities[0],
+                    expectedCapability,
+                    StringComparison.Ordinal)
                 || task.Execution.PermittedTools.Contains(
                     "workspace-write",
                     StringComparer.Ordinal)))
@@ -210,14 +252,16 @@ internal static partial class CodexDiscoveryBenchmarkPreparation
             request.Baseline.ToolConfiguration.Sha256,
             baselineTools.ConfigurationOverrides,
             baselineTools.ExecutableSearchPathEntries.Select(
-                static entry => entry.Path).ToArray());
+                static entry => entry.Path).ToArray(),
+            baselineTools.EnvironmentVariables);
         var candidate = new CodexBenchmarkConditionExposure(
             AgentBenchmarkCondition.Candidate,
             request.Candidate.Instructions.Sha256,
             request.Candidate.ToolConfiguration.Sha256,
             candidateTools.ConfigurationOverrides,
             candidateTools.ExecutableSearchPathEntries.Select(
-                static entry => entry.Path).ToArray());
+                static entry => entry.Path).ToArray(),
+            candidateTools.EnvironmentVariables);
         var adapter = new CodexAgentBenchmarkAdapter(
             new CodexAgentBenchmarkAdapterOptions(
                 request.CodexExecutable.Path,
@@ -228,7 +272,8 @@ internal static partial class CodexDiscoveryBenchmarkPreparation
                     new Dictionary<string, string>(StringComparer.Ordinal)
                     {
                         ["CODEX_HOME"] = request.CodexHomePath,
-                    }));
+                    },
+                expectedDnxExecutablePath: request.DnxExecutable.Path));
         var corpusDirectory = Path.GetDirectoryName(
                 request.Corpus.Artifact.Path)
             ?? throw new AgentBenchmarkException(
@@ -288,12 +333,20 @@ internal static partial class CodexDiscoveryBenchmarkPreparation
                 request.Settings.Sha256,
                 request.Corpus.Artifact.Path,
                 request.Corpus.Artifact.Sha256,
+                request.DnxExecutable.Path,
+                request.DnxExecutable.Sha256,
                 request.Product.PackageId,
                 request.Product.PackageVersion,
                 request.Product.Package.Path,
                 request.Product.Package.Sha256,
+                request.Product.PackageSource.Path,
+                request.Product.PackageSource.Sha256,
                 request.Product.Skill.Path,
                 request.Product.Skill.Sha256,
+                request.PriorSeries.Summary.Path,
+                request.PriorSeries.Summary.Sha256,
+                request.PriorSeries.RequestHash,
+                request.PriorSeries.ReportHash,
                 request.Baseline.Instructions.Path,
                 request.Baseline.Instructions.Sha256,
                 request.Baseline.ToolConfiguration.Path,
@@ -317,6 +370,7 @@ internal static partial class CodexDiscoveryBenchmarkPreparation
             settings,
             baselineTools,
             candidateTools,
+            priorSeries,
             selectedCorpus,
             configuration,
             adapter,
@@ -480,6 +534,10 @@ internal static partial class CodexDiscoveryBenchmarkPreparation
             "Codex executable",
             cancellationToken);
         await ValidateFilePinAsync(
+            request.DnxExecutable,
+            "dnx executable",
+            cancellationToken);
+        await ValidateFilePinAsync(
             request.Settings,
             "settings",
             cancellationToken);
@@ -489,11 +547,19 @@ internal static partial class CodexDiscoveryBenchmarkPreparation
             cancellationToken);
         await ValidateFilePinAsync(
             request.Product.Package,
-            "dotnet-axi package",
+            "dnaxi package",
+            cancellationToken);
+        await ValidateDirectoryPinAsync(
+            request.Product.PackageSource,
+            "dnaxi package source",
             cancellationToken);
         await ValidateDirectoryPinAsync(
             request.Product.Skill,
-            "dotnet-axi skill",
+            "dnaxi packaged skill",
+            cancellationToken);
+        await ValidateFilePinAsync(
+            request.PriorSeries.Summary,
+            "retained 0.3.0 summary",
             cancellationToken);
         await ValidateFilePinAsync(
             request.Baseline.Instructions,
@@ -536,12 +602,18 @@ internal static partial class CodexDiscoveryBenchmarkPreparation
         if (!string.Equals(request.Schema, RequestSchema, StringComparison.Ordinal)
             || !IdentifierRegex().IsMatch(request.SeriesId ?? string.Empty)
             || request.CodexExecutable is null
+            || request.DnxExecutable is null
             || request.Settings is null
             || request.Corpus is null
             || request.Corpus.Artifact is null
             || request.Product is null
             || request.Product.Package is null
+            || request.Product.PackageSource is null
             || request.Product.Skill is null
+            || request.PriorSeries is null
+            || request.PriorSeries.Summary is null
+            || !AgentBenchmarkHash.IsHash(request.PriorSeries.RequestHash)
+            || !AgentBenchmarkHash.IsHash(request.PriorSeries.ReportHash)
             || request.Baseline is null
             || request.Baseline.Instructions is null
             || request.Baseline.ToolConfiguration is null
@@ -588,14 +660,19 @@ internal static partial class CodexDiscoveryBenchmarkPreparation
                 StringComparison.Ordinal))
         {
             throw new AgentBenchmarkException(
-                "The request does not pin the exact manual 0.3.0 Codex discovery series contract.");
+                "The request does not pin the exact manual dnx-first 0.4.0 Codex discovery series contract.");
         }
 
         ValidatePinShape(request.CodexExecutable, "Codex executable");
+        ValidatePinShape(request.DnxExecutable, "dnx executable");
         ValidatePinShape(request.Settings, "settings");
         ValidatePinShape(request.Corpus.Artifact, "corpus");
-        ValidatePinShape(request.Product.Package, "dotnet-axi package");
-        ValidatePinShape(request.Product.Skill, "dotnet-axi skill");
+        ValidatePinShape(request.Product.Package, "dnaxi package");
+        ValidatePinShape(request.Product.PackageSource, "dnaxi package source");
+        ValidatePinShape(request.Product.Skill, "dnaxi packaged skill");
+        ValidatePinShape(
+            request.PriorSeries.Summary,
+            "retained 0.3.0 summary");
         ValidatePinShape(request.Baseline.Instructions, "baseline instructions");
         ValidatePinShape(
             request.Baseline.ToolConfiguration,
@@ -645,13 +722,14 @@ internal static partial class CodexDiscoveryBenchmarkPreparation
                 StringComparison.Ordinal))
         {
             throw new AgentBenchmarkException(
-                "The settings artifact does not pin the approved Codex 0.3.0 execution profile.");
+                "The settings artifact does not pin the approved Codex 0.4.0 self-hosting execution profile.");
         }
     }
 
     private static async ValueTask ValidateToolConfigurationAsync(
         CodexDiscoveryToolConfiguration tools,
         AgentBenchmarkCondition condition,
+        CodexDiscoveryBenchmarkRequest request,
         CancellationToken cancellationToken)
     {
         if (!string.Equals(
@@ -659,7 +737,8 @@ internal static partial class CodexDiscoveryBenchmarkPreparation
                 ToolConfigurationSchema,
                 StringComparison.Ordinal)
             || tools.ConfigurationOverrides is null
-            || tools.ExecutableSearchPathEntries is null)
+            || tools.ExecutableSearchPathEntries is null
+            || tools.EnvironmentVariables is null)
         {
             throw new AgentBenchmarkException(
                 $"The {condition} concrete-tool configuration is malformed.");
@@ -705,7 +784,8 @@ internal static partial class CodexDiscoveryBenchmarkPreparation
                     [
                         "skills.config=[]",
                     ],
-                    StringComparer.Ordinal))
+                    StringComparer.Ordinal)
+                || tools.EnvironmentVariables.Count != 0)
             {
                 throw new AgentBenchmarkException(
                     "The baseline must disable skill exposure.");
@@ -714,10 +794,18 @@ internal static partial class CodexDiscoveryBenchmarkPreparation
         else if (tools.ConfigurationOverrides.Count != 1
                  || !tools.ConfigurationOverrides[0].StartsWith(
                      "skills.config=",
+                     StringComparison.Ordinal)
+                 || tools.EnvironmentVariables.Count != 1
+                 || !tools.EnvironmentVariables.TryGetValue(
+                     PackageSourceEnvironmentVariable,
+                     out var packageSource)
+                 || !string.Equals(
+                     packageSource,
+                     request.Product.PackageSource.Path,
                      StringComparison.Ordinal))
         {
             throw new AgentBenchmarkException(
-                "The candidate must configure only the packaged skill; dnaxi is a CLI, not an MCP server.");
+                "The candidate must configure only the packaged skill and its pinned local feed; dnaxi is a CLI, not an MCP server.");
         }
     }
 
@@ -726,35 +814,54 @@ internal static partial class CodexDiscoveryBenchmarkPreparation
         CodexDiscoveryToolConfiguration baseline,
         CodexDiscoveryToolConfiguration candidate)
     {
-        var packageDirectory = Path.GetDirectoryName(
-                request.Product.Package.Path)
-            ?? string.Empty;
         var packageName = Path.GetFileName(request.Product.Package.Path);
+        var packageSource = Path.GetFullPath(
+            request.Product.PackageSource.Path);
+        var packageDirectory = Path.GetDirectoryName(
+                Path.GetFullPath(request.Product.Package.Path))
+            ?? string.Empty;
+        var dnxDirectory = Path.GetDirectoryName(
+                Path.GetFullPath(request.DnxExecutable.Path))
+            ?? string.Empty;
         var skillFile = Path.Combine(request.Product.Skill.Path, "SKILL.md");
         var expectedSkillOverride =
             $"skills.config=[{{path={JsonSerializer.Serialize(skillFile)},enabled=true}}]";
-        if (!(string.Equals(packageName, "dnaxi", StringComparison.Ordinal)
-              || string.Equals(packageName, "dnaxi.exe", StringComparison.Ordinal))
-            || !IsExecutableFile(request.Product.Package.Path)
+        var expectedPackageName =
+            $"{PackageId}.{PackageVersion}.nupkg";
+        if (!string.Equals(
+                packageName,
+                expectedPackageName,
+                StringComparison.OrdinalIgnoreCase)
+            || !string.Equals(
+                packageDirectory,
+                packageSource,
+                StringComparison.Ordinal)
+            || !(string.Equals(
+                     Path.GetFileName(request.DnxExecutable.Path),
+                     "dnx",
+                     StringComparison.Ordinal)
+                 || string.Equals(
+                     Path.GetFileName(request.DnxExecutable.Path),
+                     "dnx.exe",
+                     StringComparison.Ordinal))
+            || !IsExecutableFile(request.DnxExecutable.Path)
             || !IsExecutableFile(request.CodexExecutable.Path)
             || !string.Equals(
                 request.Candidate.Instructions.Path,
                 skillFile,
                 StringComparison.Ordinal)
             || baseline.ExecutableSearchPathEntries.Any(entry =>
-                string.Equals(
-                    entry.Path,
-                    packageDirectory,
-                    StringComparison.Ordinal))
-            || baseline.ExecutableSearchPathEntries.Any(entry =>
                 ContainsDnaxi(entry.Path))
-            || candidate.ExecutableSearchPathEntries.Count
-                != baseline.ExecutableSearchPathEntries.Count + 1
+            || candidate.ExecutableSearchPathEntries.Any(entry =>
+                ContainsDnaxi(entry.Path))
+            || baseline.ExecutableSearchPathEntries.Count == 0
             || !string.Equals(
-                candidate.ExecutableSearchPathEntries[0].Path,
-                packageDirectory,
+                baseline.ExecutableSearchPathEntries[0].Path,
+                dnxDirectory,
                 StringComparison.Ordinal)
-            || !candidate.ExecutableSearchPathEntries.Skip(1).Select(
+            || baseline.ExecutableSearchPathEntries.Skip(1).Any(entry =>
+                ContainsDnx(entry.Path))
+            || !candidate.ExecutableSearchPathEntries.Select(
                     static entry => entry.Path).SequenceEqual(
                     baseline.ExecutableSearchPathEntries.Select(
                         static entry => entry.Path),
@@ -765,13 +872,17 @@ internal static partial class CodexDiscoveryBenchmarkPreparation
                 StringComparison.Ordinal))
         {
             throw new AgentBenchmarkException(
-                "The baseline must use a dnaxi-free raw-tool path, and the candidate must add only the pinned dnaxi CLI directory and packaged SKILL.md.");
+                "Both conditions must use the same dnaxi-free raw-tool path with pinned dnx, while the candidate adds only the packaged SKILL.md and pinned local feed environment.");
         }
     }
 
     private static bool ContainsDnaxi(string directory) =>
         File.Exists(Path.Combine(directory, "dnaxi"))
         || File.Exists(Path.Combine(directory, "dnaxi.exe"));
+
+    private static bool ContainsDnx(string directory) =>
+        File.Exists(Path.Combine(directory, "dnx"))
+        || File.Exists(Path.Combine(directory, "dnx.exe"));
 
     private static bool IsExecutableFile(string path)
     {
@@ -792,6 +903,203 @@ internal static partial class CodexDiscoveryBenchmarkPreparation
                                         | UnixFileMode.GroupExecute
                                         | UnixFileMode.OtherExecute;
         return (File.GetUnixFileMode(path) & executable) != 0;
+    }
+
+    private static async ValueTask ValidatePackagedSkillAsync(
+        CodexDiscoveryProductPin product,
+        CancellationToken cancellationToken)
+    {
+        var packagePath = Path.GetFullPath(product.Package.Path);
+        var sourceFiles = Directory.EnumerateFiles(
+                product.PackageSource.Path,
+                "*",
+                SearchOption.AllDirectories)
+            .Select(Path.GetFullPath)
+            .Order(StringComparer.Ordinal)
+            .ToArray();
+        if (sourceFiles.Length != 1
+            || !string.Equals(
+                sourceFiles[0],
+                packagePath,
+                StringComparison.Ordinal))
+        {
+            throw new AgentBenchmarkException(
+                "The pinned local feed must contain only the exact candidate dnaxi package.");
+        }
+
+        var extractedFiles = Directory.EnumerateFiles(
+                product.Skill.Path,
+                "*",
+                SearchOption.AllDirectories)
+            .Select(path => new
+            {
+                Path = path,
+                Relative = Path.GetRelativePath(product.Skill.Path, path)
+                    .Replace(Path.DirectorySeparatorChar, '/'),
+            })
+            .OrderBy(static file => file.Relative, StringComparer.Ordinal)
+            .ToArray();
+        using var packageStream = File.OpenRead(packagePath);
+        using var archive = new ZipArchive(
+            packageStream,
+            ZipArchiveMode.Read,
+            leaveOpen: false);
+        const string skillPrefix = "skills/dotnet-axi/";
+        var packagedFiles = archive.Entries
+            .Where(entry => entry.FullName.StartsWith(
+                                skillPrefix,
+                                StringComparison.Ordinal)
+                            && !entry.FullName.EndsWith(
+                                "/",
+                                StringComparison.Ordinal))
+            .Select(entry => new
+            {
+                Entry = entry,
+                Relative = entry.FullName[skillPrefix.Length..],
+            })
+            .OrderBy(static file => file.Relative, StringComparer.Ordinal)
+            .ToArray();
+        if (packagedFiles.Length == 0
+            || packagedFiles.Any(file =>
+                string.IsNullOrEmpty(file.Relative)
+                || file.Relative.Contains('\\')
+                || file.Relative.Split('/').Contains(
+                    "..",
+                    StringComparer.Ordinal))
+            || !packagedFiles.Select(static file => file.Relative)
+                .SequenceEqual(
+                    extractedFiles.Select(static file => file.Relative),
+                    StringComparer.Ordinal))
+        {
+            throw new AgentBenchmarkException(
+                "The pinned skill directory does not expose the exact skill files carried by the candidate package.");
+        }
+
+        for (var index = 0; index < packagedFiles.Length; index++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            await using var packaged = packagedFiles[index].Entry.Open();
+            await using var extracted = File.OpenRead(extractedFiles[index].Path);
+            if (!await StreamsEqualAsync(
+                    packaged,
+                    extracted,
+                    cancellationToken))
+            {
+                throw new AgentBenchmarkException(
+                    $"The extracted packaged skill file '{packagedFiles[index].Relative}' does not match the candidate package.");
+            }
+        }
+
+        var skillFile = Path.Combine(product.Skill.Path, "SKILL.md");
+        var skill = await File.ReadAllTextAsync(
+            skillFile,
+            Encoding.UTF8,
+            cancellationToken);
+        var exactInvocation =
+            $"dnx {PackageId}@{PackageVersion} --source \"${PackageSourceEnvironmentVariable}\" --verbosity quiet -- <command>";
+        if (skill.Contains("<exact-version>", StringComparison.Ordinal)
+            || !skill.Contains(exactInvocation, StringComparison.Ordinal))
+        {
+            throw new AgentBenchmarkException(
+                "The packaged skill must expose the exact source-pinned candidate dnx invocation.");
+        }
+    }
+
+    private static async ValueTask<bool> StreamsEqualAsync(
+        Stream left,
+        Stream right,
+        CancellationToken cancellationToken)
+    {
+        var leftBuffer = new byte[16 * 1024];
+        var rightBuffer = new byte[leftBuffer.Length];
+        while (true)
+        {
+            var leftRead = await left.ReadAsync(leftBuffer, cancellationToken);
+            var rightRead = await right.ReadAsync(
+                rightBuffer,
+                cancellationToken);
+            if (leftRead != rightRead)
+            {
+                return false;
+            }
+
+            if (leftRead == 0)
+            {
+                return true;
+            }
+
+            if (!leftBuffer.AsSpan(0, leftRead).SequenceEqual(
+                    rightBuffer.AsSpan(0, rightRead)))
+            {
+                return false;
+            }
+        }
+    }
+
+    private static async ValueTask<CodexDiscoveryPriorSeriesIdentity>
+        LoadPriorSeriesSummaryAsync(
+        CodexDiscoveryPriorSeriesPin prior,
+        CancellationToken cancellationToken)
+    {
+        await ValidateFilePinAsync(
+            prior.Summary,
+            "retained 0.3.0 summary",
+            cancellationToken);
+        try
+        {
+            await using var stream = File.OpenRead(prior.Summary.Path);
+            using var document = await JsonDocument.ParseAsync(
+                stream,
+                cancellationToken: cancellationToken);
+            var root = document.RootElement;
+            var identity = new CodexDiscoveryPriorSeriesIdentity(
+                root.GetProperty("schema").GetString() ?? string.Empty,
+                root.GetProperty("requestHash").GetString() ?? string.Empty,
+                root.GetProperty("reportHash").GetString() ?? string.Empty,
+                root.GetProperty("evidenceStatus").GetString() ?? string.Empty,
+                root.GetProperty("comparison").GetString() ?? string.Empty,
+                root.GetProperty("expectedRunCount").GetInt32(),
+                root.GetProperty("retainedRunCount").GetInt32());
+            if (!string.Equals(
+                    identity.Schema,
+                    PriorSummarySchema,
+                    StringComparison.Ordinal)
+                || !string.Equals(
+                    identity.RequestHash,
+                    prior.RequestHash,
+                    StringComparison.Ordinal)
+                || !string.Equals(
+                    identity.ReportHash,
+                    prior.ReportHash,
+                    StringComparison.Ordinal)
+                || !string.Equals(
+                    identity.EvidenceStatus,
+                    "failed",
+                    StringComparison.Ordinal)
+                || !string.Equals(
+                    identity.Comparison,
+                    "incomparable",
+                    StringComparison.Ordinal)
+                || identity.ExpectedRunCount != RunsPerTask
+                    * ExpectedTaskIds.Length * 2
+                || identity.RetainedRunCount != identity.ExpectedRunCount)
+            {
+                throw new AgentBenchmarkException(
+                    "The prior-series pin does not identify the retained failed/incomparable 0.3.0 discovery result.");
+            }
+
+            return identity;
+        }
+        catch (Exception exception)
+            when (exception is JsonException
+                  or InvalidOperationException
+                  or KeyNotFoundException
+                  or FormatException)
+        {
+            throw new AgentBenchmarkException(
+                "The retained 0.3.0 summary is malformed.",
+                exception);
+        }
     }
 
     private static async ValueTask ValidateCodexRuntimeAsync(
@@ -1024,7 +1332,22 @@ internal sealed record CodexDiscoveryProductPin(
     string PackageVersion,
     string ProductSchema,
     CodexDiscoveryArtifactPin Package,
+    CodexDiscoveryArtifactPin PackageSource,
     CodexDiscoveryArtifactPin Skill);
+
+internal sealed record CodexDiscoveryPriorSeriesPin(
+    CodexDiscoveryArtifactPin Summary,
+    string RequestHash,
+    string ReportHash);
+
+internal sealed record CodexDiscoveryPriorSeriesIdentity(
+    string Schema,
+    string RequestHash,
+    string ReportHash,
+    string EvidenceStatus,
+    string Comparison,
+    int ExpectedRunCount,
+    int RetainedRunCount);
 
 internal sealed record CodexDiscoveryConditionPin(
     CodexDiscoveryArtifactPin Instructions,
@@ -1034,10 +1357,12 @@ internal sealed record CodexDiscoveryBenchmarkRequest(
     string Schema,
     string SeriesId,
     CodexDiscoveryArtifactPin CodexExecutable,
+    CodexDiscoveryArtifactPin DnxExecutable,
     string CodexHomePath,
     CodexDiscoveryArtifactPin Settings,
     CodexDiscoveryCorpusPin Corpus,
     CodexDiscoveryProductPin Product,
+    CodexDiscoveryPriorSeriesPin PriorSeries,
     int RunsPerTask,
     ulong RandomizationSeed,
     int MaximumStartAttempts,
@@ -1061,7 +1386,8 @@ internal sealed record CodexDiscoverySettings(
 internal sealed record CodexDiscoveryToolConfiguration(
     string Schema,
     IReadOnlyList<string> ConfigurationOverrides,
-    IReadOnlyList<CodexDiscoveryArtifactPin> ExecutableSearchPathEntries);
+    IReadOnlyList<CodexDiscoveryArtifactPin> ExecutableSearchPathEntries,
+    IReadOnlyDictionary<string, string> EnvironmentVariables);
 
 internal sealed record CodexDiscoveryRetainedPins(
     string CodexExecutablePath,
@@ -1072,12 +1398,20 @@ internal sealed record CodexDiscoveryRetainedPins(
     string SettingsHash,
     string CorpusPath,
     string CorpusHash,
+    string DnxExecutablePath,
+    string DnxExecutableHash,
     string PackageId,
     string PackageVersion,
     string PackagePath,
     string PackageHash,
+    string PackageSourcePath,
+    string PackageSourceHash,
     string SkillPath,
     string SkillHash,
+    string PriorSummaryPath,
+    string PriorSummaryHash,
+    string PriorRequestHash,
+    string PriorReportHash,
     string BaselineInstructionsPath,
     string BaselineInstructionsHash,
     string BaselineToolConfigurationPath,
@@ -1109,6 +1443,7 @@ internal sealed record CodexDiscoveryPreparedContext(
     CodexDiscoverySettings Settings,
     CodexDiscoveryToolConfiguration BaselineTools,
     CodexDiscoveryToolConfiguration CandidateTools,
+    CodexDiscoveryPriorSeriesIdentity PriorSeries,
     AgentTaskCorpus Corpus,
     AgentBenchmarkConfiguration Configuration,
     CodexAgentBenchmarkAdapter Adapter,
