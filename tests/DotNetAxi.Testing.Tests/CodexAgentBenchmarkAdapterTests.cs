@@ -34,7 +34,7 @@ public sealed class CodexAgentBenchmarkAdapterTests
             baselineWorkspace,
             AgentBenchmarkCondition.Baseline));
 
-        Assert.Equal("1.5.0", adapter.Descriptor.Version);
+        Assert.Equal("1.6.0", adapter.Descriptor.Version);
         Assert.Equal(
             await File.ReadAllBytesAsync(Path.Combine(source, "SKILL.md")),
             await File.ReadAllBytesAsync(Path.Combine(

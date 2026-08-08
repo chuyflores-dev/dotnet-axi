@@ -507,7 +507,7 @@ represented as an MCP server, and API-key authentication or API-key artifacts
 are not accepted.
 
 The corrected Codex discovery protocol uses version 2 retained-run and report
-schemas, version 3 summaries, and Codex adapter version 1.5. The fixture home
+schemas, version 3 summaries, and Codex adapter version 1.6. The fixture home
 restores the sealed raw-tool path after login-shell initialization, and every
 run revalidates that the login shell resolves `dnx` to the pinned executable
 before Codex starts. The protocol derives
@@ -519,7 +519,11 @@ local source and quiet verbosity before the tool delimiter. Successful
 invocations, activated runs, and successfully activated runs are recorded in
 aggregate and for every discovery task. Mentioning that vector as data inside
 another command, omitting source isolation, or invoking a different package
-version is not activation. A complete comparison with zero candidate
+version is not activation. Reconciliation decodes the bounded POSIX shell
+display forms emitted by Codex so quoted search expressions do not hide an
+otherwise exact invocation. Capability identities map to the public command
+grammar; attributed-class activation is `search syntax class` with exactly one
+nonblank `--attribute` value. A complete comparison with zero candidate
 invocations is labeled `zero-activation`; a discovery task with no successful
 activated candidate run is labeled `activation-gap`. Either blocks the release
 and cannot support an improvement claim.

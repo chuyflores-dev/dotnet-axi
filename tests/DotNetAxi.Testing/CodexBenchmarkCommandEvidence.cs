@@ -203,7 +203,7 @@ internal static partial class CodexBenchmarkCommandEvidence
                 requiresRegex = true;
                 break;
             case "search.syntax.attributed-class":
-                route = ["search", "syntax", "attributed-class"];
+                route = ["search", "syntax", "class"];
                 break;
             case "search.syntax.catch":
                 route = ["search", "syntax", "catch"];
@@ -225,6 +225,13 @@ internal static partial class CodexBenchmarkCommandEvidence
             return false;
         }
 
+        if (capability == "search.syntax.attributed-class")
+        {
+            return HasSingleNonBlankOption(
+                arguments.Skip(route.Length).ToArray(),
+                "--attribute");
+        }
+
         if (capability is not ("search.text.literal" or "search.text.regex"))
         {
             return true;
@@ -242,6 +249,46 @@ internal static partial class CodexBenchmarkCommandEvidence
         return requiresRegex
             ? regexPresent && regexEnabled
             : !regexPresent || !regexEnabled;
+    }
+
+    private static bool HasSingleNonBlankOption(
+        IReadOnlyList<string> arguments,
+        string option)
+    {
+        var count = 0;
+        for (var index = 0; index < arguments.Count; index++)
+        {
+            var argument = arguments[index];
+            string value;
+            if (string.Equals(argument, option, StringComparison.Ordinal))
+            {
+                if (++index >= arguments.Count)
+                {
+                    return false;
+                }
+
+                value = arguments[index];
+            }
+            else if (argument.StartsWith(
+                         $"{option}=",
+                         StringComparison.Ordinal))
+            {
+                value = argument[(option.Length + 1)..];
+            }
+            else
+            {
+                continue;
+            }
+
+            count++;
+            if (string.IsNullOrWhiteSpace(value)
+                || value[0] == '-')
+            {
+                return false;
+            }
+        }
+
+        return count == 1;
     }
 
     private static bool TryGetBooleanOption(
@@ -505,15 +552,48 @@ internal static partial class CodexBenchmarkCommandEvidence
     {
         var trimmed = command.Trim();
         var match = ShellWrapperRegex().Match(trimmed);
-        if (!match.Success)
+        if (match.Success)
+        {
+            var body = match.Groups["body"].Value;
+            return match.Groups["quote"].Value == "\""
+                ? body.Replace("\\\"", "\"", StringComparison.Ordinal)
+                : body.Replace("'\\''", "'", StringComparison.Ordinal);
+        }
+
+        var display = CodexPosixShellDisplayRegex().Match(trimmed);
+        if (!display.Success)
         {
             return trimmed;
         }
 
-        var body = match.Groups["body"].Value;
-        return match.Groups["quote"].Value == "\""
-            ? body.Replace("\\\"", "\"", StringComparison.Ordinal)
-            : body.Replace("'\\''", "'", StringComparison.Ordinal);
+        var displayBody = display.Groups["body"].Value;
+        const string openingMarker = "'\"'";
+        var opening = displayBody.IndexOf(
+            openingMarker,
+            StringComparison.Ordinal);
+        if (opening < 0
+            || displayBody.IndexOf(
+                openingMarker,
+                opening + openingMarker.Length,
+                StringComparison.Ordinal) >= 0)
+        {
+            return trimmed;
+        }
+
+        var closing = displayBody.IndexOf(
+            '\'',
+            opening + openingMarker.Length);
+        if (closing < 0)
+        {
+            return trimmed;
+        }
+
+        return string.Concat(
+            displayBody[..opening],
+            "\"",
+            displayBody[(opening + openingMarker.Length)..closing],
+            "\"",
+            displayBody[(closing + 1)..]);
     }
 
     private static string StripSupportedRedirections(string command)
@@ -577,6 +657,11 @@ internal static partial class CodexBenchmarkCommandEvidence
         "^(?:(?:/[^/\\s]+/)?(?:zsh|bash|sh)|pwsh|powershell)\\s+(?:-lc|-c|-Command)\\s+(?<quote>[\"'])(?<body>.*)\\k<quote>\\s*$",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex ShellWrapperRegex();
+
+    [GeneratedRegex(
+        "^(?:(?:/[^/\\s]+/)?(?:zsh|bash|sh))\\s+(?:-lc|-c)\\s+'(?<body>.*)\"\\s*$",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    private static partial Regex CodexPosixShellDisplayRegex();
 
     [GeneratedRegex(
         "(?:\"[^\"\\r\\n]*\"|'[^'\\r\\n]*'|[^\\s]+)",

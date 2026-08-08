@@ -88,7 +88,7 @@ public sealed class CodexDiscoveryBenchmarkTests
         Assert.Equal(
             context.Request.Product.Skill.Path,
             context.CandidateTools.SkillDirectoryPath);
-        Assert.Equal("1.5.0", context.Adapter.Descriptor.Version);
+        Assert.Equal("1.6.0", context.Adapter.Descriptor.Version);
 
         var preparationPath = Path.Combine(fixture.Root, "preparation.json");
         await CodexDiscoveryBenchmarkPreparation.WriteCreateNewAsync(
@@ -385,6 +385,86 @@ public sealed class CodexDiscoveryBenchmarkTests
             "/tmp/raw-tools/dnx"));
         Assert.True(CodexBenchmarkCommandEvidence.IsPinnedDnxInvocation(
             "/tmp/raw-tools/dnx dnaxi@0.4.0 --source \"$DNAXI_LOCAL_FEED\" --verbosity quiet -- search file marker",
+            "dnaxi",
+            "0.4.0",
+            "/tmp/feed",
+            "DNAXI_LOCAL_FEED",
+            "search.file",
+            "/tmp/raw-tools/dnx"));
+        Assert.True(CodexBenchmarkCommandEvidence.IsPinnedDnxInvocation(
+            "dnx dnaxi@0.4.0 --source \"$DNAXI_LOCAL_FEED\" --verbosity quiet -- search syntax class --attribute CorpusCase --path .",
+            "dnaxi",
+            "0.4.0",
+            "/tmp/feed",
+            "DNAXI_LOCAL_FEED",
+            "search.syntax.attributed-class"));
+        Assert.True(CodexBenchmarkCommandEvidence.IsPinnedDnxInvocation(
+            "dnx dnaxi@0.4.0 --source \"$DNAXI_LOCAL_FEED\" --verbosity quiet -- search syntax class --attribute=CorpusCase --path .",
+            "dnaxi",
+            "0.4.0",
+            "/tmp/feed",
+            "DNAXI_LOCAL_FEED",
+            "search.syntax.attributed-class"));
+        Assert.False(CodexBenchmarkCommandEvidence.IsPinnedDnxInvocation(
+            "dnx dnaxi@0.4.0 --source \"$DNAXI_LOCAL_FEED\" --verbosity quiet -- search syntax class --path .",
+            "dnaxi",
+            "0.4.0",
+            "/tmp/feed",
+            "DNAXI_LOCAL_FEED",
+            "search.syntax.attributed-class"));
+        Assert.False(CodexBenchmarkCommandEvidence.IsPinnedDnxInvocation(
+            "dnx dnaxi@0.4.0 --source \"$DNAXI_LOCAL_FEED\" --verbosity quiet -- search syntax class --attribute --path .",
+            "dnaxi",
+            "0.4.0",
+            "/tmp/feed",
+            "DNAXI_LOCAL_FEED",
+            "search.syntax.attributed-class"));
+        Assert.False(CodexBenchmarkCommandEvidence.IsPinnedDnxInvocation(
+            "dnx dnaxi@0.4.0 --source \"$DNAXI_LOCAL_FEED\" --verbosity quiet -- search syntax attributed-class --name CorpusCase",
+            "dnaxi",
+            "0.4.0",
+            "/tmp/feed",
+            "DNAXI_LOCAL_FEED",
+            "search.syntax.attributed-class"));
+    }
+
+    [Theory]
+    [InlineData(
+        "/bin/zsh -lc 'dnx dnaxi@0.4.0 --source \"$DNAXI_LOCAL_FEED\" --verbosity quiet -- search file '\"'Handler.cs' --path . --limit 200\"",
+        "search.file")]
+    [InlineData(
+        "/bin/zsh -lc 'dnx dnaxi@0.4.0 --source \"$DNAXI_LOCAL_FEED\" --verbosity quiet -- search text '\"'Archive pipeline ready' --path . --limit 1000\"",
+        "search.text.literal")]
+    [InlineData(
+        "/bin/zsh -lc 'dnx dnaxi@0.4.0 --source \"$DNAXI_LOCAL_FEED\" --verbosity quiet -- search text '\"'Handle(?:Audit|Retry)Async' --regex --path . --limit 1000\"",
+        "search.text.regex")]
+    public void Pinned_dnx_activation_accepts_retained_codex_shell_display(
+        string command,
+        string capability)
+    {
+        Assert.True(CodexBenchmarkCommandEvidence.IsPinnedDnxInvocation(
+            command,
+            "dnaxi",
+            "0.4.0",
+            "/tmp/feed",
+            "DNAXI_LOCAL_FEED",
+            capability,
+            "/tmp/raw-tools/dnx"));
+    }
+
+    [Fact]
+    public void Pinned_dnx_activation_rejects_unsafe_codex_shell_display()
+    {
+        Assert.False(CodexBenchmarkCommandEvidence.IsPinnedDnxInvocation(
+            "/bin/zsh -lc 'dnx dnaxi@0.4.0 --source \"$DNAXI_LOCAL_FEED\" --verbosity quiet -- search file '\"'Handler.cs' --path . --limit 200; echo unsafe\"",
+            "dnaxi",
+            "0.4.0",
+            "/tmp/feed",
+            "DNAXI_LOCAL_FEED",
+            "search.file",
+            "/tmp/raw-tools/dnx"));
+        Assert.False(CodexBenchmarkCommandEvidence.IsPinnedDnxInvocation(
+            "/bin/zsh -lc 'dnx dnaxi@0.4.0 --source '$DNAXI_LOCAL_FEED' --verbosity quiet -- search file '\"'Handler.cs' --path . --limit 200\"",
             "dnaxi",
             "0.4.0",
             "/tmp/feed",
@@ -763,7 +843,7 @@ public sealed class CodexDiscoveryBenchmarkTests
                 "search.text.regex" =>
                     "search text benchmark-marker --regex",
                 "search.syntax.attributed-class" =>
-                    "search syntax attributed-class --name Benchmark",
+                    "search syntax class --attribute Benchmark",
                 "search.syntax.catch" =>
                     "search syntax catch --name BenchmarkException",
                 "search.syntax.invocation" =>
