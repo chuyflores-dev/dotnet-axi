@@ -353,6 +353,7 @@ public static class AgentGuidanceCatalog
         invocationFlow:
         [
             $"Default to one-shot `{invocation}`. Keep the exact version pin and do not require a permanent installation.",
+            $"When a controlled harness supplies `DNAXI_LOCAL_FEED`, keep candidate resolution source-pinned with `dnx dnaxi@{exactVersion} --source \"$DNAXI_LOCAL_FEED\" --verbosity quiet -- <command>`.",
             "Use a global `dnaxi <command>` or local `dotnet tool run dnaxi -- <command>` only when that persistent invocation was explicitly selected and verified.",
             $"Use `{homeInvocation}` for a passive workspace summary, `{helpInvocation}` only when command grammar is unknown, and `{versionInvocation}` when version identity matters.",
             authority,

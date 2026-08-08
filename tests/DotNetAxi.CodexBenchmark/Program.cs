@@ -82,7 +82,7 @@ internal static class CodexDiscoveryBenchmarkProgram
                 completed: true,
                 failure: null);
             PrintSummary(summary);
-            return summary.Comparison is "regression" or "incomparable"
+            return IsReleaseBlocking(summary.Comparison)
                 ? 1
                 : 0;
         }
@@ -118,7 +118,7 @@ internal static class CodexDiscoveryBenchmarkProgram
                 requestPath,
                 evidenceDirectory);
         PrintSummary(summary);
-        return summary.Comparison is "regression" or "incomparable"
+        return IsReleaseBlocking(summary.Comparison)
             ? 1
             : 0;
     }
@@ -178,7 +178,15 @@ internal static class CodexDiscoveryBenchmarkProgram
             $"median_token_change_percent: {summary.Thresholds.MedianTokenChangePercent?.ToString() ?? "unavailable"}");
         Console.WriteLine(
             $"improvement_claim_supported: {summary.Thresholds.ImprovementClaimSupported.ToString().ToLowerInvariant()}");
+        Console.WriteLine(
+            $"activated_routes: {summary.RouteActivations.Count(static route => route.SuccessfulActivatedRunCount > 0)}/{summary.RouteActivations.Count}");
     }
+
+    private static bool IsReleaseBlocking(string comparison) =>
+        comparison is "regression"
+            or "incomparable"
+            or "zero-activation"
+            or "activation-gap";
 
     private static bool TryReadTwoOptions(
         string[] args,

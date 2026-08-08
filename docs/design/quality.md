@@ -458,10 +458,10 @@ false candidates, and syntax that must remain unresolved without semantic
 inference. The task prompt describes the outcome and response facts, not a
 condition-specific command.
 
-The measured `0.3.0` Codex series is prepared and dispatched only through the
-manual `DotNetAxi.CodexBenchmark` console. Its strict request pins the released
-package and skill, instruction and tool artifacts, authenticated `CODEX_HOME`
-path identity, executable, settings, commits, and the exact seven-task corpus.
+Codex discovery series are prepared and dispatched only through the manual
+`DotNetAxi.CodexBenchmark` console. A strict request pins the candidate package
+and skill, instruction and tool artifacts, authenticated `CODEX_HOME` path
+identity, executables, settings, commits, and the exact seven-task corpus.
 `prepare` recomputes every artifact hash, hashes every executable-search
 directory, verifies the exact CLI version and active ChatGPT authentication
 with bounded local `codex --version` and `codex login status` probes, and seals
@@ -470,28 +470,48 @@ only that unchanged preparation and writes create-new preparation, per-run,
 report, and summary evidence; completed run evidence is flushed durably before
 the next run starts, and every execution artifact and tool-directory pin is
 revalidated after each retained run before another paid run may start.
-The baseline disables skills and replaces inherited `PATH` with an isolated
-raw-tool search path that contains no `dnaxi`. The candidate adds only the
-pinned released `dnaxi` executable directory and packaged `SKILL.md` to that
-same tool environment. It does not represent the CLI as an MCP server and
-does not accept API-key authentication or require an API-key artifact.
 `validate` reloads the request and artifacts, rejects unknown JSON fields or
 drift, reconciles normalized metrics with raw Codex events, and recomputes the
 documented comparison thresholds. Missing, failed, and timed-out trajectories
 remain explicit and make the comparison incomparable rather than contributing
 smoothed success or efficiency values.
 
-The corrected Codex discovery protocol uses version 2 retained-run, report,
-and summary schemas and Codex adapter version 1.1. It derives normalized and
-raw-event command classification and inspected scope through the same rules.
+The `0.4.0` self-hosting request uses request and preparation version 2. It
+pins an executable `dnx`, a local feed containing only the exact
+`dnaxi.0.4.0.nupkg`, and a skill directory whose files must match the skill
+carried by that package byte for byte. Baseline and candidate use the same
+isolated raw-tool `PATH`, with the pinned `dnx` directory first, no other `dnx`
+in later entries, and no persistent `dnaxi`. Baseline disables skills.
+Candidate adds only the packaged `SKILL.md` and a `DNAXI_LOCAL_FEED`
+environment value bound to the pinned feed. Each materialized workspace
+supplies isolated writable .NET and NuGet caches, so the skill can select `dnx
+dnaxi@0.4.0 --source "$DNAXI_LOCAL_FEED" --verbosity quiet --` while package
+resolution remains local and network-disabled. The CLI is not represented as
+an MCP server, and API-key authentication or API-key artifacts are not
+accepted.
+
+The corrected Codex discovery protocol uses version 2 retained-run and report
+schemas, version 3 summaries, and Codex adapter version 1.3. The fixture home
+restores the sealed raw-tool path after login-shell initialization, and every
+run revalidates that the login shell resolves `dnx` to the pinned executable
+before Codex starts. The protocol derives
+normalized and raw-event command classification and inspected scope through
+the same rules.
 Condition metrics count command executions of the manifest-pinned `dnx
-<package-id>@<version>` identity, successful invocations, activated runs, and
-successfully activated runs. Mentioning that vector as data inside another
-command or invoking a different package version is not activation. A complete
-comparison with zero candidate invocations is labeled `zero-activation` and
-cannot support an improvement claim. These protocol corrections apply to new
-series only; retained 0.3.0 artifacts, hashes, status, and conclusions remain
-unchanged.
+<package-id>@<version>` identity only when the command also carries the pinned
+local source and quiet verbosity before the tool delimiter. Successful
+invocations, activated runs, and successfully activated runs are recorded in
+aggregate and for every discovery task. Mentioning that vector as data inside
+another command, omitting source isolation, or invoking a different package
+version is not activation. A complete comparison with zero candidate
+invocations is labeled `zero-activation`; a discovery task with no successful
+activated candidate run is labeled `activation-gap`. Either blocks the release
+and cannot support an improvement claim.
+
+The version 3 summary also pins and identifies the retained `0.3.0` summary.
+That historical result remains failed and incomparable and is neither pooled
+with the corrected series nor reclassified. Its artifact, request, and report
+hashes, status, and conclusion remain unchanged.
 
 Exact fact sets must be nonempty, unique, and stored in ordinal order. Strict
 corpus loading rejects unknown fields, duplicate or unsorted outcomes, fixture

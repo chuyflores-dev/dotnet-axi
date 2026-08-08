@@ -1,16 +1,15 @@
 {
-  "schema": "dotnet-axi/codex-discovery-tool-configuration/v1",
+  "schema": "dotnet-axi/codex-discovery-tool-configuration/v2",
   "configurationOverrides": [
-    "skills.config=[{path=\"/absolute/path/to/released/dotnet-axi-skill/SKILL.md\",enabled=true}]"
+    "skills.config=[{path=\"/absolute/path/to/skill-extracted-from-candidate-package/SKILL.md\",enabled=true}]"
   ],
   "executableSearchPathEntries": [
-    {
-      "path": "/absolute/path/to/released",
-      "sha256": "replace-with-64-lowercase-hex-dnaxi-directory-hash"
-    },
     {
       "path": "/absolute/path/to/isolated-raw-tool-bin",
       "sha256": "replace-with-64-lowercase-hex-raw-tool-directory-hash"
     }
-  ]
+  ],
+  "environmentVariables": {
+    "DNAXI_LOCAL_FEED": "/absolute/path/to/local-feed"
+  }
 }

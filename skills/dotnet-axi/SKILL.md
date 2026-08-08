@@ -25,10 +25,11 @@ description: Use dotnet-axi for deterministic .NET repository evidence. Trigger 
 ## Invoke on demand
 
 1. Default to one-shot `dnx dnaxi@<exact-version> --verbosity quiet -- <command>`. Keep the exact version pin and do not require a permanent installation.
-2. Use a global `dnaxi <command>` or local `dotnet tool run dnaxi -- <command>` only when that persistent invocation was explicitly selected and verified.
-3. Use `dnx dnaxi@<exact-version> --verbosity quiet --` for a passive workspace summary, `dnx dnaxi@<exact-version> --verbosity quiet -- --help` only when command grammar is unknown, and `dnx dnaxi@<exact-version> --verbosity quiet -- --version` when version identity matters.
-4. Treat the invoked version's structured help, version, and reported capabilities as authoritative. Never use a command or option that it does not expose.
-5. Remember that `dnx` package resolution may download or restore the tool. Keep that network operation explicit and subject to host policy.
+2. When a controlled harness supplies `DNAXI_LOCAL_FEED`, keep candidate resolution source-pinned with `dnx dnaxi@<exact-version> --source "$DNAXI_LOCAL_FEED" --verbosity quiet -- <command>`.
+3. Use a global `dnaxi <command>` or local `dotnet tool run dnaxi -- <command>` only when that persistent invocation was explicitly selected and verified.
+4. Use `dnx dnaxi@<exact-version> --verbosity quiet --` for a passive workspace summary, `dnx dnaxi@<exact-version> --verbosity quiet -- --help` only when command grammar is unknown, and `dnx dnaxi@<exact-version> --verbosity quiet -- --version` when version identity matters.
+5. Treat the invoked version's structured help, version, and reported capabilities as authoritative. Never use a command or option that it does not expose.
+6. Remember that `dnx` package resolution may download or restore the tool. Keep that network operation explicit and subject to host policy.
 
 ## Follow reported capabilities
 

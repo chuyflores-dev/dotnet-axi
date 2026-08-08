@@ -10,7 +10,8 @@ public sealed record CodexBenchmarkConditionExposure(
     string InstructionsHash,
     string ToolConfigurationHash,
     IReadOnlyList<string> ConfigurationOverrides,
-    IReadOnlyList<string>? ExecutableSearchPathEntries = null);
+    IReadOnlyList<string>? ExecutableSearchPathEntries = null,
+    IReadOnlyDictionary<string, string>? EnvironmentVariables = null);
 
 public sealed class CodexAgentBenchmarkAdapterOptions
 {
@@ -22,6 +23,12 @@ public sealed class CodexAgentBenchmarkAdapterOptions
             "OPENAI_API_KEY",
         };
 
+    private static readonly HashSet<string> ConditionVariableNames =
+        new(StringComparer.Ordinal)
+        {
+            "DNAXI_LOCAL_FEED",
+        };
+
     private readonly IReadOnlyDictionary<string, string>
         _authenticationEnvironment;
 
@@ -31,7 +38,8 @@ public sealed class CodexAgentBenchmarkAdapterOptions
         CodexBenchmarkConditionExposure baseline,
         CodexBenchmarkConditionExposure candidate,
         IReadOnlyList<string>? executablePrefixArguments = null,
-        IReadOnlyDictionary<string, string>? authenticationEnvironment = null)
+        IReadOnlyDictionary<string, string>? authenticationEnvironment = null,
+        string? expectedDnxExecutablePath = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(executablePath);
         ArgumentException.ThrowIfNullOrWhiteSpace(cliVersion);
@@ -52,6 +60,15 @@ public sealed class CodexAgentBenchmarkAdapterOptions
         Candidate = Snapshot(candidate);
         ExecutablePrefixArguments = Array.AsReadOnly(
             (executablePrefixArguments ?? []).ToArray());
+        if (expectedDnxExecutablePath is not null
+            && !Path.IsPathFullyQualified(expectedDnxExecutablePath))
+        {
+            throw new ArgumentException(
+                "The expected dnx executable path must be absolute.",
+                nameof(expectedDnxExecutablePath));
+        }
+
+        ExpectedDnxExecutablePath = expectedDnxExecutablePath;
 
         var authentication = new Dictionary<string, string>(
             StringComparer.Ordinal);
@@ -83,6 +100,8 @@ public sealed class CodexAgentBenchmarkAdapterOptions
 
     public IReadOnlyList<string> ExecutablePrefixArguments { get; }
 
+    public string? ExpectedDnxExecutablePath { get; }
+
     internal IReadOnlyDictionary<string, string> AuthenticationEnvironment =>
         _authenticationEnvironment;
 
@@ -94,6 +113,13 @@ public sealed class CodexAgentBenchmarkAdapterOptions
                 exposure.ConfigurationOverrides.ToArray()),
             ExecutableSearchPathEntries = Array.AsReadOnly(
                 (exposure.ExecutableSearchPathEntries ?? []).ToArray()),
+            EnvironmentVariables = new ReadOnlyDictionary<string, string>(
+                (exposure.EnvironmentVariables
+                 ?? new Dictionary<string, string>())
+                .ToDictionary(
+                    static variable => variable.Key,
+                    static variable => variable.Value,
+                    StringComparer.Ordinal)),
         };
 
     private static void ValidateExposure(
@@ -105,7 +131,11 @@ public sealed class CodexAgentBenchmarkAdapterOptions
             || !AgentBenchmarkHash.IsHash(exposure.ToolConfigurationHash)
             || exposure.ConfigurationOverrides is null
             || (exposure.ExecutableSearchPathEntries ?? []).Any(path =>
-                !Path.IsPathFullyQualified(path)))
+                !Path.IsPathFullyQualified(path))
+            || (exposure.EnvironmentVariables
+                ?? new Dictionary<string, string>()).Any(variable =>
+                !ConditionVariableNames.Contains(variable.Key)
+                || string.IsNullOrEmpty(variable.Value)))
         {
             throw new ArgumentException(
                 $"The {condition} Codex exposure is malformed.",
@@ -133,6 +163,9 @@ public sealed class CodexAgentBenchmarkAdapterOptions
 
 public sealed class CodexAgentBenchmarkAdapter : IAgentBenchmarkAdapter
 {
+    internal const string ShellSearchPathEnvironmentVariable =
+        "DOTNET_AXI_BENCHMARK_PATH";
+
     private static readonly HashSet<string> RemovedNetworkEnvironmentVariables =
         new(StringComparer.OrdinalIgnoreCase)
         {
@@ -152,9 +185,9 @@ public sealed class CodexAgentBenchmarkAdapter : IAgentBenchmarkAdapter
     }
 
     public AgentBenchmarkAdapterDescriptor Descriptor { get; } =
-        new("codex", "1.1.0");
+        new("codex", "1.3.0");
 
-    public ValueTask<IAgentBenchmarkExecution> StartAsync(
+    public async ValueTask<IAgentBenchmarkExecution> StartAsync(
         AgentBenchmarkAdapterInput input,
         CancellationToken cancellationToken = default)
     {
@@ -162,6 +195,14 @@ public sealed class CodexAgentBenchmarkAdapter : IAgentBenchmarkAdapter
         cancellationToken.ThrowIfCancellationRequested();
         ValidateInput(input);
         var startInfo = CreateStartInfo(input);
+        if (_options.ExpectedDnxExecutablePath is not null)
+        {
+            await ValidateLoginShellDnxResolutionAsync(
+                startInfo,
+                _options.ExpectedDnxExecutablePath,
+                cancellationToken);
+        }
+
         var process = new Process
         {
             StartInfo = startInfo,
@@ -180,8 +221,7 @@ public sealed class CodexAgentBenchmarkAdapter : IAgentBenchmarkAdapter
 
             processStarted = true;
             process.StandardInput.Close();
-            return ValueTask.FromResult<IAgentBenchmarkExecution>(
-                new CodexAgentBenchmarkExecution(process, input));
+            return new CodexAgentBenchmarkExecution(process, input);
         }
         catch (AgentBenchmarkStartException)
         {
@@ -254,12 +294,129 @@ public sealed class CodexAgentBenchmarkAdapter : IAgentBenchmarkAdapter
         var exposure = Exposure(input.Condition);
         if (exposure.ExecutableSearchPathEntries is { Count: > 0 })
         {
-            startInfo.Environment["PATH"] = string.Join(
+            var searchPath = string.Join(
                 Path.PathSeparator,
                 exposure.ExecutableSearchPathEntries);
+            startInfo.Environment["PATH"] = searchPath;
+            startInfo.Environment[ShellSearchPathEnvironmentVariable] =
+                searchPath;
+        }
+
+        foreach (var variable in exposure.EnvironmentVariables
+                     ?? new Dictionary<string, string>())
+        {
+            startInfo.Environment[variable.Key] = variable.Value;
         }
 
         return startInfo;
+    }
+
+    private static async ValueTask ValidateLoginShellDnxResolutionAsync(
+        ProcessStartInfo codexStartInfo,
+        string expectedDnxExecutablePath,
+        CancellationToken cancellationToken)
+    {
+        var probe = CreateLoginShellProbe(codexStartInfo);
+        using var process = new Process
+        {
+            StartInfo = probe,
+        };
+        var processStarted = false;
+        try
+        {
+            if (!process.Start())
+            {
+                throw new AgentBenchmarkStartException(
+                    "The login-shell dnx resolution probe did not start.",
+                    retryable: false);
+            }
+
+            processStarted = true;
+
+            var standardOutput = process.StandardOutput.ReadToEndAsync(
+                cancellationToken);
+            var standardError = process.StandardError.ReadToEndAsync(
+                cancellationToken);
+            await process.WaitForExitAsync(cancellationToken);
+            var output = await standardOutput;
+            var error = await standardError;
+            var resolved = output.ReplaceLineEndings("\n")
+                .Split(
+                    '\n',
+                    StringSplitOptions.RemoveEmptyEntries
+                    | StringSplitOptions.TrimEntries)
+                .FirstOrDefault();
+            var comparison = OperatingSystem.IsWindows()
+                ? StringComparison.OrdinalIgnoreCase
+                : StringComparison.Ordinal;
+            if (process.ExitCode != 0
+                || !string.IsNullOrWhiteSpace(error)
+                || !string.Equals(
+                    resolved,
+                    Path.GetFullPath(expectedDnxExecutablePath),
+                    comparison))
+            {
+                throw new AgentBenchmarkStartException(
+                    "The login shell did not resolve dnx to the request-pinned executable.",
+                    retryable: false);
+            }
+        }
+        catch (AgentBenchmarkStartException)
+        {
+            throw;
+        }
+        catch (Exception exception)
+            when (exception is InvalidOperationException
+                  or System.ComponentModel.Win32Exception
+                  or IOException)
+        {
+            throw new AgentBenchmarkStartException(
+                $"The login-shell dnx resolution probe failed: {exception.Message}",
+                retryable: false);
+        }
+        finally
+        {
+            if (processStarted && !process.HasExited)
+            {
+                process.Kill(entireProcessTree: true);
+            }
+        }
+    }
+
+    private static ProcessStartInfo CreateLoginShellProbe(
+        ProcessStartInfo codexStartInfo)
+    {
+        var probe = new ProcessStartInfo
+        {
+            WorkingDirectory = codexStartInfo.WorkingDirectory,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+        };
+        if (OperatingSystem.IsWindows())
+        {
+            probe.FileName = "where.exe";
+            probe.ArgumentList.Add("dnx");
+        }
+        else
+        {
+            probe.FileName = File.Exists("/bin/zsh")
+                ? "/bin/zsh"
+                : File.Exists("/bin/bash")
+                    ? "/bin/bash"
+                    : "/bin/sh";
+            probe.ArgumentList.Add("-lc");
+            probe.ArgumentList.Add("command -v dnx");
+        }
+
+        probe.Environment.Clear();
+        foreach (var variable in codexStartInfo.Environment)
+        {
+            probe.Environment[variable.Key] = variable.Value;
+        }
+
+        return probe;
     }
 
     private void AddArguments(

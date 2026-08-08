@@ -92,6 +92,29 @@ function Assert-ZipEntryMatchesFile {
     }
 }
 
+function Assert-ZipEntryMatchesText {
+    param(
+        [Parameter(Mandatory)]
+        [System.IO.Compression.ZipArchive] $Archive,
+
+        [Parameter(Mandatory)]
+        [string] $EntryName,
+
+        [Parameter(Mandatory)]
+        [string] $ExpectedText
+    )
+
+    $actual = Read-ZipEntryText `
+        -Archive $Archive `
+        -EntryName $EntryName
+    if (-not [System.String]::Equals(
+            $ExpectedText,
+            $actual,
+            [System.StringComparison]::Ordinal)) {
+        throw "Package entry '$EntryName' is not the expected versioned text."
+    }
+}
+
 function Install-AgentSkillFromPackage {
     param(
         [Parameter(Mandatory)]
@@ -139,7 +162,10 @@ function Install-AgentSkillFromPackage {
 function Assert-InstalledAgentSkill {
     param(
         [Parameter(Mandatory)]
-        [string] $Installation
+        [string] $Installation,
+
+        [Parameter(Mandatory)]
+        [string] $Version
     )
 
     $skillPath = [System.IO.Path]::Combine($Installation, "SKILL.md")
@@ -161,7 +187,8 @@ function Assert-InstalledAgentSkill {
     }
 
     $requiredSourceDiscoveryGuidance = @(
-        "dnx dnaxi@<exact-version> --verbosity quiet -- <command>",
+        "dnx dnaxi@$Version --verbosity quiet -- <command>",
+        "dnx dnaxi@$Version --source `"`$DNAXI_LOCAL_FEED`" --verbosity quiet -- <command>",
         "Trigger for finding .NET files",
         "## Start with dnx",
         "Default to one-shot",
@@ -189,6 +216,9 @@ function Assert-InstalledAgentSkill {
     }
 
     if ($skill.Contains(
+            "<exact-version>",
+            [System.StringComparison]::Ordinal) -or
+        $skill.Contains(
             "dnx dotnet-axi",
             [System.StringComparison]::Ordinal) -or
         $skill.Contains(
@@ -1180,14 +1210,16 @@ try {
         -Archive $archive `
         -Version $version
 
-    Assert-ZipEntryMatchesFile `
-        -Archive $archive `
-        -EntryName "skills/dotnet-axi/SKILL.md" `
-        -FilePath ([System.IO.Path]::Combine(
+    $versionedSkill = [System.IO.File]::ReadAllText(
+        [System.IO.Path]::Combine(
             $repositoryRoot,
             "skills",
             "dotnet-axi",
-            "SKILL.md"))
+            "SKILL.md")).Replace("<exact-version>", $version)
+    Assert-ZipEntryMatchesText `
+        -Archive $archive `
+        -EntryName "skills/dotnet-axi/SKILL.md" `
+        -ExpectedText $versionedSkill
     Assert-ZipEntryMatchesFile `
         -Archive $archive `
         -EntryName "skills/dotnet-axi/references/codex.md" `
@@ -1322,8 +1354,12 @@ try {
         -ScopeRoot ([System.IO.Path]::Combine(
             $temporaryRoot,
             "user-scope"))
-    Assert-InstalledAgentSkill -Installation $repositorySkill
-    Assert-InstalledAgentSkill -Installation $userSkill
+    Assert-InstalledAgentSkill `
+        -Installation $repositorySkill `
+        -Version $version
+    Assert-InstalledAgentSkill `
+        -Installation $userSkill `
+        -Version $version
 
     # Exercise the canonical no-install path before any persistent tool
     # lifecycle. The nearest NuGet configuration clears inherited sources, so
