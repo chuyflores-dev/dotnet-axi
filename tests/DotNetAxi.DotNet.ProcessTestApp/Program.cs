@@ -132,11 +132,17 @@ static int CodexDiscoveryProbe(IReadOnlyList<string> values)
                 "skills",
                 "dotnet-axi",
                 "SKILL.md");
+        var description = File.Exists(visibleSkillPath)
+            ? File.ReadLines(visibleSkillPath)
+                .First(line => line.StartsWith(
+                    "description: ",
+                    StringComparison.Ordinal))["description: ".Length..]
+            : "Use dotnet-axi for deterministic .NET repository evidence.";
         Console.WriteLine(JsonSerializer.Serialize(
             !hidden && (File.Exists(skillPath) || leaked)
                 ? new[]
                 {
-                    $"- dotnet-axi: Use dotnet-axi for deterministic .NET repository evidence. (file: {visibleSkillPath})",
+                    $"- dotnet-axi: {description} (file: {visibleSkillPath})",
                 }
                 : []));
         return 0;

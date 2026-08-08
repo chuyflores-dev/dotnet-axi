@@ -269,7 +269,9 @@ public sealed class AgentSkillGenerationTests
             lines[2]);
         Assert.Equal("---", lines[3]);
         Assert.Contains("Trigger for finding .NET files", lines[2]);
-        Assert.Contains("exact version-pinned dnx dnaxi invocation", lines[2]);
+        Assert.Contains(
+            $"dnx dnaxi@{AgentGuidanceCatalog.SkillPackageVersion} --source \"$DNAXI_LOCAL_FEED\" --verbosity quiet -- <command>",
+            lines[2]);
         Assert.DoesNotContain("display_name:", skill);
         Assert.DoesNotContain("allowed-tools:", skill);
     }

@@ -37,10 +37,13 @@ agent series, or change discovery commands and task oracles.
 
 ## Verification
 
-- Package inspection rejects any `skills/` archive entry.
+- Package inspection rejects any `skills/` entry in either archive, and
+  benchmark preparation validates the candidate package's NuGet identity and
+  required .NET tool payload rather than trusting its filename.
 - Deterministic preparation and adapter tests cover separated skill and tool
-  hashes, condition-equivalent workspaces, discovery-root exposure, and
-  preflight failure on missing, leaked, or incorrectly versioned guidance.
+  hashes, condition-equivalent workspaces, executable PATH contamination,
+  discovery-root exposure, and preflight failure on missing, leaked, or
+  incorrectly versioned guidance.
 - Canonical restore, release build, and test commands pass.
 
 ## Dependencies

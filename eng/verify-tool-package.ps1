@@ -1119,6 +1119,17 @@ if (-not (Test-Path -LiteralPath $symbolPackagePath -PathType Leaf)) {
 $symbolArchive = [System.IO.Compression.ZipFile]::OpenRead(
     $symbolPackagePath)
 try {
+    $symbolPackagedSkill = $symbolArchive.Entries |
+        Where-Object {
+            $_.FullName.Replace('\', '/').StartsWith(
+                "skills/",
+                [System.StringComparison]::OrdinalIgnoreCase)
+        } |
+        Select-Object -First 1
+    if ($null -ne $symbolPackagedSkill) {
+        throw "Symbol package must not carry Agent Skill entry '$($symbolPackagedSkill.FullName)'."
+    }
+
     $symbolNuspecEntries = @(
         $symbolArchive.Entries |
             Where-Object { $_.FullName -like "*.nuspec" }

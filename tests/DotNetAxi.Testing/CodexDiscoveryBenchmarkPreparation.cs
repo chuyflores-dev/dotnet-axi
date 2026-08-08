@@ -5,6 +5,8 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
+using System.Xml;
+using System.Xml.Linq;
 using DotNetAxi.Contracts;
 using DotNetAxi.DotNet;
 
@@ -35,6 +37,10 @@ internal static partial class CodexDiscoveryBenchmarkPreparation
     internal const string ProductSchema = "dotnet-axi/v1";
     internal const string PackageSourceEnvironmentVariable =
         "DNAXI_LOCAL_FEED";
+    internal const string ExactCandidateInvocation =
+        "dnx " + PackageId + "@" + PackageVersion + " --source \"$"
+        + PackageSourceEnvironmentVariable
+        + "\" --verbosity quiet -- <command>";
     internal const string PriorSummarySchema =
         "dotnet-axi/codex-discovery-summary/v1";
     internal const int RunsPerTask = 5;
@@ -870,12 +876,33 @@ internal static partial class CodexDiscoveryBenchmarkPreparation
     }
 
     private static bool ContainsDnaxi(string directory) =>
-        File.Exists(Path.Combine(directory, "dnaxi"))
-        || File.Exists(Path.Combine(directory, "dnaxi.exe"));
+        ContainsCommand(directory, "dnaxi");
 
     private static bool ContainsDnx(string directory) =>
-        File.Exists(Path.Combine(directory, "dnx"))
-        || File.Exists(Path.Combine(directory, "dnx.exe"));
+        ContainsCommand(directory, "dnx");
+
+    private static bool ContainsCommand(string directory, string command)
+    {
+        if (File.Exists(Path.Combine(directory, command)))
+        {
+            return true;
+        }
+
+        if (!OperatingSystem.IsWindows())
+        {
+            return false;
+        }
+
+        var pathExtensions = Environment.GetEnvironmentVariable("PATHEXT")
+            ?? ".COM;.EXE;.BAT;.CMD";
+        return pathExtensions.Split(
+                Path.PathSeparator,
+                StringSplitOptions.RemoveEmptyEntries
+                | StringSplitOptions.TrimEntries)
+            .Any(extension => File.Exists(Path.Combine(
+                directory,
+                $"{command}{extension}")));
+    }
 
     private static bool IsExecutableFile(string path)
     {
@@ -932,20 +959,7 @@ internal static partial class CodexDiscoveryBenchmarkPreparation
             })
             .OrderBy(static file => file.Relative, StringComparer.Ordinal)
             .ToArray();
-        using var packageStream = File.OpenRead(packagePath);
-        using var archive = new ZipArchive(
-            packageStream,
-            ZipArchiveMode.Read,
-            leaveOpen: false);
-        var packagedSkill = archive.Entries.FirstOrDefault(entry =>
-            entry.FullName.Replace('\\', '/').StartsWith(
-                "skills/",
-                StringComparison.OrdinalIgnoreCase));
-        if (packagedSkill is not null)
-        {
-            throw new AgentBenchmarkException(
-                $"The candidate tool package must not carry Agent Skill entry '{packagedSkill.FullName}'.");
-        }
+        ValidateCandidateToolPackage(packagePath);
 
         if (!skillFiles.Select(static file => file.Relative).SequenceEqual(
                 [
@@ -966,17 +980,130 @@ internal static partial class CodexDiscoveryBenchmarkPreparation
             skillFile,
             Encoding.UTF8,
             cancellationToken);
-        var exactInvocation =
-            $"dnx {PackageId}@{PackageVersion} --source \"${PackageSourceEnvironmentVariable}\" --verbosity quiet -- <command>";
+        var invocationVersions = DnaxiInvocationVersionRegex()
+            .Matches(skill)
+            .Select(match => match.Groups["version"].Value)
+            .ToArray();
         if (skillBytes.AsSpan().StartsWith(Encoding.UTF8.Preamble)
             || !skill.StartsWith(
                 "---\nname: dotnet-axi\ndescription: ",
                 StringComparison.Ordinal)
             || skill.Contains("<exact-version>", StringComparison.Ordinal)
-            || !skill.Contains(exactInvocation, StringComparison.Ordinal))
+            || invocationVersions.Length == 0
+            || invocationVersions.Any(version => !string.Equals(
+                version,
+                PackageVersion,
+                StringComparison.Ordinal))
+            || !skill.Contains(
+                ExactCandidateInvocation,
+                StringComparison.Ordinal))
         {
             throw new AgentBenchmarkException(
                 "The repository skill must be BOM-free, discoverable, and expose the exact source-pinned candidate dnx invocation.");
+        }
+    }
+
+    private static void ValidateCandidateToolPackage(string packagePath)
+    {
+        try
+        {
+            using var packageStream = File.OpenRead(packagePath);
+            using var archive = new ZipArchive(
+                packageStream,
+                ZipArchiveMode.Read,
+                leaveOpen: false);
+            var packagedSkill = archive.Entries.FirstOrDefault(entry =>
+                entry.FullName.Replace('\\', '/').StartsWith(
+                    "skills/",
+                    StringComparison.OrdinalIgnoreCase));
+            if (packagedSkill is not null)
+            {
+                throw new AgentBenchmarkException(
+                    $"The candidate tool package must not carry Agent Skill entry '{packagedSkill.FullName}'.");
+            }
+
+            var nuspecEntries = archive.Entries.Where(entry =>
+                    entry.FullName.EndsWith(
+                        ".nuspec",
+                        StringComparison.OrdinalIgnoreCase))
+                .ToArray();
+            if (nuspecEntries.Length != 1)
+            {
+                throw new AgentBenchmarkException(
+                    "The candidate tool package must contain exactly one nuspec.");
+            }
+
+            using var nuspecStream = nuspecEntries[0].Open();
+            var nuspec = XDocument.Load(nuspecStream, LoadOptions.None);
+            var metadata = nuspec.Descendants().SingleOrDefault(element =>
+                element.Name.LocalName == "metadata");
+            var id = metadata?.Elements().SingleOrDefault(element =>
+                element.Name.LocalName == "id")?.Value;
+            var version = metadata?.Elements().SingleOrDefault(element =>
+                element.Name.LocalName == "version")?.Value;
+            var packageTypes = metadata?.Descendants().Where(element =>
+                    element.Name.LocalName == "packageType")
+                .Select(element => (string?)element.Attribute("name"))
+                .ToArray() ?? [];
+            if (!string.Equals(id, PackageId, StringComparison.Ordinal)
+                || !string.Equals(
+                    version,
+                    PackageVersion,
+                    StringComparison.Ordinal)
+                || !packageTypes.Contains(
+                    "DotnetTool",
+                    StringComparer.Ordinal))
+            {
+                throw new AgentBenchmarkException(
+                    "The pinned package must identify the exact dnaxi 0.4.0 .NET tool candidate.");
+            }
+
+            foreach (var entryName in new[]
+                     {
+                         "tools/net10.0/any/DotnetToolSettings.xml",
+                         "tools/net10.0/any/dnaxi.dll",
+                         "tools/net10.0/any/dnaxi.deps.json",
+                         "tools/net10.0/any/dnaxi.runtimeconfig.json",
+                     })
+            {
+                if (archive.GetEntry(entryName) is null)
+                {
+                    throw new AgentBenchmarkException(
+                        $"The candidate tool package is missing required entry '{entryName}'.");
+                }
+            }
+
+            using var settingsStream = archive.GetEntry(
+                    "tools/net10.0/any/DotnetToolSettings.xml")!
+                .Open();
+            var settings = XDocument.Load(settingsStream, LoadOptions.None);
+            var command = settings.Descendants().SingleOrDefault(element =>
+                element.Name.LocalName == "Command");
+            if (!string.Equals(
+                    (string?)command?.Attribute("Name"),
+                    PackageId,
+                    StringComparison.Ordinal)
+                || !string.Equals(
+                    (string?)command?.Attribute("EntryPoint"),
+                    "dnaxi.dll",
+                    StringComparison.Ordinal)
+                || !string.Equals(
+                    (string?)command?.Attribute("Runner"),
+                    "dotnet",
+                    StringComparison.Ordinal))
+            {
+                throw new AgentBenchmarkException(
+                    "The candidate tool package does not expose the expected dnaxi command.");
+            }
+        }
+        catch (Exception exception)
+            when (exception is InvalidDataException
+                  or InvalidOperationException
+                  or XmlException)
+        {
+            throw new AgentBenchmarkException(
+                "The pinned candidate package is not a valid NuGet tool archive.",
+                exception);
         }
     }
 
@@ -1131,8 +1258,7 @@ internal static partial class CodexDiscoveryBenchmarkPreparation
                 environment,
                 cancellationToken);
             const string skillMarker = "- dotnet-axi:";
-            var candidateOutput = candidate.StandardOutput
-                .Replace("\\\\", "\\", StringComparison.Ordinal)
+            var candidateOutput = Regex.Unescape(candidate.StandardOutput)
                 .Replace('\\', '/');
             var candidateSkillFile = Path.Combine(
                     candidateWorkspace,
@@ -1149,10 +1275,13 @@ internal static partial class CodexDiscoveryBenchmarkPreparation
                 || CountOccurrences(candidateOutput, skillMarker) != 1
                 || !candidateOutput.Contains(
                     candidateSkillFile,
+                    StringComparison.Ordinal)
+                || !candidateOutput.Contains(
+                    ExactCandidateInvocation,
                     StringComparison.Ordinal))
             {
                 throw new AgentBenchmarkException(
-                    "The Codex prompt-input preflight did not prove candidate-only project-local dotnet-axi skill discovery.");
+                    "The Codex prompt-input preflight did not prove candidate-only project-local dotnet-axi skill discovery with the exact source-pinned invocation.");
             }
         }
         finally
@@ -1345,6 +1474,11 @@ internal static partial class CodexDiscoveryBenchmarkPreparation
         "^(?:[0-9a-f]{40}|[0-9a-f]{64})$",
         RegexOptions.CultureInvariant)]
     private static partial Regex CommitRegex();
+
+    [GeneratedRegex(
+        "\\bdnx[ \\t]+dnaxi@(?<version>[0-9]+\\.[0-9]+\\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?)",
+        RegexOptions.CultureInvariant)]
+    private static partial Regex DnaxiInvocationVersionRegex();
 }
 
 internal sealed record CodexDiscoveryArtifactPin(
