@@ -40,18 +40,19 @@ compatibility, or quality work until a later milestone.
 | `0.1.0` | First installable agent-facing CLI contract | CLI/output foundation, bounded structured help and version output, query-planning seams, and verified .NET tool invocation |
 | `0.2.0` | Workspace-aware CLI | Workspace selection, worktree state, project/framework coverage, snapshot identity, the passive home view, and an installable on-demand Agent Skill |
 | `0.3.0` | First-use source discovery | File, literal, regular-expression, and stable Roslyn syntax searches without a mandatory index, plus the first measured Codex agent-task comparison |
-| `0.4.0` | Stable source identity and bounded context | Symbol discovery, stateless entity IDs, candidate verification, show, outline, and context budgets |
-| `0.5.0` | Semantic relationships and graphs | References, implementations, inheritance, callers/callees, project graphs, paths, cycles, and impact |
-| `0.6.0` | Analysis and structured SDK execution | Compiler/configured analysis plus noninteractive restore, build, test, format, and constrained `dotnet` execution |
-| `0.7.0` | Configurable validation | Repository configuration, freshness, affected scope, and deterministic fast and standard validation profiles |
-| `0.8.0` | Safe agent integration | Claude Code and Codex setup, repair, removal, effect disclosure, process safety, secret protection, diagnostic artifacts, and the Claude benchmark adapter |
-| `0.9.0` | Feature-complete MVP preview | Packaging and compatibility matrices plus release-level correctness, security, performance, and separate Codex and Claude agent-task evidence |
-| `1.0.0` | Supported MVP release | The complete requirements release bar passes with no known release blocker; only stabilization changes are expected after `0.9.0` |
+| `0.4.0` | Dnx-first self-hosting | The `dnaxi` NuGet package identity, exact version-pinned `dnx` invocation, compact generated guidance, and measured Codex activation make no-install source discovery the primary agent path |
+| `0.5.0` | Stable source identity and bounded context | Symbol discovery, stateless entity IDs, candidate verification, show, outline, and context budgets |
+| `0.6.0` | Semantic relationships and graphs | References, implementations, inheritance, callers/callees, project graphs, paths, cycles, and impact |
+| `0.7.0` | Analysis and structured SDK execution | Compiler/configured analysis plus noninteractive restore, build, test, format, and constrained `dotnet` execution |
+| `0.8.0` | Configurable validation | Repository configuration, freshness, affected scope, and deterministic fast and standard validation profiles |
+| `0.9.0` | Safe agent integration | Claude Code and Codex setup, repair, removal, effect disclosure, process safety, secret protection, diagnostic artifacts, and the Claude benchmark adapter |
+| `0.10.0` | Feature-complete MVP preview | Packaging and compatibility matrices plus release-level correctness, security, performance, and separate Codex and Claude agent-task evidence |
+| `1.0.0` | Supported MVP release | The complete requirements release bar passes with no known release blocker; only stabilization changes are expected after `0.10.0` |
 
 The epic containing a story and the version targeting that story are separate
 dimensions. Cross-cutting E11–E13 stories should land with the earlier
-capability they protect even though their full epic completion gates `0.8.0`
-or `0.9.0`.
+capability they protect even though their full epic completion gates `0.9.0`
+or `0.10.0`.
 
 ## Version increments
 

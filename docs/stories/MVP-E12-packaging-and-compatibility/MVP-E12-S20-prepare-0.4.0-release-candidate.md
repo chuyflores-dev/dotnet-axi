@@ -2,8 +2,9 @@
 
 ## Outcome
 
-One reviewed commit is ready to become `v0.4.0`, with truthful symbol and
-bounded-context documentation, scoped Codex evidence, and passing checks.
+One reviewed commit is ready to become `v0.4.0`, with a canonical no-install
+`dnx` package identity, compact activation guidance, measured self-hosting,
+and passing checks.
 
 ## Design
 
@@ -18,14 +19,18 @@ story does not create `v0.4.0`, publish to NuGet, or create a GitHub Release.
 
 ## Acceptance
 
-- User guidance names `0.4.0` and describes only verified symbol discovery,
-  identity, candidate verification, show, outline, and bounded context.
-- Release notes explicitly defer references, callers, callees, and graph
-  relationships to `0.5.0`.
-- The affected Codex benchmark subset is complete and every result or claim is
-  scoped to the exact model, harness, task corpus, and comparison condition.
+- User guidance names `0.4.0`, makes the exact version-pinned `dnx` path
+  primary, and describes only the file, text, and stable-syntax discovery
+  capabilities already verified for the milestone.
+- Release notes explain the `dotnet-axi` to `dnaxi` package-ID migration and
+  explicitly defer symbol identity and bounded context to `0.5.0`.
+- The corrected Codex discovery series is complete, records actual `dnx`
+  activation, and scopes every result or claim to the exact model, harness,
+  existing task corpus, package source, and comparison condition.
 - Candidate artifacts, checksums, metadata, installation smoke tests,
-  canonical checks, and CI pass for the proposed commit.
+  canonical checks, and CI pass for the proposed commit. Primary package
+  smokes invoke home, help, version, file, text, and stable syntax through
+  `dnx` from the candidate feed without a persistent installation.
 - The release instructions identify the exact approved commit, and version
   `0.4.0` is not already published.
 
@@ -39,5 +44,6 @@ story does not create `v0.4.0`, publish to NuGet, or create a GitHub Release.
 ## Dependencies
 
 - `MVP-E12-S19`
-- `MVP-E09-S13`
+- `MVP-E12-S34`
+- `MVP-E09-S14`
 - `MVP-E13-S17`

@@ -1,9 +1,9 @@
-# MVP-E13-S16 — Add 0.4.0 Symbol-context Tasks
+# MVP-E13-S16 — Add 0.5.0 Symbol-context Tasks
 
 ## Outcome
 
 The agent-task corpus adds deterministic symbol identity, candidate
-verification, show, outline, and bounded-context scenarios for 0.4.0.
+verification, show, outline, and bounded-context scenarios for 0.5.0.
 
 ## Design
 

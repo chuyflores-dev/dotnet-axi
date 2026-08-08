@@ -240,9 +240,9 @@ dnaxi context symbol <symbol> \
 
 The command MUST enforce an explicit or configured output budget.
 
-The `0.4.0` slice composes declaration, owner, document, and outline evidence.
+The `0.5.0` slice composes declaration, owner, document, and outline evidence.
 Relationship sections such as references, callers, and callees become
-available with the corresponding `0.5.0` capabilities; requesting an
+available with the corresponding `0.6.0` capabilities; requesting an
 unavailable section returns a capability correction rather than partial
 unlabeled output.
 

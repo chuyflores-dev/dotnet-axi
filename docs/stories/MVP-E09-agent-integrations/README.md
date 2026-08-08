@@ -45,7 +45,7 @@ do not read or retain agent transcripts.
 - [MVP-E09-S11 — Guide safe Codex worker startup](MVP-E09-S11-codex-worker-startup.md)
 - [MVP-E09-S12 — Teach source discovery in the Agent Skill](MVP-E09-S12-source-discovery-skill.md)
 - [MVP-E09-S13 — Teach symbol context in the Agent Skill](MVP-E09-S13-symbol-context-skill.md)
-- [MVP-E09-S14 — Improve Codex activation of the source-discovery Agent Skill](MVP-E09-S14-source-discovery-skill-activation.md)
+- [MVP-E09-S14 — Activate dnx-first source discovery in Codex](MVP-E09-S14-source-discovery-skill-activation.md)
 - [MVP-E09-S15 — Teach semantic relationships and graphs in the Agent Skill](MVP-E09-S15-semantic-relationships-skill.md)
 - [MVP-E09-S16 — Teach analysis and SDK execution in the Agent Skill](MVP-E09-S16-analysis-and-sdk-skill.md)
 - [MVP-E09-S17 — Teach configuration and validation in the Agent Skill](MVP-E09-S17-configuration-and-validation-skill.md)

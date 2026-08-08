@@ -1,8 +1,8 @@
-# MVP-E13-S27 — Measure the 0.8.0 Claude Subset
+# MVP-E13-S27 — Measure the 0.9.0 Claude Subset
 
 ## Outcome
 
-A manually dispatched advisory Claude series measures the same 0.8.0 safe
+A manually dispatched advisory Claude series measures the same 0.9.0 safe
 agent-integration task subset and condition boundaries as Codex.
 
 ## Design
@@ -12,12 +12,12 @@ agent-integration task subset and condition boundaries as Codex.
 ## Boundary
 
 Claude results remain a separate exact-agent and exact-model series. They are
-not pooled with Codex, treated as the full 0.9.0 dual-agent gate, or used to
+not pooled with Codex, treated as the full 0.10.0 dual-agent gate, or used to
 retroactively change the shared corpus or Codex condition.
 
 ## Acceptance
 
-- Every affected 0.8.0 task runs at least five times per baseline and candidate
+- Every affected 0.9.0 task runs at least five times per baseline and candidate
   condition with the same approved task definitions, applicability, effects,
   repetitions, oracles, and controlled fixture state as the Codex series.
 - The manifest pins the Claude Code CLI, exact model, permission mode, allowed
@@ -37,7 +37,7 @@ retroactively change the shared corpus or Codex condition.
 
 - Normalized results reconcile with raw Claude events, task oracles, versions,
   hashes, permission and tool settings, setup targets, file changes, worker
-  lifecycle, and the exact approved 0.8.0 series manifest.
+  lifecycle, and the exact approved 0.9.0 series manifest.
 
 ## Dependencies
 

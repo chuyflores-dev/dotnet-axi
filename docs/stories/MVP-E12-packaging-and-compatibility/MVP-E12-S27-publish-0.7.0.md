@@ -2,9 +2,8 @@
 
 ## Outcome
 
-The verified `dotnet-axi` `0.7.0` package and matching GitHub Release are
-publicly available with repository configuration, freshness, and configurable
-validation.
+The verified `dnaxi` `0.7.0` package and matching GitHub Release are publicly
+available with static analysis and structured SDK execution.
 
 ## Design
 
@@ -21,10 +20,10 @@ authorizes publication after approving the completed release candidate.
   exact release commit receives immutable tag `v0.7.0`.
 - The published GitHub Release triggers protected publication of the matching
   package and symbols.
-- Fresh public-source global, local, and `dnx` invocations report `0.7.0` and
-  exercise configuration validation and plan explanation, freshness changes,
-  affected scope, and fast and standard validation without source writes or
-  claims for deferred setup and full-profile behavior.
+- Fresh public-source `dnx`, global, and local invocations report `0.7.0` and
+  exercise static analysis, result translation, restore, build, test, format
+  check, explicitly authorized format apply, and constrained execution without
+  claiming deferred validation profiles.
 - Benchmark links and claims match the approved candidate evidence, and the
   `0.7.0` milestone closes only after public verification succeeds.
 

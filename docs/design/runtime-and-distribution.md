@@ -275,15 +275,16 @@ The public names intentionally separate project identity from invocation:
 | Surface | Name |
 |---|---|
 | Repository and product | `dotnet-axi` |
-| .NET tool package | `dotnet-axi` |
+| .NET tool package from 0.4.0 | `dnaxi` |
+| Legacy 0.2.0 and 0.3.0 package | `dotnet-axi` |
 | Installed command | `dnaxi` |
 | Output schema | `dotnet-axi/v1` |
 | Configuration file | `dotnet-axi.yml` |
 | Disposable state directory | `.dotnet-axi/` |
 
-Documentation uses `dnaxi` for executable examples. Package installation still
-uses `dotnet-axi`, and schema, configuration, and state names do not follow the
-short command name.
+Documentation uses `dnaxi` for executable examples. Package installation from
+0.4.0 uses `dnaxi`. The repository, product, schema, configuration, and state
+names remain `dotnet-axi`; earlier published package identities do not change.
 
 ## Platform and packaging
 
@@ -294,14 +295,14 @@ tested OS/RID matrix for each release.
 Primary distribution SHOULD be a .NET global/local tool:
 
 ```bash
-dotnet tool install --global dotnet-axi
+dotnet tool install --global dnaxi
 ```
 
 On .NET 10 or later, one-shot `dnx` execution is the non-persistent,
 `npx`-style path:
 
 ```bash
-dnx dotnet-axi@<version> --verbosity quiet -- --version
+dnx dnaxi@<version> --verbosity quiet -- --version
 ```
 
 Version milestones and external package publication follow the explicit
@@ -318,7 +319,7 @@ The canonical command vectors are:
 |---|---|
 | Global tool | `dnaxi` |
 | Local manifest | `dotnet tool run dnaxi --` |
-| One-shot | `dnx dotnet-axi@<version> --verbosity quiet --` |
+| One-shot | `dnx dnaxi@<version> --verbosity quiet --` |
 
 Package verification gives global and local installs separate temporary CLI
 homes and package caches, compares representative structured output across all

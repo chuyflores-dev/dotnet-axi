@@ -230,9 +230,10 @@ Benchmarking rolls out with usable product capability:
 |---|---|
 | `0.2.0` | Ship the installable skill and perform only development smoke runs; make no measured agent-experience claim |
 | `0.3.0` | Build the agent-neutral corpus and runner, add the Codex adapter, and run the first measured discovery-task comparison |
-| `0.4.0`–`0.7.0` | Add applicable semantic, impact, analysis, execution, and validation tasks and manually run the affected Codex subset before each release |
-| `0.8.0` | Add the Claude adapter and run the same conditions as an initially advisory second-agent series |
-| `0.9.0` | Produce full Codex and Claude release evidence; keep every claim scoped to its agent, exact model, and harness |
+| `0.4.0` | Prove that Codex actually selects the exact version-pinned `dnx` path on the existing discovery corpus before adding more product commands |
+| `0.5.0`–`0.8.0` | Add applicable semantic, impact, analysis, execution, and validation tasks and manually run the affected Codex subset before each release |
+| `0.9.0` | Add the Claude adapter and run the same conditions as an initially advisory second-agent series |
+| `0.10.0` | Produce full Codex and Claude release evidence; keep every claim scoped to its agent, exact model, and harness |
 
 Real-agent benchmarks are explicit, manually dispatched runs and never execute
 on every pull request. CI uses deterministic fake-agent self-tests for the

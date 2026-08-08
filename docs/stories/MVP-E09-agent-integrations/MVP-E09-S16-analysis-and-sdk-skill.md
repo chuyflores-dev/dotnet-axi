@@ -3,7 +3,7 @@
 ## Outcome
 
 The released Agent Skill routes static-analysis and official SDK-operation
-tasks through the shipped 0.6.0 commands with explicit effects and safety
+tasks through the shipped 0.7.0 commands with explicit effects and safety
 boundaries.
 
 ## Design

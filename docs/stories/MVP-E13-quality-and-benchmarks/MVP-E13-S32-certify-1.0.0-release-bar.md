@@ -36,7 +36,7 @@ new failures leave certification open.
 - Generated guidance requires applicable validation before completion, and
   package, skill, help, home, design, and release documentation agree with the
   implemented MVP boundary.
-- Every blocker disclosed by 0.9.0 or found during stabilization has a closed
+- Every blocker disclosed by 0.10.0 or found during stabilization has a closed
   atomic issue linked to this certification; no known release-blocking issue,
   failed gate, missing artifact, or unresolved P0–P2 finding remains.
 

@@ -1,9 +1,9 @@
-# MVP-E13-S28 — Measure the 0.9.0 Codex Release Gate
+# MVP-E13-S28 — Measure the 0.10.0 Codex Release Gate
 
 ## Outcome
 
 A manually dispatched Codex series evaluates the complete applicable MVP task
-corpus against the proposed 0.9.0 package and Agent Skill.
+corpus against the proposed 0.10.0 package and Agent Skill.
 
 ## Design
 
@@ -18,10 +18,10 @@ used to claim untested models, hosts, or deferred post-MVP capabilities.
 
 ## Acceptance
 
-- Every applicable corpus task through 0.8.0 runs at least five times per
+- Every applicable corpus task through 0.9.0 runs at least five times per
   baseline and candidate condition with randomized interleaving, equivalent
   isolated workspaces, and the complete shared success and safety oracles.
-- The immutable series pins the proposed 0.9.0 package, packaged skill,
+- The immutable series pins the proposed 0.10.0 package, packaged skill,
   product and fixture commits, schemas, harness, adapter, Codex executable,
   exact model and reasoning, instructions, tools, sandbox, approval, locale,
   time zone, network policy, run count, and randomization seed.
@@ -40,7 +40,7 @@ used to claim untested models, hosts, or deferred post-MVP capabilities.
 
 - Normalized results reconcile with raw Codex events, corpus oracles, versions,
   hashes, schedules, usage, tools, file changes, validation evidence, and the
-  exact approved 0.9.0 series manifest.
+  exact approved 0.10.0 series manifest.
 
 ## Dependencies
 

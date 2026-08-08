@@ -3,7 +3,7 @@
 ## Outcome
 
 The released Agent Skill routes exact relationship, graph, impact, and bounded
-relationship-context tasks through the shipped 0.5.0 commands.
+relationship-context tasks through the shipped 0.6.0 commands.
 
 ## Design
 

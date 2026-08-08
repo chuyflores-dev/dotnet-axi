@@ -1,9 +1,9 @@
-# MVP-E13-S29 — Measure the 0.9.0 Claude Release Gate
+# MVP-E13-S29 — Measure the 0.10.0 Claude Release Gate
 
 ## Outcome
 
 A manually dispatched Claude series independently evaluates the same complete
-applicable MVP task corpus against the proposed 0.9.0 package and Agent Skill.
+applicable MVP task corpus against the proposed 0.10.0 package and Agent Skill.
 
 ## Design
 
@@ -18,11 +18,11 @@ to retroactively alter the shared tasks or Codex series.
 
 ## Acceptance
 
-- Every applicable corpus task through 0.8.0 runs at least five times per
+- Every applicable corpus task through 0.9.0 runs at least five times per
   baseline and candidate condition using the same approved task definitions,
   applicability, effects, repetitions, oracles, package, skill, and controlled
   fixture state as the Codex release series.
-- The immutable series pins the proposed 0.9.0 package, product and fixture
+- The immutable series pins the proposed 0.10.0 package, product and fixture
   commits, schemas, harness, adapter, Claude Code executable, exact model,
   permission mode, allowed tools, turn limit, instructions, locale, time zone,
   network policy, run count, and randomization seed.
@@ -42,7 +42,7 @@ to retroactively alter the shared tasks or Codex series.
 
 - Normalized results reconcile with raw Claude events, corpus oracles,
   versions, hashes, schedules, usage and cost, tools, file changes, validation
-  evidence, worker lifecycle, and the exact approved 0.9.0 series manifest.
+  evidence, worker lifecycle, and the exact approved 0.10.0 series manifest.
 
 ## Dependencies
 

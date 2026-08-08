@@ -1,9 +1,9 @@
-# MVP-E13-S19 — Add 0.5.0 Semantic-relationship and Graph Tasks
+# MVP-E13-S19 — Add 0.6.0 Semantic-relationship and Graph Tasks
 
 ## Outcome
 
 The agent-task corpus adds deterministic semantic-relationship, graph,
-impact, and bounded relationship-context scenarios for 0.5.0.
+impact, and bounded relationship-context scenarios for 0.6.0.
 
 ## Design
 

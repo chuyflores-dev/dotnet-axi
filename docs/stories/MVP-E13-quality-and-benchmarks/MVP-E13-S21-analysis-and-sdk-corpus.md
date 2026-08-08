@@ -1,9 +1,9 @@
-# MVP-E13-S21 — Add 0.6.0 Analysis and SDK-execution Tasks
+# MVP-E13-S21 — Add 0.7.0 Analysis and SDK-execution Tasks
 
 ## Outcome
 
 The agent-task corpus adds deterministic static-analysis and structured SDK
-execution scenarios for 0.6.0.
+execution scenarios for 0.7.0.
 
 ## Design
 
