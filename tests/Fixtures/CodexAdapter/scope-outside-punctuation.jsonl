@@ -1,0 +1,5 @@
+{"type":"thread.started","thread_id":"thread-scope-outside-punctuation"}
+{"type":"turn.started"}
+{"type":"item.completed","item":{"id":"outside-command","type":"command_execution","command":"(cat /outside/Program.cs)","aggregated_output":"","exit_code":0,"status":"completed"}}
+{"type":"item.completed","item":{"id":"outside-message","type":"agent_message","text":"outside"}}
+{"type":"turn.completed","usage":{"input_tokens":8,"output_tokens":1}}

@@ -606,11 +606,9 @@ public sealed partial class AgentBenchmarkRunner
                 $"Unsupported success oracle '{oracle.Kind}'.");
         }
 
-        var normalized = answer.ReplaceLineEndings("\n").TrimEnd('\n');
-        var facts = normalized.Length == 0
-            ? []
-            : normalized.Split('\n');
-        return facts.SequenceEqual(oracle.ExpectedFacts, StringComparer.Ordinal);
+        return AgentBenchmarkFactSet.EqualsExpected(
+            answer,
+            oracle.ExpectedFacts);
     }
 
     private static bool EvaluateClaimsSupported(
@@ -625,17 +623,9 @@ public sealed partial class AgentBenchmarkRunner
             return false;
         }
 
-        var normalized = answer.ReplaceLineEndings("\n").TrimEnd('\n');
-        if (normalized.Length == 0)
-        {
-            return true;
-        }
-
-        return normalized
-            .Split('\n')
-            .All(fact => oracle.ExpectedFacts.Contains(
-                fact,
-                StringComparer.Ordinal));
+        return AgentBenchmarkFactSet.ContainsOnlyExpected(
+            answer,
+            oracle.ExpectedFacts);
     }
 
     private static AgentBenchmarkInspectedScope NormalizeScope(

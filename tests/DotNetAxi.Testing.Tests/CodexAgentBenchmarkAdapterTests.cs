@@ -143,6 +143,81 @@ public sealed class CodexAgentBenchmarkAdapterTests
             result.InspectedScope.Files);
     }
 
+    [Fact]
+    public async Task Dnx_regex_query_is_search_and_only_output_paths_enter_scope()
+    {
+        using var workspace = new TemporaryWorkspace();
+        var input = Input(
+            workspace.Path,
+            AgentBenchmarkCondition.Candidate,
+            fixture: "dnx-regex-scope.jsonl");
+        await using var execution = await Adapter().StartAsync(input);
+
+        var result = await execution.Completion.WaitAsync(
+            TimeSpan.FromSeconds(5));
+        await execution.StopAsync();
+
+        Assert.Equal("completed", result.Status);
+        Assert.Equal(3, result.ToolCalls.Count);
+        Assert.All(
+            result.ToolCalls,
+            static search => Assert.Equal(
+                "source-search",
+                search.ToolClass));
+        Assert.Contains(
+            "dnx dnaxi@0.4.0",
+            result.ToolCalls[0].Name,
+            StringComparison.Ordinal);
+        Assert.Equal(
+            [
+                "src/Discovery/Case10.cs",
+                "src/Discovery/Case2.cs",
+            ],
+            result.InspectedScope.Files);
+    }
+
+    [Theory]
+    [InlineData(@"Get-Content \\server\share\Outside.cs")]
+    [InlineData("cat /outside/Program.cs&&true")]
+    [InlineData("rg -f /outside/Patterns.cs .")]
+    [InlineData("find . /outside/Program.cs -print")]
+    [InlineData("rg Foo src/../../outside/Program.cs")]
+    [InlineData("rg Foo '/outside/Foo(1).cs'")]
+    public void Command_scope_rejects_outside_paths(string command)
+    {
+        using var workspace = new TemporaryWorkspace();
+        var files = new HashSet<string>(StringComparer.Ordinal);
+        var projects = new HashSet<string>(StringComparer.Ordinal);
+
+        var valid = CodexBenchmarkCommandEvidence.ObserveCommandScope(
+            command,
+            workspace.Path,
+            files,
+            projects);
+
+        Assert.False(valid);
+        Assert.Empty(files);
+        Assert.Empty(projects);
+    }
+
+    [Fact]
+    public void Output_scope_rejects_unquoted_outside_paths_with_spaces()
+    {
+        using var workspace = new TemporaryWorkspace();
+        var files = new HashSet<string>(StringComparer.Ordinal);
+        var projects = new HashSet<string>(StringComparer.Ordinal);
+
+        var valid = CodexBenchmarkCommandEvidence.ObserveOutputScope(
+            "/outside/My File.cs:1:match\n",
+            workspace.Path,
+            files,
+            projects);
+
+        Assert.False(valid);
+        Assert.Empty(files);
+        Assert.Empty(projects);
+    }
+
     [Theory]
     [InlineData("permission-denied.jsonl", "emit", "1", "permission-denied", false, "error")]
     [InlineData("read-only.jsonl", "emit", "1", "permission-denied", false, "turn.failed")]
@@ -154,6 +229,7 @@ public sealed class CodexAgentBenchmarkAdapterTests
     [InlineData("completion-before-start.jsonl", "emit", "0", "failed", false, "turn.completed")]
     [InlineData("item-after-completion.jsonl", "emit", "0", "failed", false, "item.completed")]
     [InlineData("scope-outside.jsonl", "emit", "0", "failed", false, "item.completed")]
+    [InlineData("scope-outside-punctuation.jsonl", "emit", "0", "failed", false, "item.completed")]
     public async Task Failure_contracts_preserve_raw_evidence(
         string fixture,
         string behavior,

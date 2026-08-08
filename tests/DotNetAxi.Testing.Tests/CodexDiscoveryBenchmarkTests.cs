@@ -97,7 +97,10 @@ public sealed class CodexDiscoveryBenchmarkTests
         {
             await store.RetainAsync(
                 context.Preparation.Manifest,
-                CreateSuccessfulRun(context, scheduled));
+                CreateSuccessfulRun(
+                    context,
+                    scheduled,
+                    addToolCall: true));
         }
 
         var summary = await store.FinalizeAsync(true, null);
@@ -111,6 +114,11 @@ public sealed class CodexDiscoveryBenchmarkTests
         Assert.Equal(70, summary.RetainedRunCount);
         Assert.Equal(-10m, summary.Thresholds.MedianTokenChangePercent);
         Assert.True(summary.Thresholds.ImprovementClaimSupported);
+        Assert.Equal(0, summary.Baseline.DnxInvocationCount);
+        Assert.Equal(35, summary.Candidate.DnxActivatedRunCount);
+        Assert.Equal(35, summary.Candidate.SuccessfulDnxActivatedRunCount);
+        Assert.Equal(35, summary.Candidate.DnxInvocationCount);
+        Assert.Equal(35, summary.Candidate.SuccessfulDnxInvocationCount);
         Assert.True(CodexDiscoveryEvidenceValidator.CanonicalEquals(
             summary,
             validated));
@@ -118,6 +126,89 @@ public sealed class CodexDiscoveryBenchmarkTests
             Directory.EnumerateFiles(
                 Path.Combine(evidencePath, "runs"),
                 "*.json").Count());
+    }
+
+    [Fact]
+    public async Task Zero_candidate_dnx_activation_is_explicit()
+    {
+        using var fixture = await PreparedFixture.CreateAsync();
+        var context = await CodexDiscoveryBenchmarkPreparation.PrepareAsync(
+            fixture.RequestPath);
+        var evidencePath = Path.Combine(fixture.Root, "zero-activation");
+        var store = await CodexDiscoveryEvidenceStore.CreateAsync(
+            evidencePath,
+            context);
+        foreach (var scheduled in context.Preparation.Schedule)
+        {
+            await store.RetainAsync(
+                context.Preparation.Manifest,
+                CreateSuccessfulRun(context, scheduled));
+        }
+
+        var summary = await store.FinalizeAsync(true, null);
+
+        Assert.Equal("zero-activation", summary.Comparison);
+        Assert.Equal(0, summary.Candidate.DnxActivatedRunCount);
+        Assert.Equal(0, summary.Candidate.DnxInvocationCount);
+        Assert.False(summary.Thresholds.ImprovementClaimSupported);
+        Assert.Contains(
+            summary.Reasons,
+            static reason => reason.Contains(
+                "product was not exercised",
+                StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Pinned_dnx_activation_requires_the_executed_package_identity()
+    {
+        Assert.True(CodexBenchmarkCommandEvidence.IsPinnedDnxInvocation(
+            "dnx dnaxi@0.4.0 --verbosity quiet -- --version",
+            "dnaxi",
+            "0.4.0"));
+        Assert.True(CodexBenchmarkCommandEvidence.IsPinnedDnxInvocation(
+            "/bin/zsh -lc \"dnx dnaxi@0.4.0 --verbosity quiet -- --version\"",
+            "dnaxi",
+            "0.4.0"));
+        Assert.True(CodexBenchmarkCommandEvidence.IsPinnedDnxInvocation(
+            "dnx dnaxi@0.4.0 --verbosity quiet -- --version 2>&1",
+            "dnaxi",
+            "0.4.0"));
+        Assert.True(CodexBenchmarkCommandEvidence.IsPinnedDnxInvocation(
+            "dnx dnaxi@0.4.0 --verbosity quiet -- --version &>/dev/null",
+            "dnaxi",
+            "0.4.0"));
+        Assert.True(CodexBenchmarkCommandEvidence.IsPinnedDnxInvocation(
+            "dnx dnaxi@0.4.0 --verbosity quiet -- --version &>>/tmp/dnaxi.log",
+            "dnaxi",
+            "0.4.0"));
+        Assert.False(CodexBenchmarkCommandEvidence.IsPinnedDnxInvocation(
+            "echo 'dnx dnaxi@0.4.0 --verbosity quiet -- --version'",
+            "dnaxi",
+            "0.4.0"));
+        Assert.False(CodexBenchmarkCommandEvidence.IsPinnedDnxInvocation(
+            "dnx dnaxi@9.9.9 --verbosity quiet -- --version",
+            "dnaxi",
+            "0.4.0"));
+        Assert.False(CodexBenchmarkCommandEvidence.IsPinnedDnxInvocation(
+            "dnx dnaxi@0.4.0 --help -- --version",
+            "dnaxi",
+            "0.4.0"));
+        Assert.False(CodexBenchmarkCommandEvidence.IsPinnedDnxInvocation(
+            "dnx dnaxi@0.4.0 --version 9.9.9 -- --version",
+            "dnaxi",
+            "0.4.0"));
+        Assert.False(CodexBenchmarkCommandEvidence.IsPinnedDnxInvocation(
+            "true || dnx dnaxi@0.4.0 --verbosity quiet -- --version",
+            "dnaxi",
+            "0.4.0"));
+        Assert.False(CodexBenchmarkCommandEvidence.IsPinnedDnxInvocation(
+            "dnx dnaxi@0.4.0 --verbosity quiet -- --version || true",
+            "dnaxi",
+            "0.4.0"));
+        Assert.False(CodexBenchmarkCommandEvidence.IsPinnedDnxInvocation(
+            "dnx dnaxi@0.4.0 --verbosity quiet -- --version & > /dev/null",
+            "dnaxi",
+            "0.4.0"));
     }
 
     [Fact]
@@ -216,7 +307,8 @@ public sealed class CodexDiscoveryBenchmarkTests
             {
                 id = "search",
                 type = "command_execution",
-                command = "/bin/zsh -lc \"rg -n --glob '*.cs' Record .\"",
+                command =
+                    "/bin/zsh -lc \"rg -n --glob '*.cs' 'Record\\\\.(?:g\\\\.)?cs$' .\"",
                 aggregated_output =
                     "./src/Discovery/Cases/InvocationCases.cs:7:Record();\n",
                 exit_code = 0,
@@ -293,6 +385,7 @@ public sealed class CodexDiscoveryBenchmarkTests
         var summary = await store.FinalizeAsync(true, null);
         Assert.Equal("regression", summary.Comparison);
         Assert.True(summary.Thresholds.ToolCallRegression);
+        Assert.False(summary.Thresholds.ImprovementClaimSupported);
     }
 
     [Fact]
@@ -395,6 +488,10 @@ public sealed class CodexDiscoveryBenchmarkTests
         var toolCalls = new List<AgentBenchmarkToolCall>();
         if (addToolCall)
         {
+            var command = scheduled.Condition
+                is AgentBenchmarkCondition.Candidate
+                    ? $"dnx {context.Request.Product.PackageId}@{context.Request.Product.PackageVersion} --source /tmp/feed --verbosity quiet -- search file benchmark-marker"
+                    : "rg benchmark-marker";
             var toolPayload = JsonSerializer.Serialize(new
             {
                 type = "item.completed",
@@ -402,7 +499,7 @@ public sealed class CodexDiscoveryBenchmarkTests
                 {
                     id = "tool-0",
                     type = "command_execution",
-                    command = "rg benchmark-marker",
+                    command,
                     aggregated_output = string.Empty,
                     exit_code = 0,
                     status = "completed",
@@ -416,7 +513,7 @@ public sealed class CodexDiscoveryBenchmarkTests
             toolCalls.Add(new AgentBenchmarkToolCall(
                 0,
                 "source-search",
-                "rg benchmark-marker",
+                command,
                 AgentBenchmarkHash.Compute(toolDocument.RootElement
                     .GetProperty("item").GetRawText()),
                 true));

@@ -386,7 +386,15 @@ ordinal inspected file and project sets, timeout and start-attempt state,
 versions, all controlling hashes, permission/network policy, and separate
 immutable `claims-supported`, `network-unused`, and `workspace-unchanged`
 outcomes. Inspected scope uses the fixture system's canonical portable
-relative-path rules. Provider events remain opaque immutable strings with
+relative-path rules. Source-search command text is not reinterpreted as a
+general shell or search-tool grammar: relative inspected scope comes from
+reported result paths, while explicit rooted or traversal source references
+still receive a containment check. Repository-read operands and all reported
+source paths remain scope evidence. This keeps glob and regular-expression
+query tokens out of inspected scope while real outside-workspace evidence
+fails closed. Exact-fact answers are canonicalized as unique, ordinal-sorted
+sets before comparison, so natural response ordering does not change
+correctness. Provider events remain opaque immutable strings with
 contiguous sequence numbers and per-event SHA-256 hashes; the result pins the
 ordered raw trajectory with a separate SHA-256 hash. Negative or overflowing
 token metrics, invalid scope, unpermitted tool classes, missing raw evidence,
@@ -472,6 +480,18 @@ drift, reconciles normalized metrics with raw Codex events, and recomputes the
 documented comparison thresholds. Missing, failed, and timed-out trajectories
 remain explicit and make the comparison incomparable rather than contributing
 smoothed success or efficiency values.
+
+The corrected Codex discovery protocol uses version 2 retained-run, report,
+and summary schemas and Codex adapter version 1.1. It derives normalized and
+raw-event command classification and inspected scope through the same rules.
+Condition metrics count command executions of the manifest-pinned `dnx
+<package-id>@<version>` identity, successful invocations, activated runs, and
+successfully activated runs. Mentioning that vector as data inside another
+command or invoking a different package version is not activation. A complete
+comparison with zero candidate invocations is labeled `zero-activation` and
+cannot support an improvement claim. These protocol corrections apply to new
+series only; retained 0.3.0 artifacts, hashes, status, and conclusions remain
+unchanged.
 
 Exact fact sets must be nonempty, unique, and stored in ordinal order. Strict
 corpus loading rejects unknown fields, duplicate or unsorted outcomes, fixture

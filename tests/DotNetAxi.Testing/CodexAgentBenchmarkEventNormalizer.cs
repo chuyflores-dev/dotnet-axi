@@ -290,8 +290,8 @@ internal sealed partial class CodexAgentBenchmarkEventNormalizer
             command,
             item.GetRawText(),
             succeeded);
-        ObserveScope(command);
-        ObserveScope(output);
+        ObserveCommandScope(command);
+        ObserveOutputScope(output);
         if (NetworkCommandRegex().IsMatch(command))
         {
             _networkUsed = true;
@@ -315,7 +315,11 @@ internal sealed partial class CodexAgentBenchmarkEventNormalizer
                 if (change.ValueKind == JsonValueKind.Object
                     && TryGetString(change, "path", out var path))
                 {
-                    if (!ObservePath(path))
+                    if (!CodexBenchmarkCommandEvidence.ObservePath(
+                            path,
+                            _input.WorkspacePath,
+                            _files,
+                            _projects))
                     {
                         _protocolFailure = true;
                     }
@@ -424,32 +428,10 @@ internal sealed partial class CodexAgentBenchmarkEventNormalizer
 
     private string MapCommandToolClass(string command)
     {
-        if (SourceSearchCommandRegex().IsMatch(command))
-        {
-            return "source-search";
-        }
-
-        if (RepositoryReadCommandRegex().IsMatch(command))
-        {
-            return "repository-read";
-        }
-
-        if (DotNetCommandRegex().IsMatch(command))
-        {
-            return "dotnet-sdk";
-        }
-
-        if (GitCommandRegex().IsMatch(command))
-        {
-            return "git";
-        }
-
-        return _input.Execution.Sandbox == "read-only"
-               && _input.Task.Execution.PermittedTools.Contains(
-                   "repository-read",
-                   StringComparer.Ordinal)
-            ? "repository-read"
-            : "shell";
+        return CodexBenchmarkCommandEvidence.Classify(
+            command,
+            _input.Execution.Sandbox,
+            _input.Task.Execution.PermittedTools);
     }
 
     private string MapMcpToolClass(string name)
@@ -472,85 +454,29 @@ internal sealed partial class CodexAgentBenchmarkEventNormalizer
         return "mcp";
     }
 
-    private void ObserveScope(string value)
+    private void ObserveCommandScope(string value)
     {
-        foreach (Match match in ScopePathRegex().Matches(value))
+        if (!CodexBenchmarkCommandEvidence.ObserveCommandScope(
+                value,
+                _input.WorkspacePath,
+                _files,
+                _projects))
         {
-            var path = match.Groups["quotedPath"].Success
-                ? match.Groups["quotedPath"].Value
-                : match.Groups["path"].Value;
-            if (IsScopePattern(path))
-            {
-                continue;
-            }
-
-            if (!ObservePath(path))
-            {
-                _protocolFailure = true;
-            }
+            _protocolFailure = true;
         }
     }
 
-    private bool ObservePath(string value)
+    private void ObserveOutputScope(string value)
     {
-        var candidate = value;
-        if (Path.IsPathFullyQualified(candidate))
+        if (!CodexBenchmarkCommandEvidence.ObserveOutputScope(
+                value,
+                _input.WorkspacePath,
+                _files,
+                _projects))
         {
-            var workspaceRoot = NormalizeMacOsPrivatePath(
-                Path.GetFullPath(_input.WorkspacePath));
-            var candidatePath = NormalizeMacOsPrivatePath(
-                Path.GetFullPath(candidate));
-            var relative = Path.GetRelativePath(workspaceRoot, candidatePath);
-            if (Path.IsPathRooted(relative)
-                || relative == ".."
-                || relative.StartsWith(
-                    $"..{Path.DirectorySeparatorChar}",
-                    StringComparison.Ordinal))
-            {
-                return false;
-            }
-
-            candidate = relative;
+            _protocolFailure = true;
         }
-
-        if (candidate.StartsWith("./", StringComparison.Ordinal)
-            || candidate.StartsWith(".\\", StringComparison.Ordinal))
-        {
-            candidate = candidate[2..];
-        }
-
-        if (!PortableRelativePath.TryNormalize(
-                candidate,
-                normalizeBackslashes: true,
-                out var normalized))
-        {
-            return false;
-        }
-
-        if (normalized.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase))
-        {
-            _projects.Add(normalized);
-            return true;
-        }
-
-        if (normalized.EndsWith(".cs", StringComparison.OrdinalIgnoreCase))
-        {
-            _files.Add(normalized);
-            return true;
-        }
-
-        return false;
     }
-
-    private static bool IsScopePattern(string value) =>
-        value.StartsWith('!')
-        || value.IndexOfAny(['*', '?', '{', '}']) >= 0;
-
-    private static string NormalizeMacOsPrivatePath(string path) =>
-        OperatingSystem.IsMacOS()
-        && path.StartsWith("/private/", StringComparison.Ordinal)
-            ? path[8..]
-            : path;
 
     private void AddRawEvent(string kind, string payload) =>
         _rawEvents.Add(
@@ -619,31 +545,6 @@ internal sealed partial class CodexAgentBenchmarkEventNormalizer
         "(?:^|[\\s'\"])(?:curl|wget|Invoke-WebRequest|web_search|nuget|git\\s+(?:clone|fetch|pull)|dotnet\\s+restore)(?:[\\s'\"]|$)",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex NetworkCommandRegex();
-
-    [GeneratedRegex(
-        "(?:^|[\\s'\"])(?:rg|grep|find|fd|dnaxi\\s+search|dnx\\s+dotnet-axi(?:\\s+--)?\\s+search)(?:[\\s'\"]|$)",
-        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
-    private static partial Regex SourceSearchCommandRegex();
-
-    [GeneratedRegex(
-        "(?:^|[\\s'\"])(?:cat|sed|head|tail|type|Get-Content)(?:[\\s'\"]|$)",
-        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
-    private static partial Regex RepositoryReadCommandRegex();
-
-    [GeneratedRegex(
-        "(?:^|[\\s'\"])dotnet(?:[\\s'\"]|$)",
-        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
-    private static partial Regex DotNetCommandRegex();
-
-    [GeneratedRegex(
-        "(?:^|[\\s'\"])git(?:[\\s'\"]|$)",
-        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
-    private static partial Regex GitCommandRegex();
-
-    [GeneratedRegex(
-        "(?:(?<quote>[\"'])(?<quotedPath>[^\"'\\r\\n]+\\.(?:csproj|cs))\\k<quote>|(?<path>(?:(?:[A-Za-z]:[\\\\/]|/)?[A-Za-z0-9_.-]+(?:[\\\\/][A-Za-z0-9_.-]+)*)\\.(?:csproj|cs)))",
-        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
-    private static partial Regex ScopePathRegex();
 
     private enum ProviderState
     {

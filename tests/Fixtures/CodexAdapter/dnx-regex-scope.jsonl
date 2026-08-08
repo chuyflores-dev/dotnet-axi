@@ -1,0 +1,7 @@
+{"type":"thread.started","thread_id":"thread-dnx-regex-scope"}
+{"type":"turn.started"}
+{"type":"item.completed","item":{"id":"dnx-search","type":"command_execution","command":"dnx dnaxi@0.4.0 --source /tmp/feed --verbosity quiet -- search text 'Case\\\\d+\\\\.cs$' --regex --path src/Discovery --limit 20","aggregated_output":"./src/Discovery/Case2.cs:2:match\n./src/Discovery/Case10.cs:10:match\n","exit_code":0,"status":"completed"}}
+{"type":"item.completed","item":{"id":"literal-query","type":"command_execution","command":"rg 'Program.cs' .","aggregated_output":"","exit_code":0,"status":"completed"}}
+{"type":"item.completed","item":{"id":"literal-glob","type":"command_execution","command":"rg --glob 'Generated.cs' Record .","aggregated_output":"","exit_code":0,"status":"completed"}}
+{"type":"item.completed","item":{"id":"message","type":"agent_message","text":"src/Discovery/Case2.cs:2\nsrc/Discovery/Case10.cs:10"}}
+{"type":"turn.completed","usage":{"input_tokens":24,"output_tokens":4}}

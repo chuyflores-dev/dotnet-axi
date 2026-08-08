@@ -152,7 +152,7 @@ public sealed class CodexAgentBenchmarkAdapter : IAgentBenchmarkAdapter
     }
 
     public AgentBenchmarkAdapterDescriptor Descriptor { get; } =
-        new("codex", "1.0.0");
+        new("codex", "1.1.0");
 
     public ValueTask<IAgentBenchmarkExecution> StartAsync(
         AgentBenchmarkAdapterInput input,
