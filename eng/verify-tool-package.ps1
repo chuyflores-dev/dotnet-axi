@@ -458,11 +458,19 @@ function Assert-HelpOutput {
         -not $Result.StandardOutput.Contains("next_steps[3]:") -or
         -not $Result.StandardOutput.Contains(
             "Invoke known source-discovery routes directly") -or
-        -not $Result.StandardOutput.Contains("search file --help") -or
-        -not $Result.StandardOutput.Contains("search text --help") -or
         -not $Result.StandardOutput.Contains(
-            "search syntax invocation --help")) {
+            "Inspect only the narrowest relevant help once when no documented route or option applies")) {
         throw "Help output does not contain compact activation guidance."
+    }
+
+    foreach ($redundantHelpProbe in @(
+            "search file --help",
+            "search text --help",
+            "search syntax --help",
+            "search syntax invocation --help")) {
+        if ($Result.StandardOutput.Contains($redundantHelpProbe)) {
+            throw "Help output contains redundant probe '$redundantHelpProbe'."
+        }
     }
 
     foreach ($omitted in @(
@@ -503,9 +511,7 @@ function Assert-HomeOutput {
         "invocation: dnx dnaxi@$Version --verbosity quiet -- <command>",
         "next_steps[3]:",
         "Invoke known source-discovery routes directly",
-        "search file --help",
-        "search text --help",
-        "search syntax invocation --help",
+        "Inspect only the narrowest relevant help once when no documented route or option applies",
         "Read an already-known file directly when that is smaller.",
         "suggestions[1]:`n  - command: dnx`n    arguments[5]: dnaxi@$Version,`"--verbosity`",quiet,`"--`",`"--help`"",
         "do not add a help probe before a known route."
@@ -513,6 +519,16 @@ function Assert-HomeOutput {
     foreach ($text in $required) {
         if (-not $Result.StandardOutput.Contains($text)) {
             throw "Home output is missing '$text'. Output: $($Result.StandardOutput)"
+        }
+    }
+
+    foreach ($redundantHelpProbe in @(
+            "search file --help",
+            "search text --help",
+            "search syntax --help",
+            "search syntax invocation --help")) {
+        if ($Result.StandardOutput.Contains($redundantHelpProbe)) {
+            throw "Home output contains redundant probe '$redundantHelpProbe'."
         }
     }
 }
