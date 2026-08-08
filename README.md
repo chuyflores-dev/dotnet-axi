@@ -80,6 +80,15 @@ dotnet test dotnet-axi.slnx --configuration Release --no-build
 
 ## Local package
 
+Install the repository Agent Skill independently from the .NET tool package:
+
+```bash
+npx skills add chuyflores-dev/dotnet-axi --skill dotnet-axi -g
+```
+
+The skill teaches supported agents to invoke the exact `dnaxi` release through
+`dnx`; installing the skill does not install the .NET tool persistently.
+
 Create and verify a disposable local package without publishing it:
 
 ```bash

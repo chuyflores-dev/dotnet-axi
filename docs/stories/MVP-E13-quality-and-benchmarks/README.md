@@ -65,6 +65,7 @@ testing until the end.
 - [MVP-E13-S31 — Measure the 1.0.0 Claude release gate](MVP-E13-S31-measure-1.0.0-claude-release-gate.md)
 - [MVP-E13-S32 — Certify the 1.0.0 release bar](MVP-E13-S32-certify-1.0.0-release-bar.md)
 - [MVP-E13-S33 — Measure the 0.5.0 Codex symbol-context subset](MVP-E13-S33-measure-0.5.0-codex-symbol-context.md)
+- [MVP-E13-S34 — Separate Agent Skill installation from NuGet packaging](MVP-E13-S34-separate-skill-distribution.md)
 
 ## Complete when
 

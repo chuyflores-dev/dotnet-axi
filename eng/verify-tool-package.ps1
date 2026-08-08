@@ -92,156 +92,6 @@ function Assert-ZipEntryMatchesFile {
     }
 }
 
-function Assert-ZipEntryMatchesText {
-    param(
-        [Parameter(Mandatory)]
-        [System.IO.Compression.ZipArchive] $Archive,
-
-        [Parameter(Mandatory)]
-        [string] $EntryName,
-
-        [Parameter(Mandatory)]
-        [string] $ExpectedText
-    )
-
-    $actual = Read-ZipEntryText `
-        -Archive $Archive `
-        -EntryName $EntryName
-    if (-not [System.String]::Equals(
-            $ExpectedText,
-            $actual,
-            [System.StringComparison]::Ordinal)) {
-        throw "Package entry '$EntryName' is not the expected versioned text."
-    }
-}
-
-function Install-AgentSkillFromPackage {
-    param(
-        [Parameter(Mandatory)]
-        [string] $PackagePath,
-
-        [Parameter(Mandatory)]
-        [string] $ScopeRoot
-    )
-
-    $installation = [System.IO.Path]::Combine(
-        $ScopeRoot,
-        ".agents",
-        "skills",
-        "dotnet-axi")
-    [System.IO.Directory]::CreateDirectory($installation) | Out-Null
-    $entries = @{
-        "skills/dotnet-axi/SKILL.md" = "SKILL.md"
-        "skills/dotnet-axi/references/codex.md" =
-            [System.IO.Path]::Combine("references", "codex.md")
-    }
-
-    $archive = [System.IO.Compression.ZipFile]::OpenRead($PackagePath)
-    try {
-        foreach ($entryName in $entries.Keys) {
-            $destination = [System.IO.Path]::Combine(
-                $installation,
-                $entries[$entryName])
-            [System.IO.Directory]::CreateDirectory(
-                [System.IO.Path]::GetDirectoryName($destination)) |
-                Out-Null
-            [System.IO.File]::WriteAllBytes(
-                $destination,
-                (Read-ZipEntryBytes `
-                    -Archive $archive `
-                    -EntryName $entryName))
-        }
-    }
-    finally {
-        $archive.Dispose()
-    }
-
-    return $installation
-}
-
-function Assert-InstalledAgentSkill {
-    param(
-        [Parameter(Mandatory)]
-        [string] $Installation,
-
-        [Parameter(Mandatory)]
-        [string] $Version
-    )
-
-    $skillPath = [System.IO.Path]::Combine($Installation, "SKILL.md")
-    $codexPath = [System.IO.Path]::Combine(
-        $Installation,
-        "references",
-        "codex.md")
-    if (-not (Test-Path -LiteralPath $skillPath -PathType Leaf) -or
-        -not (Test-Path -LiteralPath $codexPath -PathType Leaf)) {
-        throw "Installed Agent Skill is incomplete at '$Installation'."
-    }
-
-    $skill = [System.IO.File]::ReadAllText($skillPath)
-    if (-not $skill.StartsWith(
-            "---`nname: dotnet-axi`ndescription: ",
-            [System.StringComparison]::Ordinal) -or
-        -not $skill.Contains("`n---`n")) {
-        throw "Installed Agent Skill metadata is not portable or discoverable."
-    }
-
-    $requiredSourceDiscoveryGuidance = @(
-        "dnx dnaxi@$Version --verbosity quiet -- <command>",
-        "dnx dnaxi@$Version --source `"`$DNAXI_LOCAL_FEED`" --verbosity quiet -- <command>",
-        "Trigger for finding .NET files",
-        "## Start with dnx",
-        "Default to one-shot",
-        "do not add a help probe before a known route",
-        "search file '<path-fragment>'",
-        "search file --help",
-        "search text '<literal>'",
-        "search text --help",
-        "search text '<dotnet-regex>' --regex",
-        "search syntax --help",
-        "search syntax invocation --help",
-        "search syntax invocation --name SaveChangesAsync",
-        "--path <scope> --limit 20",
-        "built-in engine",
-        "use an available direct tool",
-        "retrieval_command",
-        "syntax candidates, never as compiler-verified"
-    )
-    foreach ($required in $requiredSourceDiscoveryGuidance) {
-        if (-not $skill.Contains(
-                $required,
-                [System.StringComparison]::Ordinal)) {
-            throw "Installed Agent Skill is missing source-discovery guidance '$required'."
-        }
-    }
-
-    if ($skill.Contains(
-            "<exact-version>",
-            [System.StringComparison]::Ordinal) -or
-        $skill.Contains(
-            "dnx dotnet-axi",
-            [System.StringComparison]::Ordinal) -or
-        $skill.Contains(
-            "dnx dnaxi --",
-            [System.StringComparison]::Ordinal)) {
-        throw "Installed Agent Skill contains an unpinned or legacy dnx invocation."
-    }
-
-    $futureSemanticCommands = @(
-        "search symbol",
-        "show symbol",
-        "-- references",
-        "-- implementations"
-    )
-    foreach ($futureCommand in $futureSemanticCommands) {
-        if ($skill.Contains(
-                $futureCommand,
-                [System.StringComparison]::Ordinal)) {
-            throw "Installed Agent Skill uses unavailable semantic command '$futureCommand'."
-        }
-    }
-}
-
 function Assert-PortablePdb {
     param(
         [Parameter(Mandatory)]
@@ -1108,10 +958,6 @@ function Assert-OptionalDependencyScenarios {
 $resolvedPackageDirectory = (
     Resolve-Path -LiteralPath $PackageDirectory
 ).Path
-$repositoryRoot = (
-    Resolve-Path -LiteralPath (
-        [System.IO.Path]::Combine($PSScriptRoot, ".."))
-).Path
 $packages = @(
     Get-ChildItem -LiteralPath $resolvedPackageDirectory -File |
         Where-Object {
@@ -1189,8 +1035,6 @@ try {
     )
     $requiredPackageEntries = @(
         "README.md",
-        "skills/dotnet-axi/SKILL.md",
-        "skills/dotnet-axi/references/codex.md",
         "tools/net10.0/any/DotnetToolSettings.xml",
         "tools/net10.0/any/dnaxi.deps.json",
         "tools/net10.0/any/dnaxi.runtimeconfig.json",
@@ -1206,29 +1050,20 @@ try {
         }
     }
 
+    $packagedSkill = $archive.Entries |
+        Where-Object {
+            $_.FullName.Replace('\', '/').StartsWith(
+                "skills/",
+                [System.StringComparison]::OrdinalIgnoreCase)
+        } |
+        Select-Object -First 1
+    if ($null -ne $packagedSkill) {
+        throw "Tool package must not carry Agent Skill entry '$($packagedSkill.FullName)'."
+    }
+
     Assert-AssemblyVersionMetadata `
         -Archive $archive `
         -Version $version
-
-    $versionedSkill = [System.IO.File]::ReadAllText(
-        [System.IO.Path]::Combine(
-            $repositoryRoot,
-            "skills",
-            "dotnet-axi",
-            "SKILL.md")).Replace("<exact-version>", $version)
-    Assert-ZipEntryMatchesText `
-        -Archive $archive `
-        -EntryName "skills/dotnet-axi/SKILL.md" `
-        -ExpectedText $versionedSkill
-    Assert-ZipEntryMatchesFile `
-        -Archive $archive `
-        -EntryName "skills/dotnet-axi/references/codex.md" `
-        -FilePath ([System.IO.Path]::Combine(
-            $repositoryRoot,
-            "skills",
-            "dotnet-axi",
-            "references",
-            "codex.md"))
 
     $dependencyModel = Read-ZipEntryText `
         -Archive $archive `
@@ -1284,6 +1119,17 @@ if (-not (Test-Path -LiteralPath $symbolPackagePath -PathType Leaf)) {
 $symbolArchive = [System.IO.Compression.ZipFile]::OpenRead(
     $symbolPackagePath)
 try {
+    $symbolPackagedSkill = $symbolArchive.Entries |
+        Where-Object {
+            $_.FullName.Replace('\', '/').StartsWith(
+                "skills/",
+                [System.StringComparison]::OrdinalIgnoreCase)
+        } |
+        Select-Object -First 1
+    if ($null -ne $symbolPackagedSkill) {
+        throw "Symbol package must not carry Agent Skill entry '$($symbolPackagedSkill.FullName)'."
+    }
+
     $symbolNuspecEntries = @(
         $symbolArchive.Entries |
             Where-Object { $_.FullName -like "*.nuspec" }
@@ -1344,23 +1190,6 @@ $temporaryRoot = [System.IO.Path]::Combine(
     "dnaxi-package-" + [System.Guid]::NewGuid().ToString("N"))
 [System.IO.Directory]::CreateDirectory($temporaryRoot) | Out-Null
 try {
-    $repositorySkill = Install-AgentSkillFromPackage `
-        -PackagePath $package.FullName `
-        -ScopeRoot ([System.IO.Path]::Combine(
-            $temporaryRoot,
-            "repository-scope"))
-    $userSkill = Install-AgentSkillFromPackage `
-        -PackagePath $package.FullName `
-        -ScopeRoot ([System.IO.Path]::Combine(
-            $temporaryRoot,
-            "user-scope"))
-    Assert-InstalledAgentSkill `
-        -Installation $repositorySkill `
-        -Version $version
-    Assert-InstalledAgentSkill `
-        -Installation $userSkill `
-        -Version $version
-
     # Exercise the canonical no-install path before any persistent tool
     # lifecycle. The nearest NuGet configuration clears inherited sources, so
     # these exact-version candidate runs cannot fall back to public NuGet.
@@ -1841,4 +1670,4 @@ finally {
     }
 }
 
-Write-Host "Verified dnaxi $version package, symbols, Agent Skill, global/local lifecycle, and dnx parity."
+Write-Host "Verified dnaxi $version tool package, symbols, global/local lifecycle, and dnx parity."

@@ -476,14 +476,21 @@ documented comparison thresholds. Missing, failed, and timed-out trajectories
 remain explicit and make the comparison incomparable rather than contributing
 smoothed success or efficiency values.
 
-The `0.4.0` self-hosting request uses request and preparation version 2. It
+The `0.4.0` self-hosting request uses request and preparation version 3. It
 pins an executable `dnx`, a local feed containing only the exact
-`dnaxi.0.4.0.nupkg`, and a skill directory whose files must match the skill
-carried by that package byte for byte. Baseline and candidate use the same
+`dnaxi.0.4.0.nupkg`, and the independently hashed repository Agent Skill. The
+package preflight verifies the `dnaxi` ID, 0.4.0 version, .NET tool type,
+command settings, required tool payload, and absence of Agent Skill entries;
+the feed filename alone is not accepted as candidate identity.
+Baseline and candidate use the same
 isolated raw-tool `PATH`, with the pinned `dnx` directory first, no other `dnx`
 in later entries, and no persistent `dnaxi`. Baseline disables skills.
-Candidate adds only the packaged `SKILL.md` and a `DNAXI_LOCAL_FEED`
-environment value bound to the pinned feed. Each materialized workspace
+Candidate adds only the repository skill through the project-local
+`.agents/skills/dotnet-axi` discovery path and a `DNAXI_LOCAL_FEED` environment
+value bound to the pinned feed. A network-free `codex debug prompt-input`
+preflight proves the candidate skill and exact source-pinned 0.4.0 invocation
+are model-visible while the baseline does not expose the skill before paid
+execution is allowed. Each materialized workspace
 supplies isolated writable .NET and NuGet caches, so the skill can select `dnx
 dnaxi@0.4.0 --source "$DNAXI_LOCAL_FEED" --verbosity quiet --` while package
 resolution remains local and network-disabled. The CLI is not represented as
@@ -491,7 +498,7 @@ an MCP server, and API-key authentication or API-key artifacts are not
 accepted.
 
 The corrected Codex discovery protocol uses version 2 retained-run and report
-schemas, version 3 summaries, and Codex adapter version 1.3. The fixture home
+schemas, version 3 summaries, and Codex adapter version 1.4. The fixture home
 restores the sealed raw-tool path after login-shell initialization, and every
 run revalidates that the login shell resolves `dnx` to the pinned executable
 before Codex starts. The protocol derives

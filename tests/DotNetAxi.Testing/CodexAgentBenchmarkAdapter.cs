@@ -11,7 +11,8 @@ public sealed record CodexBenchmarkConditionExposure(
     string ToolConfigurationHash,
     IReadOnlyList<string> ConfigurationOverrides,
     IReadOnlyList<string>? ExecutableSearchPathEntries = null,
-    IReadOnlyDictionary<string, string>? EnvironmentVariables = null);
+    IReadOnlyDictionary<string, string>? EnvironmentVariables = null,
+    string? SkillDirectoryPath = null);
 
 public sealed class CodexAgentBenchmarkAdapterOptions
 {
@@ -120,6 +121,9 @@ public sealed class CodexAgentBenchmarkAdapterOptions
                     static variable => variable.Key,
                     static variable => variable.Value,
                     StringComparer.Ordinal)),
+            SkillDirectoryPath = exposure.SkillDirectoryPath is null
+                ? null
+                : Path.GetFullPath(exposure.SkillDirectoryPath),
         };
 
     private static void ValidateExposure(
@@ -132,6 +136,9 @@ public sealed class CodexAgentBenchmarkAdapterOptions
             || exposure.ConfigurationOverrides is null
             || (exposure.ExecutableSearchPathEntries ?? []).Any(path =>
                 !Path.IsPathFullyQualified(path))
+            || (exposure.SkillDirectoryPath is not null
+                && (!Path.IsPathFullyQualified(exposure.SkillDirectoryPath)
+                    || !Directory.Exists(exposure.SkillDirectoryPath)))
             || (exposure.EnvironmentVariables
                 ?? new Dictionary<string, string>()).Any(variable =>
                 !ConditionVariableNames.Contains(variable.Key)
@@ -185,7 +192,37 @@ public sealed class CodexAgentBenchmarkAdapter : IAgentBenchmarkAdapter
     }
 
     public AgentBenchmarkAdapterDescriptor Descriptor { get; } =
-        new("codex", "1.3.0");
+        new("codex", "1.4.0");
+
+    public ValueTask PrepareWorkspaceAsync(
+        AgentBenchmarkAdapterInput input,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(input);
+        cancellationToken.ThrowIfCancellationRequested();
+        ValidateInput(input);
+        var exposure = Exposure(input.Condition);
+        var installation = Path.Combine(
+            input.WorkspacePath,
+            ".agents",
+            "skills",
+            "dotnet-axi");
+        if (File.Exists(installation) || Directory.Exists(installation))
+        {
+            throw new AgentBenchmarkException(
+                "The materialized benchmark workspace already exposes dotnet-axi skill content.");
+        }
+
+        if (exposure.SkillDirectoryPath is not null)
+        {
+            CopySkillDirectory(
+                exposure.SkillDirectoryPath,
+                installation,
+                cancellationToken);
+        }
+
+        return ValueTask.CompletedTask;
+    }
 
     public async ValueTask<IAgentBenchmarkExecution> StartAsync(
         AgentBenchmarkAdapterInput input,
@@ -464,6 +501,58 @@ public sealed class CodexAgentBenchmarkAdapter : IAgentBenchmarkAdapter
     {
         arguments.Add("--config");
         arguments.Add($"{key}={JsonSerializer.Serialize(value)}");
+    }
+
+    internal static void CopySkillDirectory(
+        string source,
+        string destination,
+        CancellationToken cancellationToken)
+    {
+        RejectReparsePoint(source);
+        Directory.CreateDirectory(destination);
+        foreach (var entry in Directory.EnumerateFileSystemEntries(
+                     source,
+                     "*",
+                     SearchOption.AllDirectories)
+                 .Order(StringComparer.Ordinal))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            RejectReparsePoint(entry);
+            var relative = Path.GetRelativePath(source, entry);
+            if (Path.IsPathFullyQualified(relative)
+                || relative.Split(
+                    Path.DirectorySeparatorChar,
+                    Path.AltDirectorySeparatorChar).Contains(
+                    "..",
+                    StringComparer.Ordinal))
+            {
+                throw new AgentBenchmarkException(
+                    "The pinned Agent Skill contains an unsafe relative path.");
+            }
+
+            var target = Path.Combine(destination, relative);
+            if (Directory.Exists(entry))
+            {
+                Directory.CreateDirectory(target);
+            }
+            else
+            {
+                Directory.CreateDirectory(
+                    Path.GetDirectoryName(target)
+                    ?? throw new AgentBenchmarkException(
+                        "The Agent Skill destination has no parent directory."));
+                File.Copy(entry, target, overwrite: false);
+            }
+        }
+    }
+
+    private static void RejectReparsePoint(string path)
+    {
+        if ((File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0)
+        {
+            throw new AgentBenchmarkException(
+                $"The pinned Agent Skill path '{path}' is a reparse point.");
+        }
     }
 
     private void ValidateInput(AgentBenchmarkAdapterInput input)

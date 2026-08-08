@@ -235,15 +235,15 @@ public sealed class CodexAgentGuidance
 
 public static class AgentGuidanceCatalog
 {
-    public const string ExactVersionPlaceholder = "<exact-version>";
+    public const string SkillPackageVersion = "0.4.0";
 
     public const string SkillName = "dotnet-axi";
 
     public const string SkillDescription =
-        "Use dotnet-axi for deterministic .NET repository evidence. Trigger for finding .NET files by path, searching literal or regular-expression text, locating stable C# syntax shapes, inspecting workspace, semantic, impact, or analysis evidence, and validating completion. Route applicable source discovery through the exact version-pinned dnx dnaxi invocation; skip non-.NET work and direct reads of already-known files.";
+        "Use dotnet-axi for deterministic .NET repository evidence. Trigger for finding .NET files by path, searching literal or regular-expression text, locating stable C# syntax shapes, inspecting workspace, semantic, impact, or analysis evidence, and validating completion. When a controlled benchmark supplies the local feed, route applicable source discovery through dnx dnaxi@0.4.0 --source \"$DNAXI_LOCAL_FEED\" --verbosity quiet -- <command>; skip non-.NET work and direct reads of already-known files.";
 
     public static AgentCommandGuidance Command { get; } =
-        CreateCommand(ExactVersionPlaceholder);
+        CreateCommand(SkillPackageVersion);
 
     public static AgentCommandGuidance ForVersion(string exactVersion)
     {

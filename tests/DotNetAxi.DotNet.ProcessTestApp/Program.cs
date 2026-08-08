@@ -106,6 +106,48 @@ static int CodexDiscoveryProbe(IReadOnlyList<string> values)
         return 0;
     }
 
+    if (values.Count == 5
+        && values[0] == "-C"
+        && values[2] == "debug"
+        && values[3] == "prompt-input")
+    {
+        var skillPath = Path.Combine(
+            values[1],
+            ".agents",
+            "skills",
+            "dotnet-axi",
+            "SKILL.md");
+        var hidden = codexHome is not null
+            && File.Exists(Path.Combine(
+                codexHome,
+                "probe-skill-hidden.txt"));
+        var leaked = codexHome is not null
+            && File.Exists(Path.Combine(
+                codexHome,
+                "probe-skill-leaked.txt"));
+        var visibleSkillPath = File.Exists(skillPath)
+            ? skillPath
+            : Path.Combine(
+                codexHome ?? values[1],
+                "skills",
+                "dotnet-axi",
+                "SKILL.md");
+        var description = File.Exists(visibleSkillPath)
+            ? File.ReadLines(visibleSkillPath)
+                .First(line => line.StartsWith(
+                    "description: ",
+                    StringComparison.Ordinal))["description: ".Length..]
+            : "Use dotnet-axi for deterministic .NET repository evidence.";
+        Console.WriteLine(JsonSerializer.Serialize(
+            !hidden && (File.Exists(skillPath) || leaked)
+                ? new[]
+                {
+                    $"- dotnet-axi: {description} (file: {visibleSkillPath})",
+                }
+                : []));
+        return 0;
+    }
+
     return 64;
 }
 

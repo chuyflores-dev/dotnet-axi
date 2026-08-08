@@ -428,6 +428,51 @@ public sealed class AgentBenchmarkRunnerTests
     }
 
     [Fact]
+    public async Task Adapter_workspace_preparation_is_part_of_the_owned_baseline()
+    {
+        var corpus = await SingleTaskCorpusAsync();
+        var fake = new DeterministicFakeAgentBenchmarkAdapter();
+        var prepared = 0;
+        var adapter = new DelegatingAdapter(
+            fake.Descriptor,
+            async (input, cancellationToken) =>
+            {
+                Assert.True(File.Exists(Path.Combine(
+                    input.WorkspacePath,
+                    ".agents",
+                    "skills",
+                    "dotnet-axi",
+                    "SKILL.md")));
+                return await fake.StartAsync(input, cancellationToken);
+            },
+            async (input, cancellationToken) =>
+            {
+                Interlocked.Increment(ref prepared);
+                var skill = Path.Combine(
+                    input.WorkspacePath,
+                    ".agents",
+                    "skills",
+                    "dotnet-axi");
+                Directory.CreateDirectory(skill);
+                await File.WriteAllTextAsync(
+                    Path.Combine(skill, "SKILL.md"),
+                    "---\nname: dotnet-axi\ndescription: Test.\n---\n",
+                    cancellationToken);
+            });
+
+        var series = await RunAsync(corpus, adapter, Configuration(28));
+
+        Assert.Equal(series.Runs.Count, prepared);
+        Assert.All(series.Runs, static run =>
+        {
+            Assert.True(run.Safe);
+            Assert.Equal(
+                run.Hashes.WorkspaceBefore,
+                run.Hashes.WorkspaceAfter);
+        });
+    }
+
+    [Fact]
     public async Task Workspace_mutation_fails_runner_owned_safety_validation()
     {
         var corpus = await SingleTaskCorpusAsync();
@@ -1136,12 +1181,20 @@ public sealed class AgentBenchmarkRunnerTests
     private sealed class DelegatingAdapter(
         AgentBenchmarkAdapterDescriptor descriptor,
         Func<AgentBenchmarkAdapterInput, CancellationToken,
-            ValueTask<IAgentBenchmarkExecution>> start)
+            ValueTask<IAgentBenchmarkExecution>> start,
+        Func<AgentBenchmarkAdapterInput, CancellationToken, ValueTask>?
+            prepare = null)
         : IAgentBenchmarkAdapter
     {
         public AgentBenchmarkAdapterDescriptor Descriptor { get; } = descriptor;
 
         public int StartCalls { get; private set; }
+
+        public ValueTask PrepareWorkspaceAsync(
+            AgentBenchmarkAdapterInput input,
+            CancellationToken cancellationToken = default) =>
+            prepare?.Invoke(input, cancellationToken)
+            ?? ValueTask.CompletedTask;
 
         public ValueTask<IAgentBenchmarkExecution> StartAsync(
             AgentBenchmarkAdapterInput input,

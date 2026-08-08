@@ -94,6 +94,11 @@ public interface IAgentBenchmarkAdapter
 {
     AgentBenchmarkAdapterDescriptor Descriptor { get; }
 
+    ValueTask PrepareWorkspaceAsync(
+        AgentBenchmarkAdapterInput input,
+        CancellationToken cancellationToken = default) =>
+        ValueTask.CompletedTask;
+
     ValueTask<IAgentBenchmarkExecution> StartAsync(
         AgentBenchmarkAdapterInput input,
         CancellationToken cancellationToken = default);

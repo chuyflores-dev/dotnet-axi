@@ -22,7 +22,8 @@ configuration and harness and are not pooled with Claude.
   attributed-class, object-creation, and catch-clause task runs at least five
   times per baseline and candidate condition with randomized interleaving and
   equivalent isolated workspaces.
-- The candidate condition exposes the packaged Agent Skill and the exact
+- The candidate condition exposes the independently installed repository Agent
+  Skill and the exact
   `dnx dnaxi@<candidate-version> --source <local-feed> --verbosity quiet --`
   command without a persistent `dnaxi` installation or task-specific prompt.
 - Retained trajectories count actual `dnx` command activation separately from
