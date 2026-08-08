@@ -1,5 +1,5 @@
 {
-  "schema": "dotnet-axi/codex-discovery-request/v2",
+  "schema": "dotnet-axi/codex-discovery-request/v3",
   "seriesId": "codex-040-dnx-discovery-20260807",
   "codexExecutable": {
     "path": "/absolute/path/to/version-pinned/codex-executable-not-a-symlink",
@@ -45,7 +45,7 @@
       "sha256": "replace-with-64-lowercase-hex-local-feed-directory-hash"
     },
     "skill": {
-      "path": "/absolute/path/to/skill-extracted-from-candidate-package",
+      "path": "/absolute/path/to/repository/skills/dotnet-axi",
       "sha256": "replace-with-64-lowercase-hex-skill-directory-hash"
     }
   },
@@ -76,7 +76,7 @@
   },
   "candidate": {
     "instructions": {
-      "path": "/absolute/path/to/skill-extracted-from-candidate-package/SKILL.md",
+      "path": "/absolute/path/to/repository/skills/dotnet-axi/SKILL.md",
       "sha256": "replace-with-64-lowercase-hex-candidate-instructions-hash"
     },
     "toolConfiguration": {

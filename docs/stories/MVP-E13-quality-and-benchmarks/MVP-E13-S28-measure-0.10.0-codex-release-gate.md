@@ -21,7 +21,7 @@ used to claim untested models, hosts, or deferred post-MVP capabilities.
 - Every applicable corpus task through 0.9.0 runs at least five times per
   baseline and candidate condition with randomized interleaving, equivalent
   isolated workspaces, and the complete shared success and safety oracles.
-- The immutable series pins the proposed 0.10.0 package, packaged skill,
+- The immutable series pins the proposed 0.10.0 package, repository skill,
   product and fixture commits, schemas, harness, adapter, Codex executable,
   exact model and reasoning, instructions, tools, sandbox, approval, locale,
   time zone, network policy, run count, and randomization seed.

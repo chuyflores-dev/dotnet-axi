@@ -160,6 +160,24 @@ public sealed partial class AgentBenchmarkRunner
                 $"Task '{task.Id}' materialized fixture hash does not match the corpus.");
         }
 
+        var runId = $"{configuration.SeriesId}/{scheduledRun.ExecutionOrder:D6}";
+        var promptHash = AgentBenchmarkHash.Compute(task.Prompt);
+        await adapter.PrepareWorkspaceAsync(
+            new AgentBenchmarkAdapterInput(
+                runId,
+                startAttempt: 0,
+                scheduledRun.ExecutionOrder,
+                scheduledRun.Repetition,
+                scheduledRun.Condition,
+                task,
+                fixture.WorkspacePath,
+                fixture.EnvironmentVariables,
+                configuration.Execution,
+                promptHash,
+                condition.InstructionsHash,
+                condition.ToolConfigurationHash),
+            cancellationToken);
+
         var workspaceBaseline =
             await AgentBenchmarkWorkspaceHasher.CaptureBaselineAsync(
                 fixture.WorkspacePath,
@@ -167,8 +185,6 @@ public sealed partial class AgentBenchmarkRunner
                 configuration.CleanupTimeout,
                 cancellationToken);
 
-        var runId = $"{configuration.SeriesId}/{scheduledRun.ExecutionOrder:D6}";
-        var promptHash = AgentBenchmarkHash.Compute(task.Prompt);
         IAgentBenchmarkExecution? execution = null;
         var startAttempts = 0;
         while (execution is null)

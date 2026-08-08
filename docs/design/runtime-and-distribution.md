@@ -332,7 +332,9 @@ The framework-dependent package targets `net10.0` with platform-neutral tool
 assets, command name `dnaxi`, Apache-2.0 metadata, repository/readme metadata,
 and a portable `.snupkg`. Its application and pinned runtime dependencies are
 contained in the tool package; Git and optional search engines are not install
-prerequisites.
+prerequisites. The NuGet archive distributes only the .NET tool and its package
+metadata; the repository Agent Skill is installed independently through Agent
+Skills tooling.
 
 Package verification may create an ignored local artifact, inspect both
 archives, and install or execute them from isolated temporary stores. This is

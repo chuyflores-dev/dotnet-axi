@@ -1,8 +1,7 @@
 {
-  "schema": "dotnet-axi/codex-discovery-tool-configuration/v2",
-  "configurationOverrides": [
-    "skills.config=[{path=\"/absolute/path/to/skill-extracted-from-candidate-package/SKILL.md\",enabled=true}]"
-  ],
+  "schema": "dotnet-axi/codex-discovery-tool-configuration/v3",
+  "skillDirectoryPath": "/absolute/path/to/repository/skills/dotnet-axi",
+  "configurationOverrides": [],
   "executableSearchPathEntries": [
     {
       "path": "/absolute/path/to/isolated-raw-tool-bin",

@@ -13,13 +13,13 @@ namespace DotNetAxi.Testing;
 internal static partial class CodexDiscoveryBenchmarkPreparation
 {
     internal const string RequestSchema =
-        "dotnet-axi/codex-discovery-request/v2";
+        "dotnet-axi/codex-discovery-request/v3";
     internal const string PreparationSchema =
-        "dotnet-axi/codex-discovery-preparation/v2";
+        "dotnet-axi/codex-discovery-preparation/v3";
     internal const string SettingsSchema =
         "dotnet-axi/codex-discovery-settings/v1";
     internal const string ToolConfigurationSchema =
-        "dotnet-axi/codex-discovery-tool-configuration/v2";
+        "dotnet-axi/codex-discovery-tool-configuration/v3";
     internal const string CodexCliVersion = "codex-cli 0.146.0";
     internal const string ModelId = "gpt-5.6-sol";
     internal const string ReasoningSetting = "low";
@@ -180,9 +180,11 @@ internal static partial class CodexDiscoveryBenchmarkPreparation
             cancellationToken);
         await ValidateDirectoryPinAsync(
             request.Product.Skill,
-            "dnaxi packaged skill",
+            "dnaxi repository skill",
             cancellationToken);
-        await ValidatePackagedSkillAsync(request.Product, cancellationToken);
+        await ValidateSeparatedProductArtifactsAsync(
+            request.Product,
+            cancellationToken);
         await ValidateFilePinAsync(
             request.Baseline.Instructions,
             "baseline instructions",
@@ -192,6 +194,7 @@ internal static partial class CodexDiscoveryBenchmarkPreparation
             "candidate instructions",
             cancellationToken);
         await ValidateCodexRuntimeAsync(request, cancellationToken);
+        await ValidatePromptInputExposureAsync(request, cancellationToken);
 
         AgentTaskCorpus corpus;
         try
@@ -253,7 +256,8 @@ internal static partial class CodexDiscoveryBenchmarkPreparation
             baselineTools.ConfigurationOverrides,
             baselineTools.ExecutableSearchPathEntries.Select(
                 static entry => entry.Path).ToArray(),
-            baselineTools.EnvironmentVariables);
+            baselineTools.EnvironmentVariables,
+            baselineTools.SkillDirectoryPath);
         var candidate = new CodexBenchmarkConditionExposure(
             AgentBenchmarkCondition.Candidate,
             request.Candidate.Instructions.Sha256,
@@ -261,7 +265,8 @@ internal static partial class CodexDiscoveryBenchmarkPreparation
             candidateTools.ConfigurationOverrides,
             candidateTools.ExecutableSearchPathEntries.Select(
                 static entry => entry.Path).ToArray(),
-            candidateTools.EnvironmentVariables);
+            candidateTools.EnvironmentVariables,
+            candidateTools.SkillDirectoryPath);
         var adapter = new CodexAgentBenchmarkAdapter(
             new CodexAgentBenchmarkAdapterOptions(
                 request.CodexExecutable.Path,
@@ -555,7 +560,7 @@ internal static partial class CodexDiscoveryBenchmarkPreparation
             cancellationToken);
         await ValidateDirectoryPinAsync(
             request.Product.Skill,
-            "dnaxi packaged skill",
+            "dnaxi repository skill",
             cancellationToken);
         await ValidateFilePinAsync(
             request.PriorSeries.Summary,
@@ -669,7 +674,7 @@ internal static partial class CodexDiscoveryBenchmarkPreparation
         ValidatePinShape(request.Corpus.Artifact, "corpus");
         ValidatePinShape(request.Product.Package, "dnaxi package");
         ValidatePinShape(request.Product.PackageSource, "dnaxi package source");
-        ValidatePinShape(request.Product.Skill, "dnaxi packaged skill");
+        ValidatePinShape(request.Product.Skill, "dnaxi repository skill");
         ValidatePinShape(
             request.PriorSeries.Summary,
             "retained 0.3.0 summary");
@@ -744,17 +749,10 @@ internal static partial class CodexDiscoveryBenchmarkPreparation
                 $"The {condition} concrete-tool configuration is malformed.");
         }
 
-        var keys = new HashSet<string>(StringComparer.Ordinal);
-        foreach (var value in tools.ConfigurationOverrides)
+        if (tools.ConfigurationOverrides.Count != 0)
         {
-            var separator = value?.IndexOf('=') ?? -1;
-            var key = separator > 0 ? value![..separator].Trim() : string.Empty;
-            if (!key.StartsWith("skills.", StringComparison.Ordinal)
-                || !keys.Add(key))
-            {
-                throw new AgentBenchmarkException(
-                    $"The {condition} concrete-tool configuration contains an unsupported or duplicate override.");
-            }
+            throw new AgentBenchmarkException(
+                $"The {condition} must not use Codex configuration to inject an Agent Skill.");
         }
 
         if (tools.ExecutableSearchPathEntries.Count == 0
@@ -780,20 +778,16 @@ internal static partial class CodexDiscoveryBenchmarkPreparation
 
         if (condition is AgentBenchmarkCondition.Baseline)
         {
-            if (!tools.ConfigurationOverrides.SequenceEqual(
-                    [
-                        "skills.config=[]",
-                    ],
-                    StringComparer.Ordinal)
+            if (tools.SkillDirectoryPath is not null
                 || tools.EnvironmentVariables.Count != 0)
             {
                 throw new AgentBenchmarkException(
                     "The baseline must disable skill exposure.");
             }
         }
-        else if (tools.ConfigurationOverrides.Count != 1
-                 || !tools.ConfigurationOverrides[0].StartsWith(
-                     "skills.config=",
+        else if (!string.Equals(
+                     tools.SkillDirectoryPath,
+                     request.Product.Skill.Path,
                      StringComparison.Ordinal)
                  || tools.EnvironmentVariables.Count != 1
                  || !tools.EnvironmentVariables.TryGetValue(
@@ -805,7 +799,7 @@ internal static partial class CodexDiscoveryBenchmarkPreparation
                      StringComparison.Ordinal))
         {
             throw new AgentBenchmarkException(
-                "The candidate must configure only the packaged skill and its pinned local feed; dnaxi is a CLI, not an MCP server.");
+                "The candidate must configure only the repository skill and its pinned local feed; dnaxi is a CLI, not an MCP server.");
         }
     }
 
@@ -824,8 +818,6 @@ internal static partial class CodexDiscoveryBenchmarkPreparation
                 Path.GetFullPath(request.DnxExecutable.Path))
             ?? string.Empty;
         var skillFile = Path.Combine(request.Product.Skill.Path, "SKILL.md");
-        var expectedSkillOverride =
-            $"skills.config=[{{path={JsonSerializer.Serialize(skillFile)},enabled=true}}]";
         var expectedPackageName =
             $"{PackageId}.{PackageVersion}.nupkg";
         if (!string.Equals(
@@ -866,13 +858,14 @@ internal static partial class CodexDiscoveryBenchmarkPreparation
                     baseline.ExecutableSearchPathEntries.Select(
                         static entry => entry.Path),
                     StringComparer.Ordinal)
+            || baseline.SkillDirectoryPath is not null
             || !string.Equals(
-                candidate.ConfigurationOverrides[0],
-                expectedSkillOverride,
+                candidate.SkillDirectoryPath,
+                request.Product.Skill.Path,
                 StringComparison.Ordinal))
         {
             throw new AgentBenchmarkException(
-                "Both conditions must use the same dnaxi-free raw-tool path with pinned dnx, while the candidate adds only the packaged SKILL.md and pinned local feed environment.");
+                "Both conditions must use the same dnaxi-free raw-tool path with pinned dnx, while the candidate adds only the repository skill through project-local discovery and the pinned local feed environment.");
         }
     }
 
@@ -905,7 +898,7 @@ internal static partial class CodexDiscoveryBenchmarkPreparation
         return (File.GetUnixFileMode(path) & executable) != 0;
     }
 
-    private static async ValueTask ValidatePackagedSkillAsync(
+    private static async ValueTask ValidateSeparatedProductArtifactsAsync(
         CodexDiscoveryProductPin product,
         CancellationToken cancellationToken)
     {
@@ -927,7 +920,7 @@ internal static partial class CodexDiscoveryBenchmarkPreparation
                 "The pinned local feed must contain only the exact candidate dnaxi package.");
         }
 
-        var extractedFiles = Directory.EnumerateFiles(
+        var skillFiles = Directory.EnumerateFiles(
                 product.Skill.Path,
                 "*",
                 SearchOption.AllDirectories)
@@ -944,95 +937,46 @@ internal static partial class CodexDiscoveryBenchmarkPreparation
             packageStream,
             ZipArchiveMode.Read,
             leaveOpen: false);
-        const string skillPrefix = "skills/dotnet-axi/";
-        var packagedFiles = archive.Entries
-            .Where(entry => entry.FullName.StartsWith(
-                                skillPrefix,
-                                StringComparison.Ordinal)
-                            && !entry.FullName.EndsWith(
-                                "/",
-                                StringComparison.Ordinal))
-            .Select(entry => new
-            {
-                Entry = entry,
-                Relative = entry.FullName[skillPrefix.Length..],
-            })
-            .OrderBy(static file => file.Relative, StringComparer.Ordinal)
-            .ToArray();
-        if (packagedFiles.Length == 0
-            || packagedFiles.Any(file =>
-                string.IsNullOrEmpty(file.Relative)
-                || file.Relative.Contains('\\')
-                || file.Relative.Split('/').Contains(
-                    "..",
-                    StringComparer.Ordinal))
-            || !packagedFiles.Select(static file => file.Relative)
-                .SequenceEqual(
-                    extractedFiles.Select(static file => file.Relative),
-                    StringComparer.Ordinal))
+        var packagedSkill = archive.Entries.FirstOrDefault(entry =>
+            entry.FullName.Replace('\\', '/').StartsWith(
+                "skills/",
+                StringComparison.OrdinalIgnoreCase));
+        if (packagedSkill is not null)
         {
             throw new AgentBenchmarkException(
-                "The pinned skill directory does not expose the exact skill files carried by the candidate package.");
+                $"The candidate tool package must not carry Agent Skill entry '{packagedSkill.FullName}'.");
         }
 
-        for (var index = 0; index < packagedFiles.Length; index++)
+        if (!skillFiles.Select(static file => file.Relative).SequenceEqual(
+                [
+                    "SKILL.md",
+                    "references/codex.md",
+                ],
+                StringComparer.Ordinal))
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            await using var packaged = packagedFiles[index].Entry.Open();
-            await using var extracted = File.OpenRead(extractedFiles[index].Path);
-            if (!await StreamsEqualAsync(
-                    packaged,
-                    extracted,
-                    cancellationToken))
-            {
-                throw new AgentBenchmarkException(
-                    $"The extracted packaged skill file '{packagedFiles[index].Relative}' does not match the candidate package.");
-            }
+            throw new AgentBenchmarkException(
+                "The pinned repository skill must contain only SKILL.md and references/codex.md.");
         }
 
         var skillFile = Path.Combine(product.Skill.Path, "SKILL.md");
+        var skillBytes = await File.ReadAllBytesAsync(
+            skillFile,
+            cancellationToken);
         var skill = await File.ReadAllTextAsync(
             skillFile,
             Encoding.UTF8,
             cancellationToken);
         var exactInvocation =
             $"dnx {PackageId}@{PackageVersion} --source \"${PackageSourceEnvironmentVariable}\" --verbosity quiet -- <command>";
-        if (skill.Contains("<exact-version>", StringComparison.Ordinal)
+        if (skillBytes.AsSpan().StartsWith(Encoding.UTF8.Preamble)
+            || !skill.StartsWith(
+                "---\nname: dotnet-axi\ndescription: ",
+                StringComparison.Ordinal)
+            || skill.Contains("<exact-version>", StringComparison.Ordinal)
             || !skill.Contains(exactInvocation, StringComparison.Ordinal))
         {
             throw new AgentBenchmarkException(
-                "The packaged skill must expose the exact source-pinned candidate dnx invocation.");
-        }
-    }
-
-    private static async ValueTask<bool> StreamsEqualAsync(
-        Stream left,
-        Stream right,
-        CancellationToken cancellationToken)
-    {
-        var leftBuffer = new byte[16 * 1024];
-        var rightBuffer = new byte[leftBuffer.Length];
-        while (true)
-        {
-            var leftRead = await left.ReadAsync(leftBuffer, cancellationToken);
-            var rightRead = await right.ReadAsync(
-                rightBuffer,
-                cancellationToken);
-            if (leftRead != rightRead)
-            {
-                return false;
-            }
-
-            if (leftRead == 0)
-            {
-                return true;
-            }
-
-            if (!leftBuffer.AsSpan(0, leftRead).SequenceEqual(
-                    rightBuffer.AsSpan(0, rightRead)))
-            {
-                return false;
-            }
+                "The repository skill must be BOM-free, discoverable, and expose the exact source-pinned candidate dnx invocation.");
         }
     }
 
@@ -1106,23 +1050,7 @@ internal static partial class CodexDiscoveryBenchmarkPreparation
         CodexDiscoveryBenchmarkRequest request,
         CancellationToken cancellationToken)
     {
-        var environment = new Dictionary<string, string>(StringComparer.Ordinal)
-        {
-            ["CODEX_HOME"] = request.CodexHomePath,
-            ["HOME"] = request.CodexHomePath,
-            ["USERPROFILE"] = request.CodexHomePath,
-        };
-        foreach (var name in new[]
-                 {
-                     "COMSPEC", "ComSpec", "PATHEXT", "SystemRoot", "WINDIR",
-                 })
-        {
-            var value = Environment.GetEnvironmentVariable(name);
-            if (!string.IsNullOrEmpty(value))
-            {
-                environment[name] = value;
-            }
-        }
+        var environment = CreateCodexProbeEnvironment(request);
 
         var workingDirectory = Path.GetDirectoryName(
                 request.CodexExecutable.Path)
@@ -1166,6 +1094,113 @@ internal static partial class CodexDiscoveryBenchmarkPreparation
         }
     }
 
+    private static async ValueTask ValidatePromptInputExposureAsync(
+        CodexDiscoveryBenchmarkRequest request,
+        CancellationToken cancellationToken)
+    {
+        var preflightRoot = Directory.CreateTempSubdirectory(
+            "dnaxi-codex-skill-preflight-").FullName;
+        try
+        {
+            var baselineWorkspace = Directory.CreateDirectory(
+                Path.Combine(preflightRoot, "baseline")).FullName;
+            var candidateWorkspace = Directory.CreateDirectory(
+                Path.Combine(preflightRoot, "candidate")).FullName;
+            CodexAgentBenchmarkAdapter.CopySkillDirectory(
+                request.Product.Skill.Path,
+                Path.Combine(
+                    candidateWorkspace,
+                    ".agents",
+                    "skills",
+                    "dotnet-axi"),
+                cancellationToken);
+
+            var environment = CreateCodexProbeEnvironment(request);
+            const string prompt =
+                "Find C# files containing Archive pipeline ready.";
+            var baseline = await RunCodexProbeAsync(
+                request.CodexExecutable.Path,
+                baselineWorkspace,
+                ["-C", baselineWorkspace, "debug", "prompt-input", prompt],
+                environment,
+                cancellationToken);
+            var candidate = await RunCodexProbeAsync(
+                request.CodexExecutable.Path,
+                candidateWorkspace,
+                ["-C", candidateWorkspace, "debug", "prompt-input", prompt],
+                environment,
+                cancellationToken);
+            const string skillMarker = "- dotnet-axi:";
+            var candidateOutput = candidate.StandardOutput
+                .Replace("\\\\", "\\", StringComparison.Ordinal)
+                .Replace('\\', '/');
+            var candidateSkillFile = Path.Combine(
+                    candidateWorkspace,
+                    ".agents",
+                    "skills",
+                    "dotnet-axi",
+                    "SKILL.md")
+                .Replace('\\', '/');
+            if (!string.IsNullOrWhiteSpace(baseline.StandardError)
+                || !string.IsNullOrWhiteSpace(candidate.StandardError)
+                || CountOccurrences(
+                    baseline.StandardOutput,
+                    skillMarker) != 0
+                || CountOccurrences(candidateOutput, skillMarker) != 1
+                || !candidateOutput.Contains(
+                    candidateSkillFile,
+                    StringComparison.Ordinal))
+            {
+                throw new AgentBenchmarkException(
+                    "The Codex prompt-input preflight did not prove candidate-only project-local dotnet-axi skill discovery.");
+            }
+        }
+        finally
+        {
+            Directory.Delete(preflightRoot, recursive: true);
+        }
+    }
+
+    private static Dictionary<string, string> CreateCodexProbeEnvironment(
+        CodexDiscoveryBenchmarkRequest request)
+    {
+        var environment = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["CODEX_HOME"] = request.CodexHomePath,
+            ["HOME"] = request.CodexHomePath,
+            ["USERPROFILE"] = request.CodexHomePath,
+        };
+        foreach (var name in new[]
+                 {
+                     "COMSPEC", "ComSpec", "PATHEXT", "SystemRoot", "WINDIR",
+                 })
+        {
+            var value = Environment.GetEnvironmentVariable(name);
+            if (!string.IsNullOrEmpty(value))
+            {
+                environment[name] = value;
+            }
+        }
+
+        return environment;
+    }
+
+    private static int CountOccurrences(string value, string expected)
+    {
+        var count = 0;
+        var offset = 0;
+        while ((offset = value.IndexOf(
+                   expected,
+                   offset,
+                   StringComparison.Ordinal)) >= 0)
+        {
+            count++;
+            offset += expected.Length;
+        }
+
+        return count;
+    }
+
     private static async ValueTask<CodexProbeOutput> RunCodexProbeAsync(
         string executablePath,
         string workingDirectory,
@@ -1179,7 +1214,7 @@ internal static partial class CodexDiscoveryBenchmarkPreparation
                 workingDirectory,
                 arguments,
                 environment,
-                new ProcessOutputLimits(8 * 1024, 8 * 1024),
+                new ProcessOutputLimits(1024 * 1024, 64 * 1024),
                 TimeSpan.FromSeconds(10)),
             cancellationToken);
         if (result.Lifecycle is not ProcessLifecycle.Completed
@@ -1189,7 +1224,7 @@ internal static partial class CodexDiscoveryBenchmarkPreparation
             || result.StandardError.LimitExceeded)
         {
             throw new AgentBenchmarkException(
-                "The pinned Codex executable failed its bounded local identity probe.");
+                "The pinned Codex executable failed its bounded local probe.");
         }
 
         return new CodexProbeOutput(
@@ -1385,6 +1420,7 @@ internal sealed record CodexDiscoverySettings(
 
 internal sealed record CodexDiscoveryToolConfiguration(
     string Schema,
+    string? SkillDirectoryPath,
     IReadOnlyList<string> ConfigurationOverrides,
     IReadOnlyList<CodexDiscoveryArtifactPin> ExecutableSearchPathEntries,
     IReadOnlyDictionary<string, string> EnvironmentVariables);

@@ -36,8 +36,9 @@ public sealed class AgentSkillGenerationTests
 
         var guidance = AgentGuidanceCatalog.Command;
         Assert.Equal(
-            "dnx dnaxi@<exact-version> --verbosity quiet -- <command>",
+            "dnx dnaxi@0.4.0 --verbosity quiet -- <command>",
             guidance.Invocation);
+        Assert.DoesNotContain("<exact-version>", skill);
         Assert.Contains(guidance.Invocation, skill);
         Assert.Contains(guidance.HomeInvocation, skill);
         Assert.Contains(guidance.HelpInvocation, skill);

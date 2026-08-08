@@ -22,7 +22,7 @@ series until the corrected candidate is measured from the beginning.
 - Every applicable MVP task runs at least five times per baseline and
   candidate condition with randomized interleaving, equivalent isolated
   workspaces, and complete deterministic success and safety oracles.
-- The immutable series pins the proposed 1.0.0 package, packaged skill, exact
+- The immutable series pins the proposed 1.0.0 package, repository skill, exact
   candidate commit, fixture commit, schemas, harness, adapter, Codex
   executable, exact model and reasoning, instructions, tools, sandbox,
   approval, locale, time zone, network policy, run count, and seed.

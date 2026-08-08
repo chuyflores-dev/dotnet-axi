@@ -19,7 +19,6 @@
     <IncludeSymbols>true</IncludeSymbols>
     <SymbolPackageFormat>snupkg</SymbolPackageFormat>
     <DebugType>portable</DebugType>
-    <PackagedAgentSkillPath>$(BaseIntermediateOutputPath)$(Configuration)/$(TargetFramework)/pack/skills/dotnet-axi/SKILL.md</PackagedAgentSkillPath>
   </PropertyGroup>
 
   <ItemGroup>
@@ -28,28 +27,8 @@
       Pack="true"
       PackagePath="/"
       Link="README.md" />
-    <None
-      Include="$(PackagedAgentSkillPath)"
-      Pack="true"
-      PackagePath="skills/dotnet-axi/" />
-    <None
-      Include="../../skills/dotnet-axi/references/codex.md"
-      Pack="true"
-      PackagePath="skills/dotnet-axi/references/" />
     <PackageReference Include="System.CommandLine" />
   </ItemGroup>
-
-  <Target Name="PrepareVersionedPackagedAgentSkill" BeforeTargets="GenerateNuspec">
-    <MakeDir Directories="$([System.IO.Path]::GetDirectoryName('$(PackagedAgentSkillPath)'))" />
-    <PropertyGroup>
-      <PackagedAgentSkillContent>$([MSBuild]::Escape($([System.IO.File]::ReadAllText('$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)/../../skills/dotnet-axi/SKILL.md'))').Replace('&lt;exact-version&gt;', '$(PackageVersion)'))))</PackagedAgentSkillContent>
-    </PropertyGroup>
-    <WriteLinesToFile
-      File="$(PackagedAgentSkillPath)"
-      Lines="$(PackagedAgentSkillContent)"
-      Overwrite="true"
-      Encoding="UTF-8" />
-  </Target>
 
   <ItemGroup>
     <AssemblyMetadata

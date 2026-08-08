@@ -107,11 +107,12 @@ assumes that a command exists merely because a newer skill mentions it.
 
 Skill, structured-help, and home-view guidance are generated from one
 canonical command-guidance source, with a CI check that detects stale generated
-content. The committed skill carries the complete workflow and stays
-byte-identical to the copy in the release package. Structured help and the
-home view expose only the exact invocation, authority, and three activation
-steps alongside their command or workspace content instead of embedding the
-full skill. Generated skills do not contain live workspace state.
+content. The committed skill carries the complete workflow and is the source
+installed by Agent Skills tooling; it is distributed independently from the
+NuGet tool package. Structured help and the home view expose only the exact
+invocation, authority, and three activation steps alongside their command or
+workspace content instead of embedding the full skill. Generated skills do not
+contain live workspace state.
 
 Guidance SHOULD say when `dnaxi` is useful and when a direct operation is
 smaller. Agents use it for supported .NET workspace discovery, source

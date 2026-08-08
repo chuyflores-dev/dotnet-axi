@@ -8,6 +8,49 @@ namespace DotNetAxi.Testing.Tests;
 public sealed class CodexAgentBenchmarkAdapterTests
 {
     [Fact]
+    public async Task Candidate_skill_is_staged_through_project_local_discovery()
+    {
+        using var workspace = new TemporaryWorkspace();
+        var source = Directory.CreateDirectory(
+            Path.Combine(workspace.Path, "skill-source")).FullName;
+        await File.WriteAllTextAsync(
+            Path.Combine(source, "SKILL.md"),
+            "---\nname: dotnet-axi\ndescription: Test skill.\n---\n");
+        var references = Directory.CreateDirectory(
+            Path.Combine(source, "references")).FullName;
+        await File.WriteAllTextAsync(
+            Path.Combine(references, "codex.md"),
+            "# Codex\n");
+        var candidateWorkspace = Directory.CreateDirectory(
+            Path.Combine(workspace.Path, "candidate")).FullName;
+        var baselineWorkspace = Directory.CreateDirectory(
+            Path.Combine(workspace.Path, "baseline")).FullName;
+        var adapter = Adapter(candidateSkillDirectoryPath: source);
+
+        await adapter.PrepareWorkspaceAsync(Input(
+            candidateWorkspace,
+            AgentBenchmarkCondition.Candidate));
+        await adapter.PrepareWorkspaceAsync(Input(
+            baselineWorkspace,
+            AgentBenchmarkCondition.Baseline));
+
+        Assert.Equal("1.4.0", adapter.Descriptor.Version);
+        Assert.Equal(
+            await File.ReadAllBytesAsync(Path.Combine(source, "SKILL.md")),
+            await File.ReadAllBytesAsync(Path.Combine(
+                candidateWorkspace,
+                ".agents",
+                "skills",
+                "dotnet-axi",
+                "SKILL.md")));
+        Assert.False(Directory.Exists(Path.Combine(
+            baselineWorkspace,
+            ".agents",
+            "skills",
+            "dotnet-axi")));
+    }
+
+    [Fact]
     public void Condition_environment_cannot_override_authentication()
     {
         var baseline = new CodexBenchmarkConditionExposure(
@@ -433,7 +476,8 @@ public sealed class CodexAgentBenchmarkAdapterTests
 
     private static CodexAgentBenchmarkAdapter Adapter(
         IReadOnlyList<string>? executableSearchPathEntries = null,
-        string? expectedDnxExecutablePath = null)
+        string? expectedDnxExecutablePath = null,
+        string? candidateSkillDirectoryPath = null)
     {
         var baselineInstructions = Hash("baseline-instructions");
         var baselineTools = Hash("baseline-tools");
@@ -460,7 +504,8 @@ public sealed class CodexAgentBenchmarkAdapterTests
                         "skills.config=[{path=\"skills/dotnet-axi\"}]",
                         "mcp_servers.dnaxi.enabled=true",
                     ],
-                    executableSearchPathEntries),
+                    executableSearchPathEntries,
+                    SkillDirectoryPath: candidateSkillDirectoryPath),
                 ["codex-fixture"],
                 expectedDnxExecutablePath:
                     expectedDnxExecutablePath));

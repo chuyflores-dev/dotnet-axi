@@ -81,6 +81,13 @@ public sealed class CodexDiscoveryBenchmarkTests
         Assert.DoesNotContain(candidateStart.ArgumentList,
             argument => argument.Contains("mcp_servers.",
                 StringComparison.Ordinal));
+        Assert.Empty(context.BaselineTools.ConfigurationOverrides);
+        Assert.Empty(context.CandidateTools.ConfigurationOverrides);
+        Assert.Null(context.BaselineTools.SkillDirectoryPath);
+        Assert.Equal(
+            context.Request.Product.Skill.Path,
+            context.CandidateTools.SkillDirectoryPath);
+        Assert.Equal("1.4.0", context.Adapter.Descriptor.Version);
 
         var preparationPath = Path.Combine(fixture.Root, "preparation.json");
         await CodexDiscoveryBenchmarkPreparation.WriteCreateNewAsync(
@@ -603,6 +610,46 @@ public sealed class CodexDiscoveryBenchmarkTests
                 await CodexDiscoveryBenchmarkPreparation.PrepareAsync(
                     fixture.RequestPath));
         }
+
+        using (var fixture = await PreparedFixture.CreateAsync(
+                   packageCarriesSkill: true))
+        {
+            await Assert.ThrowsAsync<AgentBenchmarkException>(async () =>
+                await CodexDiscoveryBenchmarkPreparation.PrepareAsync(
+                    fixture.RequestPath));
+        }
+
+        using (var fixture = await PreparedFixture.CreateAsync(
+                   candidateVersion: "0.3.0"))
+        {
+            await Assert.ThrowsAsync<AgentBenchmarkException>(async () =>
+                await CodexDiscoveryBenchmarkPreparation.PrepareAsync(
+                    fixture.RequestPath));
+        }
+
+        using (var fixture = await PreparedFixture.CreateAsync())
+        {
+            File.WriteAllText(
+                Path.Combine(
+                    fixture.CodexHomePath,
+                    "probe-skill-hidden.txt"),
+                "hidden");
+            await Assert.ThrowsAsync<AgentBenchmarkException>(async () =>
+                await CodexDiscoveryBenchmarkPreparation.PrepareAsync(
+                    fixture.RequestPath));
+        }
+
+        using (var fixture = await PreparedFixture.CreateAsync())
+        {
+            File.WriteAllText(
+                Path.Combine(
+                    fixture.CodexHomePath,
+                    "probe-skill-leaked.txt"),
+                "leaked");
+            await Assert.ThrowsAsync<AgentBenchmarkException>(async () =>
+                await CodexDiscoveryBenchmarkPreparation.PrepareAsync(
+                    fixture.RequestPath));
+        }
     }
 
     private static AgentBenchmarkRunResult CreateSuccessfulRun(
@@ -1029,7 +1076,9 @@ public sealed class CodexDiscoveryBenchmarkTests
 
         public static async ValueTask<PreparedFixture> CreateAsync(
             bool rawToolsPathContainsSeparator = false,
-            bool shadowDnxBeforePinned = false)
+            bool shadowDnxBeforePinned = false,
+            bool packageCarriesSkill = false,
+            string candidateVersion = "0.4.0")
         {
             var root = Path.Combine(
                 Path.GetTempPath(),
@@ -1066,12 +1115,17 @@ public sealed class CodexDiscoveryBenchmarkTests
             }
             var candidateInstructions = Write(
                 Path.Combine(skillPath, "SKILL.md"),
-                "Use dnx dnaxi@0.4.0 --source \"$DNAXI_LOCAL_FEED\" --verbosity quiet -- <command> for source discovery.");
+                $"---\nname: dotnet-axi\ndescription: Use dotnet-axi for deterministic .NET repository evidence.\n---\n\nUse dnx dnaxi@{candidateVersion} --source \"$DNAXI_LOCAL_FEED\" --verbosity quiet -- <command> for source discovery.\n");
+            var referencesPath = Directory.CreateDirectory(
+                Path.Combine(skillPath, "references")).FullName;
+            Write(
+                Path.Combine(referencesPath, "codex.md"),
+                "# Codex sandbox operation\n");
             var packageSource = Directory.CreateDirectory(
                 Path.Combine(root, "package-source")).FullName;
             var package = WritePackage(
                 Path.Combine(packageSource, "dnaxi.0.4.0.nupkg"),
-                candidateInstructions);
+                packageCarriesSkill ? candidateInstructions : null);
             var baselineInstructions = Write(
                 Path.Combine(root, "baseline-instructions.txt"),
                 "no product instructions");
@@ -1123,18 +1177,16 @@ public sealed class CodexDiscoveryBenchmarkTests
                 Path.Combine(root, "baseline-tools.json"),
                 new CodexDiscoveryToolConfiguration(
                     CodexDiscoveryBenchmarkPreparation.ToolConfigurationSchema,
-                    [
-                        "skills.config=[]",
-                    ],
+                    SkillDirectoryPath: null,
+                    [],
                     executableSearchPathEntries,
                     new Dictionary<string, string>()));
             var candidateTools = await WriteJsonAsync(
                 Path.Combine(root, "candidate-tools.json"),
                 new CodexDiscoveryToolConfiguration(
                     CodexDiscoveryBenchmarkPreparation.ToolConfigurationSchema,
-                    [
-                        $"skills.config=[{{path={JsonSerializer.Serialize(candidateInstructions)},enabled=true}}]",
-                    ],
+                    skillPath,
+                    [],
                     executableSearchPathEntries,
                     new Dictionary<string, string>(StringComparer.Ordinal)
                     {
@@ -1221,13 +1273,17 @@ public sealed class CodexDiscoveryBenchmarkTests
 
         private static string WritePackage(
             string path,
-            string skillPath)
+            string? skillPath)
         {
             using var archive = ZipFile.Open(path, ZipArchiveMode.Create);
-            archive.CreateEntryFromFile(
-                skillPath,
-                "skills/dotnet-axi/SKILL.md",
-                CompressionLevel.NoCompression);
+            if (skillPath is not null)
+            {
+                archive.CreateEntryFromFile(
+                    skillPath,
+                    "skills/dotnet-axi/SKILL.md",
+                    CompressionLevel.NoCompression);
+            }
+
             return path;
         }
 
