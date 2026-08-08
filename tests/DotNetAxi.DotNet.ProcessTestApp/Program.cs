@@ -259,6 +259,21 @@ static int DnxDiscoveryProbe(
     {
         Console.WriteLine(" invalid: nesting");
     }
+    else if (string.Equals(
+                 outputMode,
+                 "malformed-row",
+                 StringComparison.Ordinal))
+    {
+        Console.WriteLine("  malformed,row");
+    }
+    else if (string.Equals(
+                 outputMode,
+                 "scalar-parent",
+                 StringComparison.Ordinal))
+    {
+        Console.WriteLine("  scalar: value");
+        Console.WriteLine("    nested: value");
+    }
 
     return 0;
 }

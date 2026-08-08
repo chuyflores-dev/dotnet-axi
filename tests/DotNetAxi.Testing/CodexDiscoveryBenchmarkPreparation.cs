@@ -1,4 +1,5 @@
 using System.Buffers.Binary;
+using System.Globalization;
 using System.IO.Compression;
 using System.Security.Cryptography;
 using System.Text;
@@ -1335,34 +1336,135 @@ internal static partial class CodexDiscoveryBenchmarkPreparation
             return false;
         }
 
-        var priorIndent = 0;
-        foreach (var line in lines.Skip(expectedHeader.Length))
+        var lineIndex = expectedHeader.Length;
+        return ValidateToonMapping(lines, ref lineIndex, indent: 2)
+            && lineIndex == lines.Length;
+    }
+
+    private static bool ValidateToonMapping(
+        IReadOnlyList<string> lines,
+        ref int lineIndex,
+        int indent)
+    {
+        var keys = new HashSet<string>(StringComparer.Ordinal);
+        var entryCount = 0;
+        while (lineIndex < lines.Count)
         {
-            var indent = 0;
-            while (indent < line.Length && line[indent] == ' ')
+            var line = lines[lineIndex];
+            var actualIndent = CountLeadingSpaces(line);
+            if (actualIndent < indent)
             {
-                indent++;
+                break;
             }
 
-            if (indent < 2
-                || indent % 2 != 0
-                || indent > priorIndent + 2
-                || indent == line.Length)
+            if (actualIndent != indent)
             {
                 return false;
             }
 
             var content = line[indent..];
+            var table = ToonTableHeaderRegex().Match(content);
+            if (table.Success)
+            {
+                if (!keys.Add(table.Groups["key"].Value)
+                    || !int.TryParse(
+                        table.Groups["rows"].Value,
+                        NumberStyles.None,
+                        CultureInfo.InvariantCulture,
+                        out var rowCount))
+                {
+                    return false;
+                }
+
+                var fieldCount = table.Groups["fields"].Value.Count(
+                    static character => character == ',') + 1;
+                lineIndex++;
+                for (var row = 0; row < rowCount; row++)
+                {
+                    if (lineIndex >= lines.Count
+                        || CountLeadingSpaces(lines[lineIndex]) != indent + 2
+                        || !HasExpectedToonFieldCount(
+                            lines[lineIndex][(indent + 2)..],
+                            fieldCount))
+                    {
+                        return false;
+                    }
+
+                    lineIndex++;
+                }
+
+                entryCount++;
+                continue;
+            }
+
             var separator = content.IndexOf(':', StringComparison.Ordinal);
-            if (separator <= 0 && !content.Contains(','))
+            if (separator <= 0
+                || !ToonKeyRegex().IsMatch(content[..separator])
+                || !keys.Add(content[..separator]))
             {
                 return false;
             }
 
-            priorIndent = indent;
+            entryCount++;
+            lineIndex++;
+            if (separator != content.Length - 1)
+            {
+                continue;
+            }
+
+            if (!ValidateToonMapping(lines, ref lineIndex, indent + 2))
+            {
+                return false;
+            }
         }
 
-        return true;
+        return entryCount > 0;
+    }
+
+    private static int CountLeadingSpaces(string line)
+    {
+        var count = 0;
+        while (count < line.Length && line[count] == ' ')
+        {
+            count++;
+        }
+
+        return count;
+    }
+
+    private static bool HasExpectedToonFieldCount(
+        string row,
+        int expectedFieldCount)
+    {
+        var fieldCount = 1;
+        var inQuotes = false;
+        var escaped = false;
+        foreach (var character in row)
+        {
+            if (escaped)
+            {
+                escaped = false;
+                continue;
+            }
+
+            if (inQuotes && character == '\\')
+            {
+                escaped = true;
+            }
+            else if (character == '"')
+            {
+                inQuotes = !inQuotes;
+            }
+            else if (!inQuotes && character == ',')
+            {
+                fieldCount++;
+            }
+        }
+
+        return row.Length > 0
+            && !inQuotes
+            && !escaped
+            && fieldCount == expectedFieldCount;
     }
 
     private static async ValueTask ValidatePromptInputExposureAsync(
@@ -1623,6 +1725,16 @@ internal static partial class CodexDiscoveryBenchmarkPreparation
         "\\bdnx[ \\t]+dnaxi@(?<version>[0-9]+\\.[0-9]+\\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?)",
         RegexOptions.CultureInvariant)]
     private static partial Regex DnaxiInvocationVersionRegex();
+
+    [GeneratedRegex(
+        "^[a-z][a-z0-9_]*$",
+        RegexOptions.CultureInvariant)]
+    private static partial Regex ToonKeyRegex();
+
+    [GeneratedRegex(
+        "^(?<key>[a-z][a-z0-9_]*)\\[(?<rows>[0-9]+)\\]\\{(?<fields>[a-z][a-z0-9_]*(?:,[a-z][a-z0-9_]*)*)\\}:$",
+        RegexOptions.CultureInvariant)]
+    private static partial Regex ToonTableHeaderRegex();
 }
 
 internal sealed record CodexDiscoveryArtifactPin(

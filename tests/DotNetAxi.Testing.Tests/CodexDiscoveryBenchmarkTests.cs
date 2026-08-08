@@ -120,6 +120,8 @@ public sealed class CodexDiscoveryBenchmarkTests
     [InlineData("contradictory")]
     [InlineData("extra-field")]
     [InlineData("invalid-nesting")]
+    [InlineData("malformed-row")]
+    [InlineData("scalar-parent")]
     public async Task Preparation_rejects_ambiguous_candidate_version_output(
         string outputMode)
     {
