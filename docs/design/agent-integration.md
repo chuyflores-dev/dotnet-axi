@@ -95,7 +95,8 @@ Format portability does not expand the supported setup matrix: the MVP
 verifies Codex and Claude Code, while `setup opencode` remains explicitly
 unsupported.
 
-The skill teaches one-shot `dnx dotnet-axi -- <command>` invocation so an agent
+The skill teaches exact version-pinned
+`dnx dnaxi@<version> --verbosity quiet -- <command>` invocation so an agent
 does not require a permanent global-tool installation. A verified local or
 global invocation MAY be used when available. Guidance treats the invoked
 tool's help, version, and capability output as authoritative and never assumes

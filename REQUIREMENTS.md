@@ -5,8 +5,9 @@
 `dotnet-axi` is an agent-first command-line interface for understanding,
 analyzing, validating, and safely modifying .NET codebases.
 
-The repository and tool package are named `dotnet-axi`; the installed command
-is `dnaxi`.
+The repository and product are named `dotnet-axi`. Starting with 0.4.0, the
+.NET tool package and installed command are named `dnaxi`; the earlier
+`dotnet-axi` package ID remains the immutable 0.2.0 and 0.3.0 distribution.
 
 Its purpose is to improve coding-agent accuracy while reducing total tokens,
 tool calls, turns, and unnecessary code loading compared with raw file reads,

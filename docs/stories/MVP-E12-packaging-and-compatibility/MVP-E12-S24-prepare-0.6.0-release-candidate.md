@@ -2,9 +2,9 @@
 
 ## Outcome
 
-One reviewed commit is ready to become `v0.6.0`, with truthful static-analysis
-and structured SDK-execution documentation, scoped Codex evidence, and
-passing checks.
+One reviewed commit is ready to become `v0.6.0`, with truthful semantic
+relationship and graph documentation, scoped Codex evidence, and passing
+checks.
 
 ## Design
 
@@ -19,14 +19,11 @@ story does not create `v0.6.0`, publish to NuGet, or create a GitHub Release.
 
 ## Acceptance
 
-- User guidance names `0.6.0` and describes only verified compiler,
-  configured-analyzer, structural, architecture, changed-scope, restore,
-  build, test, format, and constrained `dotnet` behavior.
-- Documentation distinguishes passive and executing analysis, format check and
-  apply, dependency exits and public exits, protected artifacts, and every
-  applicable network, repository-code, and write effect.
-- Release notes explicitly defer configurable validation profiles and their
-  remaining configuration/freshness behavior to `0.7.0`.
+- User guidance names `0.6.0` and describes only verified references,
+  implementations, overrides, derived types, callers, callees, relationship
+  context, project graphs, cycles, paths, and impact.
+- Release notes explicitly defer static analysis and structured SDK execution
+  to `0.7.0`.
 - The affected Codex benchmark subset is complete and every result or claim is
   scoped to the exact model, harness, corpus, command activation, effects, and
   comparison condition.
@@ -45,5 +42,5 @@ story does not create `v0.6.0`, publish to NuGet, or create a GitHub Release.
 ## Dependencies
 
 - `MVP-E12-S23`
-- `MVP-E09-S16`
-- `MVP-E13-S22`
+- `MVP-E09-S15`
+- `MVP-E13-S20`

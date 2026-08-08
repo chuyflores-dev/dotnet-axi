@@ -1,9 +1,9 @@
-# MVP-E13-S23 — Add 0.7.0 Configuration and Validation Tasks
+# MVP-E13-S23 — Add 0.8.0 Configuration and Validation Tasks
 
 ## Outcome
 
 The agent-task corpus adds deterministic repository-configuration,
-freshness, affected-scope, and validation scenarios for 0.7.0.
+freshness, affected-scope, and validation scenarios for 0.8.0.
 
 ## Design
 

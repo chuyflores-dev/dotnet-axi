@@ -1,9 +1,9 @@
-# MVP-E13-S25 — Add 0.8.0 Safe Agent-integration Tasks
+# MVP-E13-S25 — Add 0.9.0 Safe Agent-integration Tasks
 
 ## Outcome
 
 The agent-task corpus adds deterministic setup, repair, removal, passive-hook,
-artifact-lifecycle, and constrained-host scenarios for 0.8.0.
+artifact-lifecycle, and constrained-host scenarios for 0.9.0.
 
 ## Design
 

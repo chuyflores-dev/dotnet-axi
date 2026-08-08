@@ -1,8 +1,8 @@
-# MVP-E13-S26 — Measure the 0.8.0 Codex Subset
+# MVP-E13-S26 — Measure the 0.9.0 Codex Subset
 
 ## Outcome
 
-A manually dispatched Codex series measures the 0.8.0 safe agent-integration
+A manually dispatched Codex series measures the 0.9.0 safe agent-integration
 task subset with the versioned agent-neutral protocol.
 
 ## Design
@@ -19,14 +19,14 @@ outcomes.
 
 ## Acceptance
 
-- Every affected 0.8.0 task runs at least five times per baseline and candidate
+- Every affected 0.9.0 task runs at least five times per baseline and candidate
   condition with randomized interleaving and equivalent isolated workspaces.
 - Setup writes are confined to fixture-owned repository and user roots;
   passive tasks remain read-only, and no run receives ambient user
   configuration, credentials, trust state, or broader host permissions.
 - The report retains complete manifests, metrics, validation, activation,
   setup effects, changed and retained targets, lifecycle, constrained-host,
-  and raw-trajectory evidence and separates 0.8.0 results from earlier series.
+  and raw-trajectory evidence and separates 0.9.0 results from earlier series.
 - Safety, scope, transcript, trust, source-write, permission, stale-worker,
   cleanup, recovery-loop, regression, and completion-claim thresholds are
   evaluated even when no improvement claim is made.
@@ -37,7 +37,7 @@ outcomes.
 
 - Normalized results reconcile with raw Codex events, task oracles, versions,
   hashes, sandbox and approval settings, setup targets, file changes, process
-  evidence, and the approved 0.8.0 corpus manifest.
+  evidence, and the approved 0.9.0 corpus manifest.
 
 ## Dependencies
 

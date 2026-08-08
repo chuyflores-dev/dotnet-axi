@@ -26,7 +26,7 @@ Release.
 - The final release-bar certification passes for this exact commit and exact
   candidate package; no evidence is inherited from a different build after a
   release-affecting change.
-- Every 0.9.0 blocker and stabilization finding has a closed atomic issue and
+- Every 0.10.0 blocker and stabilization finding has a closed atomic issue and
   no known release-blocking issue or unresolved P0–P2 review finding remains.
 - Package identity, command name, schema compatibility, SemVer behavior,
   metadata, symbols, checksums, installation forms, support statements, and
@@ -46,5 +46,5 @@ Release.
 
 ## Dependencies
 
-- `MVP-E12-S31`
+- `MVP-E12-S36`
 - `MVP-E13-S32`

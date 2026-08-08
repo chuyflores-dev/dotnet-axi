@@ -2,9 +2,8 @@
 
 ## Outcome
 
-One reviewed commit is ready to become `v0.8.0`, with truthful safe
-agent-integration documentation, scoped Codex and advisory Claude evidence,
-and passing checks.
+One reviewed commit is ready to become `v0.8.0`, with truthful configurable
+validation documentation, scoped Codex evidence, and passing checks.
 
 ## Design
 
@@ -19,18 +18,17 @@ story does not create `v0.8.0`, publish to NuGet, or create a GitHub Release.
 
 ## Acceptance
 
-- User guidance names `0.8.0` and describes only verified Claude Code and
-  Codex setup, bounded passive context, repair, removal, effects, process and
-  secret safety, diagnostic artifacts, cleanup, and constrained-host results.
-- Documentation distinguishes repository and user scope, supported and
-  unknown formats, invocation repair, trust review, managed policy, exact
-  changed targets, recoverable backups, and the unsupported OpenCode result.
-- Release notes explicitly defer the full platform/SDK/restricted-host matrix,
-  release-level security and performance evidence, and full independent Codex
-  and Claude release gates to `0.9.0`.
-- The affected Codex and advisory Claude series are complete, independently
-  reported, and scoped to their exact agent, model, harness, corpus,
-  permissions, setup effects, and comparison conditions.
+- User guidance names `0.8.0` and describes only verified configuration,
+  freshness, affected-scope, and fast or standard validation behavior.
+- Documentation explains precedence and plan sources, freshness inputs,
+  profile effects, test-runner and zero-test policy, partial or unavailable
+  scope, lifecycle states, child exits, and protected diagnostic artifacts.
+- Release notes explicitly defer safe agent setup and repair to `0.9.0` and
+  full validation, package or vulnerability policy, and general source
+  modification beyond the MVP.
+- The affected Codex series is complete and every result or claim is scoped
+  to the exact model, harness, corpus, skill activation, configuration,
+  effects, and comparison condition.
 - Candidate artifacts, checksums, metadata, installation smoke tests,
   canonical checks, and CI pass for the proposed commit.
 - The release instructions identify the exact approved commit, and version
@@ -46,5 +44,5 @@ story does not create `v0.8.0`, publish to NuGet, or create a GitHub Release.
 ## Dependencies
 
 - `MVP-E12-S27`
-- `MVP-E13-S26`
-- `MVP-E13-S27`
+- `MVP-E09-S17`
+- `MVP-E13-S24`

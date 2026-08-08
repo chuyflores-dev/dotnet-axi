@@ -2,8 +2,9 @@
 
 ## Outcome
 
-The verified `dotnet-axi` `0.8.0` package and matching GitHub Release are
-publicly available with safe Claude Code and Codex integration.
+The verified `dnaxi` `0.8.0` package and matching GitHub Release are publicly
+available with repository configuration, freshness, and configurable
+validation.
 
 ## Design
 
@@ -20,14 +21,12 @@ authorizes publication after approving the completed release candidate.
   exact release commit receives immutable tag `v0.8.0`.
 - The published GitHub Release triggers protected publication of the matching
   package and symbols.
-- Fresh public-source global, local, and `dnx` invocations report `0.8.0`; in
-  isolated temporary Claude Code and Codex configurations, setup, bounded
-  passive context, repair, removal, artifact cleanup, and constrained failure
-  reporting work without changing real user configuration or claiming
-  OpenCode support.
-- Codex and advisory Claude benchmark links and claims match the approved
-  candidate evidence, and the `0.8.0` milestone closes only after public
-  verification succeeds.
+- Fresh public-source `dnx`, global, and local invocations report `0.8.0` and
+  exercise configuration validation and plan explanation, freshness changes,
+  affected scope, and fast and standard validation without source writes or
+  claims for deferred setup and full-profile behavior.
+- Benchmark links and claims match the approved candidate evidence, and the
+  `0.8.0` milestone closes only after public verification succeeds.
 
 ## Verification
 

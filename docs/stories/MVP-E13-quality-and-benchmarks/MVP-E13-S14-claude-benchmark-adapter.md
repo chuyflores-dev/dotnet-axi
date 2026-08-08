@@ -24,7 +24,7 @@ Codex metrics or used to retroactively tune the shared task corpus.
   mode, allowed tools, turn limit, loaded instructions, and network policy.
 - It runs the same applicable task definitions, baseline/candidate boundaries,
   randomization, repetitions, and oracles used by the Codex series.
-- Initial Claude evidence is advisory; full `0.9.0` evidence reports Codex and
+- Initial Claude evidence is advisory; full `0.10.0` evidence reports Codex and
   Claude results independently.
 
 ## Verification

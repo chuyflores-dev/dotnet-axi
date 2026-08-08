@@ -1,8 +1,8 @@
-# MVP-E13-S24 — Measure the 0.7.0 Codex Subset
+# MVP-E13-S24 — Measure the 0.8.0 Codex Subset
 
 ## Outcome
 
-A manually dispatched Codex series measures the 0.7.0 configuration,
+A manually dispatched Codex series measures the 0.8.0 configuration,
 freshness, and validation task subset with the versioned agent-neutral
 protocol.
 
@@ -18,14 +18,14 @@ claim unmeasured setup, full-validation, package-policy, or mutation behavior.
 
 ## Acceptance
 
-- Every affected 0.7.0 task runs at least five times per baseline and candidate
+- Every affected 0.8.0 task runs at least five times per baseline and candidate
   condition with randomized interleaving and equivalent isolated workspaces.
 - Validation executes only in fixture-owned repositories with declared
   repository-code, network, artifact, timeout, and zero-test policies; neither
   condition may modify source through a validation profile.
 - The report retains complete manifests, metrics, validation, activation,
   configuration, freshness, effects, and raw-trajectory evidence and
-  separates 0.7.0 results from earlier series.
+  separates 0.8.0 results from earlier series.
 - Safety, scope, stale-state, secret, source-write, zero-test, partial-verdict,
   cancellation, regression, and completion-claim thresholds are evaluated
   even when no improvement claim is made.
@@ -36,7 +36,7 @@ claim unmeasured setup, full-validation, package-policy, or mutation behavior.
 
 - Normalized results reconcile with raw events, task oracles, versions,
   hashes, configuration sources, snapshot inputs, effect evidence, dependency
-  exits, validation artifacts, and the approved 0.7.0 corpus manifest.
+  exits, validation artifacts, and the approved 0.8.0 corpus manifest.
 
 ## Dependencies
 
