@@ -116,7 +116,7 @@ internal sealed class HomeCommandHandler : ICommandHandler<HomeRequest>
                 "dotnet-axi",
                 ToolVersion.Current,
                 OutputSchema.Current,
-                AgentGuidanceCatalog.Command,
+                AgentGuidanceCatalog.ForVersion(ToolVersion.Current),
                 new HomeWorkspacePayload(
                     DisplayPath(
                         workspace.RootPath,
@@ -226,7 +226,9 @@ internal sealed class HomeCommandHandler : ICommandHandler<HomeRequest>
     private static IReadOnlyList<ResultSuggestion> CreateSuggestions() =>
         ContextualSuggestions.Compose(
             [HelpSuggestion],
-            WorkspaceSelectors.Empty);
+            WorkspaceSelectors.Empty)
+        .Select(CanonicalInvocation.OneShot)
+        .ToArray();
 
     private static string DisplayPath(
         string path,

@@ -210,7 +210,7 @@ internal sealed class CatchSyntaxCommandHandler :
         }
 
         arguments.Add("--full");
-        return string.Join(' ', arguments);
+        return CanonicalInvocation.OneShot(string.Join(' ', arguments));
     }
 
     private static IEnumerable<IReadOnlyDictionary<string, object?>> ProjectCandidates(

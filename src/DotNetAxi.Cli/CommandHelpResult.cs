@@ -40,7 +40,8 @@ internal static class CommandHelpResult
                 subcommand.Policy.Classification))
             .ToArray();
         var examples = operation.Examples
-            .Select(static example => new HelpExample(example))
+            .Select(static example => new HelpExample(
+                CanonicalInvocation.OneShot(example)))
             .ToArray();
 
         return CommandResult<HelpPayload>.Success(
@@ -50,7 +51,7 @@ internal static class CommandHelpResult
                 CreateUsage(operation, arguments, flags, subcommands),
                 OptionalText(command.Description),
                 operation.Policy.Classification,
-                AgentGuidanceCatalog.Command,
+                AgentGuidanceCatalog.ForVersion(ToolVersion.Current),
                 arguments,
                 flags,
                 subcommands,

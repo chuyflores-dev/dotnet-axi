@@ -5,7 +5,7 @@
     <RootNamespace>DotNetAxi.Cli</RootNamespace>
     <PackAsTool>true</PackAsTool>
     <ToolCommandName>dnaxi</ToolCommandName>
-    <PackageId>dotnet-axi</PackageId>
+    <PackageId>dnaxi</PackageId>
     <Title>dotnet-axi</Title>
     <Authors>chuyflores-dev</Authors>
     <Description>Agent-first deterministic discovery, analysis, validation, and safe modification for .NET codebases.</Description>

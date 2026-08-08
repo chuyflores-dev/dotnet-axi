@@ -161,11 +161,12 @@ function Assert-InstalledAgentSkill {
     }
 
     $requiredSourceDiscoveryGuidance = @(
-        "dnaxi search file '<path-fragment>'",
-        "dnaxi search text '<literal>'",
-        "dnaxi search text '<dotnet-regex>' --regex",
-        "dnaxi search syntax --help",
-        "dnaxi search syntax invocation --name SaveChangesAsync",
+        "dnx dnaxi@<exact-version> --verbosity quiet -- <command>",
+        "search file '<path-fragment>'",
+        "search text '<literal>'",
+        "search text '<dotnet-regex>' --regex",
+        "search syntax --help",
+        "search syntax invocation --name SaveChangesAsync",
         "--path <scope> --limit 20",
         "built-in engine",
         "use an available direct tool",
@@ -180,11 +181,20 @@ function Assert-InstalledAgentSkill {
         }
     }
 
+    if ($skill.Contains(
+            "dnx dotnet-axi",
+            [System.StringComparison]::Ordinal) -or
+        $skill.Contains(
+            "dnx dnaxi --",
+            [System.StringComparison]::Ordinal)) {
+        throw "Installed Agent Skill contains an unpinned or legacy dnx invocation."
+    }
+
     $futureSemanticCommands = @(
-        "dnaxi search symbol",
-        "dnaxi show symbol",
-        "dnaxi references",
-        "dnaxi implementations"
+        "search symbol",
+        "show symbol",
+        "-- references",
+        "-- implementations"
     )
     foreach ($futureCommand in $futureSemanticCommands) {
         if ($skill.Contains(
@@ -468,6 +478,11 @@ function Assert-VersionOutput {
     if ($Result.StandardOutput.Contains("`r")) {
         throw "Version output contains a carriage return instead of LF-only output."
     }
+    if (-not $Result.StandardOutput.StartsWith(
+            "schema: dotnet-axi/v1`n",
+            [System.StringComparison]::Ordinal)) {
+        throw "Version stdout is contaminated before the structured document."
+    }
 
     $lines = $Result.StandardOutput -split "`n"
     $requiredLines = @(
@@ -507,6 +522,9 @@ function Assert-HelpOutput {
         [Parameter(Mandatory)]
         [pscustomobject] $Result,
 
+        [Parameter(Mandatory)]
+        [string] $Version,
+
         [bool] $RequireEmptyStandardError = $true
     )
 
@@ -518,6 +536,11 @@ function Assert-HelpOutput {
 
     if ($Result.StandardOutput.Contains("`r")) {
         throw "Help output contains a carriage return instead of LF-only output."
+    }
+    if (-not $Result.StandardOutput.StartsWith(
+            "schema: dotnet-axi/v1`n",
+            [System.StringComparison]::Ordinal)) {
+        throw "Help stdout is contaminated before the structured document."
     }
 
     $lines = $Result.StandardOutput -split "`n"
@@ -535,13 +558,14 @@ function Assert-HelpOutput {
         }
     }
 
-    if (-not $Result.StandardOutput.Contains("dnaxi --version")) {
+    if (-not $Result.StandardOutput.Contains(
+            "dnx dnaxi@$Version --verbosity quiet -- --version")) {
         throw "Help output does not contain the registered version example."
     }
 
     if (-not $Result.StandardOutput.Contains("guidance:") -or
         -not $Result.StandardOutput.Contains(
-            "invocation: dnx dotnet-axi -- <command>") -or
+            "invocation: dnx dnaxi@$Version --verbosity quiet -- <command>") -or
         -not $Result.StandardOutput.Contains(
             "Treat the invoked version's structured help")) {
         throw "Help output does not contain canonical Agent Skill guidance."
@@ -551,10 +575,18 @@ function Assert-HelpOutput {
 function Assert-HomeOutput {
     param(
         [Parameter(Mandatory)]
-        [pscustomobject] $Result
+        [pscustomobject] $Result,
+
+        [Parameter(Mandatory)]
+        [string] $Version
     )
 
     Assert-Success -Result $Result -Operation "Home invocation"
+    if (-not $Result.StandardOutput.StartsWith(
+            "schema: dotnet-axi/v1`n",
+            [System.StringComparison]::Ordinal)) {
+        throw "Home stdout is contaminated before the structured document."
+    }
     $required = @(
         "schema: dotnet-axi/v1",
         "command: home",
@@ -564,12 +596,43 @@ function Assert-HomeOutput {
         "capabilities:`n  selected_host:`n",
         "command_engines[1]{command,preferred_engine,selected_engine,degradation}",
         "guidance:",
-        "invocation: dnx dotnet-axi -- <command>",
+        "invocation: dnx dnaxi@$Version --verbosity quiet -- <command>",
+        "suggestions[1]:`n  - command: dnx`n    arguments[5]: dnaxi@$Version,`"--verbosity`",quiet,`"--`",`"--help`"",
         "Do not claim completion solely because files changed."
     )
     foreach ($text in $required) {
         if (-not $Result.StandardOutput.Contains($text)) {
             throw "Home output is missing '$text'. Output: $($Result.StandardOutput)"
+        }
+    }
+}
+
+function Assert-PassiveCommandOutput {
+    param(
+        [Parameter(Mandatory)]
+        [pscustomobject] $Result,
+
+        [Parameter(Mandatory)]
+        [string] $Command
+    )
+
+    Assert-Success -Result $Result -Operation "$Command dnx invocation"
+    if (-not $Result.StandardOutput.StartsWith(
+            "schema: dotnet-axi/v1`n",
+            [System.StringComparison]::Ordinal)) {
+        throw "$Command stdout is contaminated before the structured document."
+    }
+    if ($Result.StandardOutput.Contains("`r")) {
+        throw "$Command output contains a carriage return instead of LF-only output."
+    }
+
+    $lines = $Result.StandardOutput -split "`n"
+    foreach ($line in @(
+            "schema: dotnet-axi/v1",
+            "command: $Command",
+            "status: success")) {
+        if ($lines -notcontains $line) {
+            throw "$Command output is missing '$line'. Output: $($Result.StandardOutput)"
         }
     }
 }
@@ -992,12 +1055,12 @@ $repositoryRoot = (
 $packages = @(
     Get-ChildItem -LiteralPath $resolvedPackageDirectory -File |
         Where-Object {
-            $_.Name -like "dotnet-axi.*.nupkg" -and
+            $_.Name -like "dnaxi.*.nupkg" -and
             $_.Name -notlike "*.snupkg"
         }
 )
 if ($packages.Count -ne 1) {
-    throw "Expected one dotnet-axi .nupkg in '$resolvedPackageDirectory'; found $($packages.Count)."
+    throw "Expected one dnaxi .nupkg in '$resolvedPackageDirectory'; found $($packages.Count)."
 }
 
 $package = $packages[0]
@@ -1022,8 +1085,8 @@ try {
         throw "Package version is '$version', expected '$ExpectedVersion'."
     }
 
-    if ([string] $metadata.id -ne "dotnet-axi") {
-        throw "Package ID is '$($metadata.id)', expected 'dotnet-axi'."
+    if ([string] $metadata.id -ne "dnaxi") {
+        throw "Package ID is '$($metadata.id)', expected 'dnaxi'."
     }
     if ([string] $metadata.license.InnerText -ne "Apache-2.0" -or
         [string] $metadata.license.type -ne "expression") {
@@ -1159,6 +1222,49 @@ if (-not (Test-Path -LiteralPath $symbolPackagePath -PathType Leaf)) {
 $symbolArchive = [System.IO.Compression.ZipFile]::OpenRead(
     $symbolPackagePath)
 try {
+    $symbolNuspecEntries = @(
+        $symbolArchive.Entries |
+            Where-Object { $_.FullName -like "*.nuspec" }
+    )
+    if ($symbolNuspecEntries.Count -ne 1) {
+        throw (
+            "Expected one symbol-package nuspec entry; found " +
+            "$($symbolNuspecEntries.Count).")
+    }
+
+    [xml] $symbolNuspec = Read-ZipEntryText `
+        -Archive $symbolArchive `
+        -EntryName $symbolNuspecEntries[0].FullName
+    $symbolMetadata = $symbolNuspec.package.metadata
+    if ([string] $symbolMetadata.id -cne "dnaxi") {
+        throw (
+            "Symbol package ID is '$($symbolMetadata.id)', " +
+            "expected 'dnaxi'.")
+    }
+    if ([string] $symbolMetadata.version -cne $version) {
+        throw (
+            "Symbol package version is '$($symbolMetadata.version)', " +
+            "expected '$version'.")
+    }
+    if ([string] $symbolMetadata.packageTypes.packageType.name -cne
+        "SymbolsPackage") {
+        throw "Symbol package type must be SymbolsPackage."
+    }
+    if ([string] $symbolMetadata.repository.type -cne "git" -or
+        [string] $symbolMetadata.repository.url -cne
+            "https://github.com/chuyflores-dev/dotnet-axi.git" -or
+        [string]::IsNullOrWhiteSpace(
+            [string] $symbolMetadata.repository.commit)) {
+        throw "Symbol package repository metadata is incomplete."
+    }
+    if (-not [string]::IsNullOrWhiteSpace($ExpectedCommit) -and
+        [string] $symbolMetadata.repository.commit -cne $ExpectedCommit) {
+        throw (
+            "Symbol package repository commit is " +
+            "'$($symbolMetadata.repository.commit)', expected " +
+            "'$ExpectedCommit'.")
+    }
+
     foreach ($assemblyName in $assemblyNames) {
         Assert-PortablePdb `
             -Archive $symbolArchive `
@@ -1189,6 +1295,97 @@ try {
     Assert-InstalledAgentSkill -Installation $repositorySkill
     Assert-InstalledAgentSkill -Installation $userSkill
 
+    # Exercise the canonical no-install path before any persistent tool
+    # lifecycle. The nearest NuGet configuration clears inherited sources, so
+    # these exact-version candidate runs cannot fall back to public NuGet.
+    $dnxSmokeWorkspace = [System.IO.Path]::Combine(
+        $temporaryRoot,
+        "dnx-smoke-workspace")
+    [System.IO.Directory]::CreateDirectory($dnxSmokeWorkspace) | Out-Null
+    $escapedPackageSource = [System.Security.SecurityElement]::Escape(
+        $resolvedPackageDirectory)
+    [System.IO.File]::WriteAllText(
+        [System.IO.Path]::Combine($dnxSmokeWorkspace, "NuGet.Config"),
+        "<configuration><packageSources><clear/><add key=`"candidate`" value=`"$escapedPackageSource`"/></packageSources></configuration>")
+    [System.IO.File]::WriteAllText(
+        [System.IO.Path]::Combine($dnxSmokeWorkspace, "DnxSmoke.cs"),
+        "namespace DnxSmoke; internal static class Sample { internal static void Run() => System.Console.WriteLine(`"dnaxi dnx smoke`" ); }")
+    $dnxSmokeEnvironment = @{
+        DOTNET_CLI_HOME = [System.IO.Path]::Combine(
+            $temporaryRoot,
+            "dnx-smoke-home")
+        DOTNET_CLI_TELEMETRY_OPTOUT = "1"
+        DOTNET_CLI_WORKLOAD_UPDATE_NOTIFY_DISABLE = "1"
+        DOTNET_NOLOGO = "1"
+        DOTNET_SKIP_FIRST_TIME_EXPERIENCE = "1"
+        NUGET_PACKAGES = [System.IO.Path]::Combine(
+            $temporaryRoot,
+            "dnx-smoke-packages")
+    }
+    $dnxCandidatePrefix = @(
+        "dnaxi@$version",
+        "--source", $resolvedPackageDirectory,
+        "--no-http-cache", "--verbosity", "quiet",
+        "--")
+
+    $dnxSmokeVersion = Invoke-Captured `
+        -FileName $dnx `
+        -Arguments ($dnxCandidatePrefix + @("--version")) `
+        -Environment $dnxSmokeEnvironment `
+        -WorkingDirectory $dnxSmokeWorkspace
+    Assert-VersionOutput `
+        -Result $dnxSmokeVersion `
+        -Version $version `
+        -RequireEmptyStandardError $false
+
+    $dnxSmokeHelp = Invoke-Captured `
+        -FileName $dnx `
+        -Arguments ($dnxCandidatePrefix + @("--help")) `
+        -Environment $dnxSmokeEnvironment `
+        -WorkingDirectory $dnxSmokeWorkspace
+    Assert-HelpOutput `
+        -Result $dnxSmokeHelp `
+        -Version $version `
+        -RequireEmptyStandardError $false
+
+    $dnxSmokeHome = Invoke-Captured `
+        -FileName $dnx `
+        -Arguments $dnxCandidatePrefix `
+        -Environment $dnxSmokeEnvironment `
+        -WorkingDirectory $dnxSmokeWorkspace
+    Assert-HomeOutput -Result $dnxSmokeHome -Version $version
+
+    $dnxSmokeFile = Invoke-Captured `
+        -FileName $dnx `
+        -Arguments ($dnxCandidatePrefix + @(
+            "search", "file", "DnxSmoke.cs", "--path", ".", "--limit", "20")) `
+        -Environment $dnxSmokeEnvironment `
+        -WorkingDirectory $dnxSmokeWorkspace
+    Assert-PassiveCommandOutput `
+        -Result $dnxSmokeFile `
+        -Command "search file"
+
+    $dnxSmokeText = Invoke-Captured `
+        -FileName $dnx `
+        -Arguments ($dnxCandidatePrefix + @(
+            "search", "text", "dnaxi dnx smoke", "--path", ".", "--limit", "20")) `
+        -Environment $dnxSmokeEnvironment `
+        -WorkingDirectory $dnxSmokeWorkspace
+    Assert-PassiveCommandOutput `
+        -Result $dnxSmokeText `
+        -Command "search text"
+
+    $dnxSmokeSyntax = Invoke-Captured `
+        -FileName $dnx `
+        -Arguments ($dnxCandidatePrefix + @(
+            "search", "syntax", "invocation", "--name", "WriteLine",
+            "--path", ".", "--limit", "20")) `
+        -Environment $dnxSmokeEnvironment `
+        -WorkingDirectory $dnxSmokeWorkspace
+    Assert-PassiveCommandOutput `
+        -Result $dnxSmokeSyntax `
+        -Command "search syntax invocation"
+
     $globalCliHome = [System.IO.Path]::Combine(
         $temporaryRoot,
         "global-home")
@@ -1204,7 +1401,7 @@ try {
             "tool",
             "install",
             "--global",
-            "dotnet-axi",
+            "dnaxi",
             "--version",
             $version,
             "--source",
@@ -1266,7 +1463,7 @@ try {
         -FileName "dnaxi" `
         -Arguments @("--help") `
         -Environment $globalEnvironment
-    Assert-HelpOutput -Result $globalHelp
+    Assert-HelpOutput -Result $globalHelp -Version $version
 
     $globalUpdate = Invoke-Captured `
         -FileName $dotnet `
@@ -1274,7 +1471,7 @@ try {
             "tool",
             "update",
             "--global",
-            "dotnet-axi",
+            "dnaxi",
             "--version",
             $version,
             "--source",
@@ -1343,7 +1540,7 @@ try {
             "tool",
             "install",
             "--local",
-            "dotnet-axi",
+            "dnaxi",
             "--tool-manifest",
             $manifestPath,
             "--version",
@@ -1386,7 +1583,7 @@ try {
         ) `
         -Environment $localEnvironment `
         -WorkingDirectory $localWorkspace
-    Assert-HelpOutput -Result $localHelp
+    Assert-HelpOutput -Result $localHelp -Version $version
 
     $localUpdate = Invoke-Captured `
         -FileName $dotnet `
@@ -1394,7 +1591,7 @@ try {
             "tool",
             "update",
             "--local",
-            "dotnet-axi",
+            "dnaxi",
             "--tool-manifest",
             $manifestPath,
             "--version",
@@ -1435,6 +1632,10 @@ try {
         "dnx-home")
     $dnxEnvironment = @{
         DOTNET_CLI_HOME = $dnxCliHome
+        DOTNET_CLI_TELEMETRY_OPTOUT = "1"
+        DOTNET_CLI_WORKLOAD_UPDATE_NOTIFY_DISABLE = "1"
+        DOTNET_NOLOGO = "1"
+        DOTNET_SKIP_FIRST_TIME_EXPERIENCE = "1"
         NUGET_PACKAGES = [System.IO.Path]::Combine(
             $temporaryRoot,
             "dnx-packages")
@@ -1442,7 +1643,7 @@ try {
     $oneShotVersion = Invoke-Captured `
         -FileName $dnx `
         -Arguments @(
-            "dotnet-axi@$version",
+            "dnaxi@$version",
             "--source",
             $resolvedPackageDirectory,
             "--no-http-cache",
@@ -1460,7 +1661,7 @@ try {
     $oneShotHelp = Invoke-Captured `
         -FileName $dnx `
         -Arguments @(
-            "dotnet-axi@$version",
+            "dnaxi@$version",
             "--source",
             $resolvedPackageDirectory,
             "--no-http-cache",
@@ -1472,6 +1673,7 @@ try {
         -Environment $dnxEnvironment
     Assert-HelpOutput `
         -Result $oneShotHelp `
+        -Version $version `
         -RequireEmptyStandardError $false
 
     $oneShotWorkspace = [System.IO.Path]::Combine(
@@ -1481,7 +1683,7 @@ try {
     $oneShotHome = Invoke-Captured `
         -FileName $dnx `
         -Arguments @(
-            "dotnet-axi@$version",
+            "dnaxi@$version",
             "--source",
             $resolvedPackageDirectory,
             "--no-http-cache",
@@ -1491,7 +1693,7 @@ try {
         ) `
         -Environment $dnxEnvironment `
         -WorkingDirectory $oneShotWorkspace
-    Assert-HomeOutput -Result $oneShotHome
+    Assert-HomeOutput -Result $oneShotHome -Version $version
 
     Assert-SameOutput `
         -Expected $globalVersion `
@@ -1525,7 +1727,7 @@ try {
             "tool",
             "uninstall",
             "--local",
-            "dotnet-axi",
+            "dnaxi",
             "--tool-manifest",
             $manifestPath
         ) `
@@ -1556,7 +1758,7 @@ try {
             "tool",
             "uninstall",
             "--global",
-            "dotnet-axi"
+            "dnaxi"
         ) `
         -Environment $globalEnvironment
     Assert-Success `
@@ -1573,4 +1775,4 @@ finally {
     }
 }
 
-Write-Host "Verified dotnet-axi $version package, symbols, Agent Skill, global/local lifecycle, and dnx parity."
+Write-Host "Verified dnaxi $version package, symbols, Agent Skill, global/local lifecycle, and dnx parity."

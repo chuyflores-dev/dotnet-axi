@@ -281,7 +281,7 @@ internal sealed class TextSearchCommandHandler : ICommandHandler<TextSearchComma
         if (request.Head is not null) { arguments.Add("--head"); arguments.Add(Quote(request.Head)); }
         if (request.Fields.Count > 0) { arguments.Add("--fields"); arguments.AddRange(request.Fields.Select(Quote)); }
         arguments.Add("--full");
-        return string.Join(' ', arguments);
+        return CanonicalInvocation.OneShot(string.Join(' ', arguments));
     }
 
     private static string Quote(string value) => "'" + value.Replace("'", "'\\''", StringComparison.Ordinal) + "'";

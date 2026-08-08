@@ -174,8 +174,8 @@ jobs:
         with:
           name: ${{ steps.names.outputs.staging-artifact }}
           path: |
-            ${{ runner.temp }}/dotnet-axi-release-candidate/dotnet-axi.${{ inputs.version }}.nupkg
-            ${{ runner.temp }}/dotnet-axi-release-candidate/dotnet-axi.${{ inputs.version }}.snupkg
+            ${{ runner.temp }}/dotnet-axi-release-candidate/dnaxi.${{ inputs.version }}.nupkg
+            ${{ runner.temp }}/dotnet-axi-release-candidate/dnaxi.${{ inputs.version }}.snupkg
             ${{ runner.temp }}/dotnet-axi-release-candidate/checksums.sha256
             ${{ runner.temp }}/dotnet-axi-release-candidate/package-evidence.json
           if-no-files-found: error
@@ -317,8 +317,8 @@ jobs:
         with:
           name: ${{ steps.names.outputs.artifact-name }}
           path: |
-            artifacts/release-candidate/dotnet-axi.${{ inputs.version }}.nupkg
-            artifacts/release-candidate/dotnet-axi.${{ inputs.version }}.snupkg
+            artifacts/release-candidate/dnaxi.${{ inputs.version }}.nupkg
+            artifacts/release-candidate/dnaxi.${{ inputs.version }}.snupkg
             artifacts/release-candidate/checksums.sha256
             artifacts/release-candidate/release-candidate-evidence.json
           if-no-files-found: error

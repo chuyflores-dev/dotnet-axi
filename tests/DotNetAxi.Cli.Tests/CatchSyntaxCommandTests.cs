@@ -126,6 +126,9 @@ public sealed class CatchSyntaxCommandTests
         Assert.Contains("matches[1]{id,file,line,construct,column}:", bounded.Output);
         Assert.Contains("retrieval_command:", bounded.Output);
         Assert.Contains(
+            $"dnx dnaxi@{ToolVersion.Current} --verbosity quiet -- search syntax catch",
+            bounded.Output);
+        Assert.Contains(
             "--type 'Exception' --empty --fields 'column' --full",
             bounded.Output);
         Assert.DoesNotContain("--limit", bounded.Output);

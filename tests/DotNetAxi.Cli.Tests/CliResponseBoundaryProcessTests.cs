@@ -198,7 +198,7 @@ public sealed class CliResponseBoundaryProcessTests
         Assert.Contains("arguments: []\n", result.StandardOutput);
         Assert.Contains("search,Search the current workspace.,passive", result.StandardOutput);
         Assert.Contains(
-            "dnaxi --version",
+            $"dnx dnaxi@{ToolVersion.Current} --verbosity quiet -- --version",
             result.StandardOutput);
         Assert.Equal(string.Empty, result.StandardError);
     }

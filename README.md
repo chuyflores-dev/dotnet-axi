@@ -3,8 +3,9 @@
 An agent-first command-line interface for understanding, analyzing, validating,
 and safely modifying .NET codebases.
 
-The repository and .NET tool package are named `dotnet-axi`. The installed
-command is `dnaxi`.
+The repository and product are named `dotnet-axi`. Starting with 0.4.0, the
+.NET tool package and installed command are named `dnaxi`. The already
+published 0.2.0 and 0.3.0 package ID remains `dotnet-axi`.
 
 See
 [REQUIREMENTS.md](https://github.com/chuyflores-dev/dotnet-axi/blob/main/REQUIREMENTS.md)
@@ -15,7 +16,7 @@ Durable delivery scope lives in
 [stories and epics](https://github.com/chuyflores-dev/dotnet-axi/blob/main/docs/stories/README.md);
 GitHub Issues track live status.
 
-## Install 0.3.0
+## Run the current 0.3.0 release
 
 `dotnet-axi` 0.3.0 requires the .NET 10 SDK. Install it as a global tool:
 
@@ -85,21 +86,28 @@ Create and verify a disposable local package without publishing it:
 dotnet pack src/DotNetAxi.Cli/DotNetAxi.Cli.csproj \
   --configuration Release \
   --output artifacts/packages \
-  -p:DotNetAxiBuildVersion=0.3.0
+  -p:DotNetAxiBuildVersion=0.4.0-alpha.1
 
 pwsh ./eng/verify-tool-package.ps1 \
   -PackageDirectory artifacts/packages
+
+# Pack and run exact stable and prerelease versions through dnx only.
+pwsh ./eng/verify-dnx-version-matrix.ps1
 ```
 
 With .NET 10 or later, the local package can be invoked once without a
 persistent installation:
 
 ```bash
-dnx dotnet-axi@0.3.0 \
+dnx dnaxi@0.4.0-alpha.1 \
   --source ./artifacts/packages \
   --verbosity quiet \
   -- --version
 ```
+
+This package-ID change applies only to 0.4.0 and later candidates and
+releases. Continue to use `dotnet-axi@0.3.0` when invoking the immutable 0.3.0
+package.
 
 ## License
 
