@@ -48,8 +48,11 @@ internal static partial class CodexBenchmarkCommandEvidence
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(packageId);
         ArgumentException.ThrowIfNullOrWhiteSpace(packageVersion);
+        var escapeCharacter = GetControlEscapeCharacter(command);
         var invocation = StripSupportedRedirections(UnwrapShell(command));
-        if (ContainsUnquotedControlOperator(invocation))
+        if (ContainsUnquotedControlOperator(
+                invocation,
+                escapeCharacter))
         {
             return false;
         }
@@ -97,7 +100,8 @@ internal static partial class CodexBenchmarkCommandEvidence
                                       executableToken,
                                       expectedName,
                                       comparison)
-                                      || (string.Equals(
+                                      || (OperatingSystem.IsWindows()
+                                          && string.Equals(
                                               expectedName,
                                               "dnx.exe",
                                               StringComparison.OrdinalIgnoreCase)
@@ -638,7 +642,9 @@ internal static partial class CodexBenchmarkCommandEvidence
         }
     }
 
-    private static bool ContainsUnquotedControlOperator(string command)
+    private static bool ContainsUnquotedControlOperator(
+        string command,
+        char? escapeCharacter)
     {
         char quote = '\0';
         var escaped = false;
@@ -650,7 +656,8 @@ internal static partial class CodexBenchmarkCommandEvidence
                 continue;
             }
 
-            if (quote != '\'' && character == '\\')
+            if (quote != '\''
+                && character == escapeCharacter)
             {
                 escaped = true;
                 continue;
@@ -673,6 +680,27 @@ internal static partial class CodexBenchmarkCommandEvidence
         }
 
         return quote != '\0' || escaped;
+    }
+
+    private static char? GetControlEscapeCharacter(string command)
+    {
+        var match = ShellWrapperRegex().Match(command.Trim());
+        if (!match.Success)
+        {
+            return OperatingSystem.IsWindows() ? null : '\\';
+        }
+
+        var shell = match.Groups["shell"].Value;
+        return string.Equals(
+                   shell,
+                   "pwsh",
+                   StringComparison.OrdinalIgnoreCase)
+               || string.Equals(
+                   shell,
+                   "powershell",
+                   StringComparison.OrdinalIgnoreCase)
+            ? '`'
+            : '\\';
     }
 
     private static bool IsDnxExecutableName(string value)
@@ -707,7 +735,7 @@ internal static partial class CodexBenchmarkCommandEvidence
             : path;
 
     [GeneratedRegex(
-        "^(?:(?:/[^/\\s]+/)?(?:zsh|bash|sh)|pwsh|powershell)\\s+(?:-lc|-c|-Command)\\s+(?<quote>[\"'])(?<body>.*)\\k<quote>\\s*$",
+        "^(?:(?:/[^/\\s]+/)?(?<shell>zsh|bash|sh|pwsh|powershell))\\s+(?:-lc|-c|-Command)\\s+(?<quote>[\"'])(?<body>.*)\\k<quote>\\s*$",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex ShellWrapperRegex();
 
