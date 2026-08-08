@@ -160,6 +160,7 @@ internal static class CodexDiscoveryBenchmarkProgram
             $"provider_token_limit: {(preparation.UsageBoundary.ProviderTokenLimit?.ToString() ?? "none")}");
         Console.WriteLine(
             $"authentication_method: {preparation.Pins.AuthenticationMethod}");
+        Console.WriteLine("candidate_execution_preflight: passed");
         Console.WriteLine(
             $"request_hash: {preparation.RequestHash}");
     }

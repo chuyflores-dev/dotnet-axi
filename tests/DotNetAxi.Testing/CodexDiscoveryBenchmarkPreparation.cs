@@ -289,6 +289,22 @@ internal static partial class CodexDiscoveryBenchmarkPreparation
                 request.Corpus.Artifact.Path)
             ?? throw new AgentBenchmarkException(
                 "The source-discovery corpus must have a parent directory.");
+        var candidateProbeManifest = Path.GetFullPath(Path.Combine(
+            corpusDirectory,
+            selectedCorpus.Tasks[0].Repository.FixtureManifest.Replace(
+                '/',
+                Path.DirectorySeparatorChar)));
+        await using (var candidateProbeFixture =
+                     await new RepositoryFixtureFactory().CreateAsync(
+                         candidateProbeManifest,
+                         cancellationToken: cancellationToken))
+        {
+            await ValidateCandidateExecutionAsync(
+                request,
+                candidateProbeFixture,
+                cancellationToken);
+        }
+
         var configuration = new AgentBenchmarkConfiguration(
             request.SeriesId,
             corpusDirectory,
@@ -1218,6 +1234,91 @@ internal static partial class CodexDiscoveryBenchmarkPreparation
         {
             throw new AgentBenchmarkException(
                 "The isolated Codex home must report active ChatGPT authentication; API-key authentication is not accepted.");
+        }
+    }
+
+    private static async ValueTask ValidateCandidateExecutionAsync(
+        CodexDiscoveryBenchmarkRequest request,
+        RepositoryFixture fixture,
+        CancellationToken cancellationToken)
+    {
+        var codexHome = Directory.CreateDirectory(Path.Combine(
+            fixture.StatePath,
+            "codex-preflight-home")).FullName;
+        var environment = fixture.EnvironmentVariables.ToDictionary(
+            static variable => variable.Key,
+            static variable => variable.Value,
+            StringComparer.Ordinal);
+        environment["CODEX_HOME"] = codexHome;
+        var workspaceBaseline =
+            await AgentBenchmarkWorkspaceHasher.CaptureBaselineAsync(
+                fixture.WorkspacePath,
+                fixture.ContentFiles,
+                TimeSpan.FromSeconds(10),
+                cancellationToken);
+        var result = await new ProcessRunner().RunAsync(
+            new ProcessRunRequest(
+                request.CodexExecutable.Path,
+                fixture.WorkspacePath,
+                [
+                    "sandbox",
+                    "--permission-profile",
+                    CodexAgentBenchmarkAdapter.RuntimePermissionProfileName,
+                    "--config",
+                    CodexAgentBenchmarkAdapter
+                        .CreateRuntimePermissionProfileConfig(
+                            fixture.StatePath,
+                            Sandbox),
+                    "--cd",
+                    fixture.WorkspacePath,
+                    "--",
+                    request.DnxExecutable.Path,
+                    $"{request.Product.PackageId}@{request.Product.PackageVersion}",
+                    "--source",
+                    request.Product.PackageSource.Path,
+                    "--verbosity",
+                    "quiet",
+                    "--",
+                    "--version",
+                ],
+                environment,
+                new ProcessOutputLimits(1024 * 1024, 64 * 1024),
+                TimeSpan.FromSeconds(60)),
+            cancellationToken);
+        var workspaceInspection =
+            await AgentBenchmarkWorkspaceHasher.InspectAsync(
+                fixture.WorkspacePath,
+                workspaceBaseline,
+                TimeSpan.FromSeconds(10),
+                CancellationToken.None);
+        var outputLines = result.StandardOutput.Text
+            .ReplaceLineEndings("\n")
+            .Split(
+                '\n',
+                StringSplitOptions.RemoveEmptyEntries
+                | StringSplitOptions.TrimEntries);
+        if (result.Lifecycle is not ProcessLifecycle.Completed
+            || result.Outcome is not ProcessRunOutcome.Completed
+            || result.Exit?.ExitCode != 0
+            || result.StandardOutput.LimitExceeded
+            || result.StandardError.LimitExceeded
+            || !workspaceInspection.Complete
+            || !workspaceInspection.MatchesBaseline
+            || !outputLines.Contains(
+                $"schema: {ProductSchema}",
+                StringComparer.Ordinal)
+            || !outputLines.Contains(
+                "command: version",
+                StringComparer.Ordinal)
+            || !outputLines.Contains(
+                "status: success",
+                StringComparer.Ordinal)
+            || !outputLines.Contains(
+                $"tool_version: {request.Product.PackageVersion}",
+                StringComparer.Ordinal))
+        {
+            throw new AgentBenchmarkException(
+                "The exact source-pinned dnaxi candidate failed its bounded local execution preflight; no paid benchmark run may start.");
         }
     }
 

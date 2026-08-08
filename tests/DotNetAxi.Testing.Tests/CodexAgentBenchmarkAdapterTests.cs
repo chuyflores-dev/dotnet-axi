@@ -34,7 +34,7 @@ public sealed class CodexAgentBenchmarkAdapterTests
             baselineWorkspace,
             AgentBenchmarkCondition.Baseline));
 
-        Assert.Equal("1.4.0", adapter.Descriptor.Version);
+        Assert.Equal("1.5.0", adapter.Descriptor.Version);
         Assert.Equal(
             await File.ReadAllBytesAsync(Path.Combine(source, "SKILL.md")),
             await File.ReadAllBytesAsync(Path.Combine(
@@ -168,16 +168,52 @@ public sealed class CodexAgentBenchmarkAdapterTests
                 "basic",
                 "fixture.json"));
         var adapter = Adapter([rawTools], dnxExecutable);
-
-        await using var execution = await adapter.StartAsync(Input(
+        var input = Input(
             fixture.WorkspacePath,
             AgentBenchmarkCondition.Baseline,
             fixture: "success.jsonl",
-            additionalEnvironment: fixture.EnvironmentVariables));
+            additionalEnvironment: fixture.EnvironmentVariables);
+        var startInfo = adapter.CreateStartInfo(input);
+        Assert.DoesNotContain("--sandbox", startInfo.ArgumentList);
+        Assert.Contains(
+            $"default_permissions=\"{CodexAgentBenchmarkAdapter.RuntimePermissionProfileName}\"",
+            startInfo.ArgumentList);
+        Assert.Contains(
+            CodexAgentBenchmarkAdapter.CreateRuntimePermissionProfileConfig(
+                fixture.StatePath,
+                "read-only"),
+            startInfo.ArgumentList);
+
+        await using var execution = await adapter.StartAsync(input);
 
         Assert.Contains(
             execution.GetProgressSnapshot().RawEvents,
             static value => value.Kind == "adapter.process.started");
+    }
+
+    [Fact]
+    public void Runtime_state_write_root_must_be_isolated_from_the_workspace()
+    {
+        using var workspace = new TemporaryWorkspace();
+        var input = Input(
+            workspace.Path,
+            AgentBenchmarkCondition.Baseline,
+            additionalEnvironment: new Dictionary<string, string>
+            {
+                ["DOTNET_CLI_HOME"] = Path.Combine(
+                    workspace.Path,
+                    "state",
+                    "dotnet-home"),
+            });
+
+        var exception = Assert.Throws<AgentBenchmarkStartException>(() =>
+            Adapter().CreateStartInfo(input));
+
+        Assert.False(exception.Retryable);
+        Assert.Contains(
+            "runtime state",
+            exception.Message,
+            StringComparison.Ordinal);
     }
 
     [Fact]

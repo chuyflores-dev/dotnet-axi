@@ -465,11 +465,15 @@ identity, executables, settings, commits, and the exact seven-task corpus.
 `prepare` recomputes every artifact hash, hashes every executable-search
 directory, verifies the exact CLI version and active ChatGPT authentication
 with bounded local `codex --version` and `codex login status` probes, and seals
-the deterministic 70-run schedule without dispatching a model. `run` accepts
-only that unchanged preparation and writes create-new preparation, per-run,
-report, and summary evidence; completed run evidence is flushed durably before
-the next run starts, and every execution artifact and tool-directory pin is
-revalidated after each retained run before another paid run may start.
+the deterministic 70-run schedule without dispatching a model. Preparation
+also executes the exact source-pinned candidate with `-- --version` against
+disposable isolated .NET and NuGet state and requires the expected successful
+structured schema and tool version. `run` repeats that probe while validating
+the unchanged preparation before it creates evidence or dispatches a paid
+agent. It then writes create-new preparation, per-run, report, and summary
+evidence; completed run evidence is flushed durably before the next run starts,
+and every execution artifact and tool-directory pin is revalidated after each
+retained run before another paid run may start.
 `validate` reloads the request and artifacts, rejects unknown JSON fields or
 drift, reconciles normalized metrics with raw Codex events, and recomputes the
 documented comparison thresholds. Missing, failed, and timed-out trajectories
@@ -491,14 +495,19 @@ value bound to the pinned feed. A network-free `codex debug prompt-input`
 preflight proves the candidate skill and exact source-pinned 0.4.0 invocation
 are model-visible while the baseline does not expose the skill before paid
 execution is allowed. Each materialized workspace
-supplies isolated writable .NET and NuGet caches, so the skill can select `dnx
-dnaxi@0.4.0 --source "$DNAXI_LOCAL_FEED" --verbosity quiet --` while package
-resolution remains local and network-disabled. The CLI is not represented as
-an MCP server, and API-key authentication or API-key artifacts are not
-accepted.
+supplies an isolated runtime-state sibling for .NET, NuGet, temporary files,
+and diagnostic artifacts. The adapter replaces the legacy sandbox selector
+with a scoped permission profile that extends Codex's read-only policy and
+grants write access only to that state and, on Unix, `/tmp/.dotnet` for .NET's
+named synchronization primitives; repository content remains read-only. The
+same profile runs the local execution preflight. The skill can therefore select
+`dnx dnaxi@0.4.0 --source "$DNAXI_LOCAL_FEED" --verbosity quiet --` while
+package resolution remains local and network-disabled. The CLI is not
+represented as an MCP server, and API-key authentication or API-key artifacts
+are not accepted.
 
 The corrected Codex discovery protocol uses version 2 retained-run and report
-schemas, version 3 summaries, and Codex adapter version 1.4. The fixture home
+schemas, version 3 summaries, and Codex adapter version 1.5. The fixture home
 restores the sealed raw-tool path after login-shell initialization, and every
 run revalidates that the login shell resolves `dnx` to the pinned executable
 before Codex starts. The protocol derives
