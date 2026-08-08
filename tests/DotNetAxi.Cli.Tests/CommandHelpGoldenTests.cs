@@ -16,7 +16,7 @@ public sealed class CommandHelpGoldenTests
         Assert.Equal(0, fixture.HandlerFactoryCalls);
         Assert.Equal(
             ReadFixture("help-root.toon"),
-            fixture.Output.ToString());
+            NormalizeToolVersion(fixture.Output.ToString()));
     }
 
     [Fact]
@@ -31,7 +31,7 @@ public sealed class CommandHelpGoldenTests
         Assert.Equal(0, fixture.HandlerFactoryCalls);
         Assert.Equal(
             ReadFixture("help-subcommand.toon"),
-            fixture.Output.ToString());
+            NormalizeToolVersion(fixture.Output.ToString()));
     }
 
     private static HelpFixture CreateFixture()
@@ -117,6 +117,12 @@ public sealed class CommandHelpGoldenTests
         File.ReadAllText(
                 Path.Combine(AppContext.BaseDirectory, "Fixtures", name))
             .TrimEnd('\r', '\n');
+
+    private static string NormalizeToolVersion(string value) =>
+        value.Replace(
+            ToolVersion.Current,
+            "<tool-version>",
+            StringComparison.Ordinal);
 
     private sealed class HelpFixture
     {
