@@ -36,8 +36,11 @@ configuration and harness and are not pooled with Claude.
   and diagnostic artifacts, plus .NET's platform runtime directory for named
   synchronization primitives when required.
 - Retained trajectories count actual `dnx` command activation separately from
-  skill availability. Zero aggregate activation, or a discovery route with no
-  successful activated candidate run, blocks 0.4.0.
+  skill availability. Reconciliation decodes bounded Codex POSIX-shell display
+  forms and maps capability identities to the public dnaxi command grammar,
+  including `search syntax class --attribute` for attributed classes. Zero
+  aggregate activation, or a discovery route with no successful activated
+  candidate run, blocks 0.4.0.
 - The report retains complete manifest, metric, validation, activation, and
   raw-trajectory evidence and compares the corrected series with the retained
   0.3.0 discovery result without reclassifying that earlier evidence.
