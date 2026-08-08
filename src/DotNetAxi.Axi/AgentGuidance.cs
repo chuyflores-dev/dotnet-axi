@@ -206,12 +206,30 @@ public sealed class CodexAgentGuidance
 
 public static class AgentGuidanceCatalog
 {
+    public const string ExactVersionPlaceholder = "<exact-version>";
+
     public const string SkillName = "dotnet-axi";
 
     public const string SkillDescription =
         "Use dotnet-axi to obtain deterministic structured evidence for .NET workspaces when the invoked version reports the needed capability, including workspace or source discovery, semantic evidence, impact, analysis, and validation. Use for .NET repository investigation and completion checks; skip for non-.NET work and direct reads of already-known files.";
 
-    public static AgentCommandGuidance Command { get; } = CreateCommand();
+    public static AgentCommandGuidance Command { get; } =
+        CreateCommand(ExactVersionPlaceholder);
+
+    public static AgentCommandGuidance ForVersion(string exactVersion)
+    {
+        if (string.IsNullOrWhiteSpace(exactVersion) ||
+            exactVersion.Any(static character =>
+                !(char.IsAsciiLetterOrDigit(character) ||
+                  character is '.' or '-' or '+')))
+        {
+            throw new ArgumentException(
+                "A package-safe exact version is required.",
+                nameof(exactVersion));
+        }
+
+        return CreateCommand(exactVersion);
+    }
 
     public static CodexAgentGuidance Codex { get; } = new(
         boundaries:
@@ -264,12 +282,14 @@ public static class AgentGuidanceCatalog
         nonInteractiveLink:
             "https://learn.chatgpt.com/docs/non-interactive-mode");
 
-    private static AgentCommandGuidance CreateCommand()
+    private static AgentCommandGuidance CreateCommand(string exactVersion)
     {
-        const string invocation = "dnx dotnet-axi -- <command>";
-        const string homeInvocation = "dnx dotnet-axi --";
-        const string helpInvocation = "dnx dotnet-axi -- --help";
-        const string versionInvocation = "dnx dotnet-axi -- --version";
+        var commandPrefix =
+            $"dnx dnaxi@{exactVersion} --verbosity quiet --";
+        var invocation = $"{commandPrefix} <command>";
+        var homeInvocation = commandPrefix;
+        var helpInvocation = $"{commandPrefix} --help";
+        var versionInvocation = $"{commandPrefix} --version";
         const string authority =
             "Treat the invoked version's structured help, version, and reported capabilities as authoritative. Never use a command or option that it does not expose.";
 
@@ -297,8 +317,8 @@ public static class AgentGuidanceCatalog
         ],
         invocationFlow:
         [
-            "Prefer a verified local or global `dnaxi <command>` invocation only when one is already available.",
-            $"Otherwise run one shot with `{invocation}`. Do not require a permanent global installation.",
+            "Prefer an already-verified persistent invocation only when one was selected: global `dnaxi <command>` or local `dotnet tool run dnaxi -- <command>`.",
+            $"Otherwise run one shot with `{invocation}`. Keep the exact version pin and do not require a permanent installation.",
             $"Start with `{homeInvocation}` for the passive home view or `{helpInvocation}` for structured help. Use `{versionInvocation}` when version identity matters.",
             authority,
             "Remember that `dnx` package resolution may download or restore the tool. Keep that network operation explicit and subject to host policy.",
@@ -318,10 +338,10 @@ public static class AgentGuidanceCatalog
         sourceDiscoveryFlow:
         [
             "Before source discovery, inspect the invoked version's structured help for the selected route and its options. If that route is unavailable, use an available direct tool and report the capability gap instead of inventing a command.",
-            "Find a file by normalized path with `dnaxi search file '<path-fragment>' --path <scope> --limit 20`. If the exact file is already known and a direct read is smaller, read it directly.",
-            "Find literal text with `dnaxi search text '<literal>' --path <scope> --limit 20`.",
-            "Find a .NET regular expression with `dnaxi search text '<dotnet-regex>' --regex --path <scope> --limit 20`; narrow the expression or path when a file times out.",
-            "Find a C# syntax shape by checking `dnaxi search syntax --help` and selecting an exposed stable query. For example, use `dnaxi search syntax invocation --name SaveChangesAsync --path <scope> --limit 20`.",
+            $"Find a file by normalized path with `{commandPrefix} search file '<path-fragment>' --path <scope> --limit 20`. If the exact file is already known and a direct read is smaller, read it directly.",
+            $"Find literal text with `{commandPrefix} search text '<literal>' --path <scope> --limit 20`.",
+            $"Find a .NET regular expression with `{commandPrefix} search text '<dotnet-regex>' --regex --path <scope> --limit 20`; narrow the expression or path when a file times out.",
+            $"Find a C# syntax shape by checking `{commandPrefix} search syntax --help` and selecting an exposed stable query. For example, use `{commandPrefix} search syntax invocation --name SaveChangesAsync --path <scope> --limit 20`.",
             "Treat stable syntax results as syntax candidates, never as compiler-verified symbol or type identity.",
             "Text search may use compatible `rg` acceleration. When that optional engine is absent, incompatible, or unsuitable for the query, `search text` degrades to its built-in engine with the same stable command behavior.",
             "Keep discovery bounded with a narrow `--path` and `--limit`. If output is truncated, follow its `retrieval_command` only when the remaining rows are needed; otherwise use the returned path or match to issue the next narrower file, text, or syntax query instead of dumping broad source.",
@@ -334,7 +354,7 @@ public static class AgentGuidanceCatalog
             "Treat denied filesystem, process, or network access as a host restriction; retry only after a confirmed policy change and do not loop.",
         ],
         completion:
-            "Do not claim completion solely because files changed. When the invoked version exposes validate, use the strongest applicable `dnaxi validate` evidence available within the requested scope. Otherwise run the strongest applicable project validation and report the evidence and any gaps.",
+            $"Do not claim completion solely because files changed. When the invoked version exposes validate, use the strongest applicable `{commandPrefix} validate` evidence available within the requested scope. Otherwise run the strongest applicable project validation and report the evidence and any gaps.",
         evidenceReport:
             "Report the command, requested scope, result status, resolution, coverage, confidence when applicable, and any remaining blocker or validation gap.");
     }

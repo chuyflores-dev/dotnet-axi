@@ -35,6 +35,9 @@ public sealed class AgentSkillGenerationTests
         Assert.EndsWith("\n", codex);
 
         var guidance = AgentGuidanceCatalog.Command;
+        Assert.Equal(
+            "dnx dnaxi@<exact-version> --verbosity quiet -- <command>",
+            guidance.Invocation);
         Assert.Contains(guidance.Invocation, skill);
         Assert.Contains(guidance.HomeInvocation, skill);
         Assert.Contains(guidance.HelpInvocation, skill);
@@ -54,6 +57,8 @@ public sealed class AgentSkillGenerationTests
 
         AssertSourceDiscoveryGuidance(skill);
 
+        Assert.DoesNotContain("dnx dotnet-axi", skill);
+        Assert.DoesNotContain("dnx dnaxi --", skill);
         Assert.DoesNotContain("dnx dotnet-axi -- search", skill);
         Assert.DoesNotContain("dnx dotnet-axi -- analyze", skill);
         Assert.DoesNotContain("dnx dotnet-axi -- validate", skill);
@@ -214,7 +219,9 @@ public sealed class AgentSkillGenerationTests
             Assert.Equal(0, helpExitCode);
             Assert.Equal(string.Empty, homeError.ToString());
             Assert.Equal(string.Empty, helpError.ToString());
-            foreach (var item in GuidanceText(AgentGuidanceCatalog.Command))
+            var runtimeGuidance =
+                AgentGuidanceCatalog.ForVersion(ToolVersion.Current);
+            foreach (var item in GuidanceText(runtimeGuidance))
             {
                 Assert.Contains(item, homeOutput.ToString());
                 Assert.Contains(item, helpOutput.ToString());
@@ -316,11 +323,11 @@ public sealed class AgentSkillGenerationTests
     {
         foreach (var required in new[]
                  {
-                     "dnaxi search file '<path-fragment>'",
-                     "dnaxi search text '<literal>'",
-                     "dnaxi search text '<dotnet-regex>' --regex",
-                     "dnaxi search syntax --help",
-                     "dnaxi search syntax invocation --name SaveChangesAsync",
+                     "search file '<path-fragment>'",
+                     "search text '<literal>'",
+                     "search text '<dotnet-regex>' --regex",
+                     "search syntax --help",
+                     "search syntax invocation --name SaveChangesAsync",
                      "--path <scope> --limit 20",
                      "built-in engine",
                      "use an available direct tool",
@@ -333,10 +340,10 @@ public sealed class AgentSkillGenerationTests
 
         foreach (var futureSemanticCommand in new[]
                  {
-                     "dnaxi search symbol",
-                     "dnaxi show symbol",
-                     "dnaxi references",
-                     "dnaxi implementations",
+                     "search symbol",
+                     "show symbol",
+                     "-- references",
+                     "-- implementations",
                  })
         {
             Assert.DoesNotContain(futureSemanticCommand, content);

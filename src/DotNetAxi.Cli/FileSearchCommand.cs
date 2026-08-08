@@ -378,7 +378,7 @@ internal sealed class FileSearchCommandHandler :
 
         arguments.Add("--limit");
         arguments.Add(total.ToString(System.Globalization.CultureInfo.InvariantCulture));
-        return string.Join(' ', arguments);
+        return CanonicalInvocation.OneShot(string.Join(' ', arguments));
     }
 
     private static string Quote(string value) =>

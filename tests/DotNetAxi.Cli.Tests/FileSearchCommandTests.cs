@@ -258,6 +258,9 @@ public sealed class FileSearchCommandTests
             Assert.Contains("total: 2", limited.Output);
             Assert.Contains("omitted: 1", limited.Output);
             Assert.Contains("truncated: true", limited.Output);
+            Assert.Contains(
+                $"dnx dnaxi@{ToolVersion.Current} --verbosity quiet -- search file",
+                limited.Output);
             Assert.Contains("--extension 'cs'", limited.Output);
             Assert.Contains("--path 'src'", limited.Output);
             Assert.Contains("--fields 'external'", limited.Output);

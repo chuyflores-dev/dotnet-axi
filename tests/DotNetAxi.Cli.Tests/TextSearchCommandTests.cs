@@ -160,6 +160,9 @@ public sealed class TextSearchCommandTests
             Assert.Equal(0, bounded.ExitCode);
             Assert.Contains("status: partial", bounded.Output);
             Assert.Contains("retrieval_command:", bounded.Output);
+            Assert.Contains(
+                $"dnx dnaxi@{ToolVersion.Current} --verbosity quiet -- search text",
+                bounded.Output);
             Assert.Contains("--fields 'column' 'skip_details' --full", bounded.Output);
             Assert.DoesNotContain("--limit", bounded.Output);
             Assert.Contains("details:", bounded.Output);

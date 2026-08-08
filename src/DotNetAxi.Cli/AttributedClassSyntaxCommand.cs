@@ -198,7 +198,7 @@ internal sealed class AttributedClassSyntaxCommandHandler :
         }
 
         arguments.Add("--full");
-        return string.Join(' ', arguments);
+        return CanonicalInvocation.OneShot(string.Join(' ', arguments));
     }
 
     private static IEnumerable<IReadOnlyDictionary<string, object?>> ProjectCandidates(

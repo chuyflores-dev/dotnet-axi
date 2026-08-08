@@ -70,6 +70,10 @@ jobs:
           -PackageDirectory artifacts/packages
           -ExpectedVersion $env:DotNetAxiBuildVersion
 
+      - name: Verify exact stable and prerelease dnx execution
+        shell: pwsh
+        run: ./eng/verify-dnx-version-matrix.ps1
+
       - name: Install Node.js for TOON conformance
         uses: actions/setup-node@v6
         with:

@@ -89,6 +89,9 @@ public sealed class InvocationSyntaxCommandTests
         Assert.Contains("truncated: true", bounded.Output);
         Assert.Contains("matches[1]{id,file,line,construct,column}:", bounded.Output);
         Assert.Contains("retrieval_command:", bounded.Output);
+        Assert.Contains(
+            $"dnx dnaxi@{ToolVersion.Current} --verbosity quiet -- search syntax invocation",
+            bounded.Output);
         Assert.Contains("--name 'Hit' --fields 'column' --full", bounded.Output);
         Assert.DoesNotContain("--limit", bounded.Output);
     }

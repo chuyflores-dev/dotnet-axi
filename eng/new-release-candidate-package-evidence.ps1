@@ -49,10 +49,10 @@ if ($candidatePackageFiles.Count -ne 2) {
 }
 $expectedPackagePath = [System.IO.Path]::Combine(
     $resolvedPackageDirectory,
-    "dotnet-axi.$ExpectedVersion.nupkg")
+    "dnaxi.$ExpectedVersion.nupkg")
 $expectedSymbolPackagePath = [System.IO.Path]::Combine(
     $resolvedPackageDirectory,
-    "dotnet-axi.$ExpectedVersion.snupkg")
+    "dnaxi.$ExpectedVersion.snupkg")
 foreach ($expectedPath in @(
         $expectedPackagePath,
         $expectedSymbolPackagePath)) {
@@ -89,8 +89,8 @@ try {
     $metadata = $nuspec.package.metadata
     $observedVersion = [string] $metadata.version
     $observedCommit = [string] $metadata.repository.commit
-    if ([string] $metadata.id -cne "dotnet-axi") {
-        throw "Package ID is '$($metadata.id)', expected 'dotnet-axi'."
+    if ([string] $metadata.id -cne "dnaxi") {
+        throw "Package ID is '$($metadata.id)', expected 'dnaxi'."
     }
     if ($observedVersion -cne $ExpectedVersion) {
         throw (
@@ -105,6 +105,58 @@ try {
 }
 finally {
     $archive.Dispose()
+}
+
+$symbolArchive = [System.IO.Compression.ZipFile]::OpenRead(
+    $symbolPackagePath)
+try {
+    $symbolNuspecEntries = @(
+        $symbolArchive.Entries |
+            Where-Object { $_.FullName -like "*.nuspec" }
+    )
+    if ($symbolNuspecEntries.Count -ne 1) {
+        throw (
+            "Expected one symbol-package nuspec entry; found " +
+            "$($symbolNuspecEntries.Count).")
+    }
+
+    $stream = $symbolNuspecEntries[0].Open()
+    $reader = [System.IO.StreamReader]::new(
+        $stream,
+        [System.Text.UTF8Encoding]::new($false, $true),
+        $true)
+    try {
+        [xml] $symbolNuspec = $reader.ReadToEnd()
+    }
+    finally {
+        $reader.Dispose()
+        $stream.Dispose()
+    }
+
+    $symbolMetadata = $symbolNuspec.package.metadata
+    if ([string] $symbolMetadata.id -cne "dnaxi") {
+        throw (
+            "Symbol package ID is '$($symbolMetadata.id)', " +
+            "expected 'dnaxi'.")
+    }
+    if ([string] $symbolMetadata.version -cne $ExpectedVersion) {
+        throw (
+            "Symbol package version is '$($symbolMetadata.version)', " +
+            "expected '$ExpectedVersion'.")
+    }
+    if ([string] $symbolMetadata.repository.commit -cne $ExpectedCommit) {
+        throw (
+            "Symbol package repository commit is " +
+            "'$($symbolMetadata.repository.commit)', expected " +
+            "'$ExpectedCommit'.")
+    }
+    if ([string] $symbolMetadata.packageTypes.packageType.name -cne
+        "SymbolsPackage") {
+        throw "Symbol package type must be SymbolsPackage."
+    }
+}
+finally {
+    $symbolArchive.Dispose()
 }
 
 $dotnetOutput = & dotnet --version 2>&1
@@ -150,8 +202,15 @@ $evidence = [ordered]@{
     schema = "dotnet-axi/release-candidate-package-evidence/v1"
     candidate_commit = $ExpectedCommit
     requested_version = $ExpectedVersion
+    observed_package_id = [string] $metadata.id
     observed_version = $observedVersion
     observed_repository_commit = $observedCommit
+    observed_symbol_package_id = [string] $symbolMetadata.id
+    observed_symbol_package_version = [string] $symbolMetadata.version
+    observed_symbol_repository_commit =
+        [string] $symbolMetadata.repository.commit
+    observed_symbol_package_type =
+        [string] $symbolMetadata.packageTypes.packageType.name
     sdk_version = $sdkVersions[0].Trim()
     os = [System.Runtime.InteropServices.RuntimeInformation]::OSDescription
     rid = [System.Runtime.InteropServices.RuntimeInformation]::RuntimeIdentifier
@@ -164,5 +223,5 @@ $json = $evidence | ConvertTo-Json -Depth 6
     [System.Text.UTF8Encoding]::new($false))
 
 Write-Host (
-    "Recorded package evidence for dotnet-axi $ExpectedVersion at " +
+    "Recorded dnaxi package evidence for $ExpectedVersion at " +
     "commit $ExpectedCommit.")

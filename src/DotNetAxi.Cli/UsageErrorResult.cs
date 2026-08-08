@@ -89,9 +89,10 @@ internal static class UsageErrorResult
     }
 
     private static string HelpCommand(string command) =>
-        command == "home"
-            ? "dnaxi --help"
-            : $"dnaxi {command} --help";
+        CanonicalInvocation.OneShot(
+            command == "home"
+                ? "dnaxi --help"
+                : $"dnaxi {command} --help");
 
     private sealed record UsageErrorPayload(
         IReadOnlyList<UsageFlag> ValidFlags);

@@ -102,7 +102,7 @@ jobs:
             throw "Verified candidate artifact digest is missing or invalid."
           }
           foreach ($extension in @("nupkg", "snupkg")) {
-            $path = "artifacts/release-candidate/dotnet-axi.$env:RELEASE_VERSION.$extension"
+            $path = "artifacts/release-candidate/dnaxi.$env:RELEASE_VERSION.$extension"
             if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
               throw "Verified candidate package '$path' is missing."
             }
@@ -124,7 +124,7 @@ jobs:
             throw "The protected release job did not receive a NuGet credential."
           }
           dotnet nuget push `
-            "artifacts/release-candidate/dotnet-axi.$env:RELEASE_VERSION.nupkg" `
+            "artifacts/release-candidate/dnaxi.$env:RELEASE_VERSION.nupkg" `
             --source https://api.nuget.org/v3/index.json `
             --timeout 600 `
             --force-english-output

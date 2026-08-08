@@ -398,7 +398,7 @@ public sealed class HomeViewIntegrationTests
     private static void AssertOnlyAvailableSuggestion(string output)
     {
         Assert.Contains(
-            "suggestions[1]:\n  - command: dnaxi\n    arguments[1]: \"--help\"",
+            $"suggestions[1]:\n  - command: dnx\n    arguments[5]: dnaxi@{ToolVersion.Current},\"--verbosity\",quiet,\"--\",\"--help\"",
             output);
         Assert.DoesNotContain("search,symbol", output);
         Assert.DoesNotContain("analyze,changed", output);

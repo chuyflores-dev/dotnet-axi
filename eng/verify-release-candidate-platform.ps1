@@ -161,6 +161,11 @@ function Get-ObservedVersion {
     )
 
     Assert-Success -Result $Result -Operation $Operation
+    if (-not $Result.StandardOutput.StartsWith(
+            "schema: dotnet-axi/v1`n",
+            [System.StringComparison]::Ordinal)) {
+        throw "$Operation stdout is contaminated before the structured document."
+    }
     $lines = $Result.StandardOutput -split "`n"
     foreach ($requiredLine in @(
             "schema: dotnet-axi/v1",
@@ -194,13 +199,13 @@ $resolvedPackageDirectory = (
 $packages = @(
     Get-ChildItem -LiteralPath $resolvedPackageDirectory -File |
         Where-Object {
-            $_.Name -like "dotnet-axi.*.nupkg" -and
+            $_.Name -like "dnaxi.*.nupkg" -and
             $_.Name -notlike "*.snupkg"
         }
 )
 if ($packages.Count -ne 1) {
     throw (
-        "Expected one dotnet-axi .nupkg in '$resolvedPackageDirectory'; " +
+        "Expected one dnaxi .nupkg in '$resolvedPackageDirectory'; " +
         "found $($packages.Count).")
 }
 $package = $packages[0]
@@ -232,6 +237,10 @@ try {
 
     $packageVersion = [string] $nuspec.package.metadata.version
     $packageCommit = [string] $nuspec.package.metadata.repository.commit
+    $packageId = [string] $nuspec.package.metadata.id
+    if ($packageId -cne "dnaxi") {
+        throw "Package ID is '$packageId', expected 'dnaxi'."
+    }
     if ($packageVersion -cne $ExpectedVersion) {
         throw "Package version is '$packageVersion', expected '$ExpectedVersion'."
     }
@@ -241,6 +250,55 @@ try {
 }
 finally {
     $archive.Dispose()
+}
+
+$symbolArchive = [System.IO.Compression.ZipFile]::OpenRead(
+    $symbolPackagePath)
+try {
+    $symbolNuspecEntries = @(
+        $symbolArchive.Entries |
+            Where-Object { $_.FullName -like "*.nuspec" }
+    )
+    if ($symbolNuspecEntries.Count -ne 1) {
+        throw (
+            "Expected one symbol-package nuspec entry; found " +
+            "$($symbolNuspecEntries.Count).")
+    }
+
+    $stream = $symbolNuspecEntries[0].Open()
+    $reader = [System.IO.StreamReader]::new($stream)
+    try {
+        [xml] $symbolNuspec = $reader.ReadToEnd()
+    }
+    finally {
+        $reader.Dispose()
+        $stream.Dispose()
+    }
+
+    $symbolMetadata = $symbolNuspec.package.metadata
+    if ([string] $symbolMetadata.id -cne "dnaxi") {
+        throw (
+            "Symbol package ID is '$($symbolMetadata.id)', " +
+            "expected 'dnaxi'.")
+    }
+    if ([string] $symbolMetadata.version -cne $ExpectedVersion) {
+        throw (
+            "Symbol package version is '$($symbolMetadata.version)', " +
+            "expected '$ExpectedVersion'.")
+    }
+    if ([string] $symbolMetadata.repository.commit -cne $ExpectedCommit) {
+        throw (
+            "Symbol package repository commit is " +
+            "'$($symbolMetadata.repository.commit)', expected " +
+            "'$ExpectedCommit'.")
+    }
+    if ([string] $symbolMetadata.packageTypes.packageType.name -cne
+        "SymbolsPackage") {
+        throw "Symbol package type must be SymbolsPackage."
+    }
+}
+finally {
+    $symbolArchive.Dispose()
 }
 
 $dotnet = (Get-Command dotnet -ErrorAction Stop).Source
@@ -268,6 +326,36 @@ try {
         "NuGet.Config")
     $nugetConfiguration.Save($nugetConfigPath)
 
+    $dnxFirstEnvironment = @{
+        DOTNET_CLI_HOME = [System.IO.Path]::Combine(
+            $temporaryRoot,
+            "dnx-first-home")
+        DOTNET_CLI_TELEMETRY_OPTOUT = "1"
+        DOTNET_CLI_WORKLOAD_UPDATE_NOTIFY_DISABLE = "1"
+        DOTNET_NOLOGO = "1"
+        DOTNET_SKIP_FIRST_TIME_EXPERIENCE = "1"
+        NUGET_PACKAGES = [System.IO.Path]::Combine(
+            $temporaryRoot,
+            "dnx-first-packages")
+    }
+    $dnxFirstResult = Invoke-Captured `
+        -FileName $dnx `
+        -Arguments @(
+            "dnaxi@$ExpectedVersion",
+            "--source", $resolvedPackageDirectory,
+            "--no-http-cache", "--verbosity", "quiet",
+            "--", "--version") `
+        -Environment $dnxFirstEnvironment `
+        -WorkingDirectory $temporaryRoot
+    $dnxFirstVersion = Get-ObservedVersion `
+        -Result $dnxFirstResult `
+        -Operation "Dnx-first candidate"
+    if ($dnxFirstVersion -cne $ExpectedVersion) {
+        throw (
+            "Dnx-first candidate reported '$dnxFirstVersion', " +
+            "expected '$ExpectedVersion'.")
+    }
+
     $globalCliHome = [System.IO.Path]::Combine($temporaryRoot, "global-home")
     $globalEnvironment = @{
         DOTNET_CLI_HOME = $globalCliHome
@@ -284,7 +372,7 @@ try {
     $globalInstall = Invoke-Captured `
         -FileName $dotnet `
         -Arguments @(
-            "tool", "install", "--global", "dotnet-axi",
+            "tool", "install", "--global", "dnaxi",
             "--version", $ExpectedVersion,
             "--configfile", $nugetConfigPath,
             "--no-http-cache", "--verbosity", "quiet") `
@@ -359,7 +447,7 @@ try {
     $localInstall = Invoke-Captured `
         -FileName $dotnet `
         -Arguments @(
-            "tool", "install", "--local", "dotnet-axi",
+            "tool", "install", "--local", "dnaxi",
             "--tool-manifest", $manifestPath,
             "--version", $ExpectedVersion,
             "--configfile", $nugetConfigPath,
@@ -379,6 +467,10 @@ try {
     $dnxCliHome = [System.IO.Path]::Combine($temporaryRoot, "dnx-home")
     $dnxEnvironment = @{
         DOTNET_CLI_HOME = $dnxCliHome
+        DOTNET_CLI_TELEMETRY_OPTOUT = "1"
+        DOTNET_CLI_WORKLOAD_UPDATE_NOTIFY_DISABLE = "1"
+        DOTNET_NOLOGO = "1"
+        DOTNET_SKIP_FIRST_TIME_EXPERIENCE = "1"
         NUGET_PACKAGES = [System.IO.Path]::Combine(
             $temporaryRoot,
             "dnx-packages")
@@ -392,7 +484,7 @@ try {
     $dnxResult = Invoke-Captured `
         -FileName $dnx `
         -Arguments @(
-            "dotnet-axi@$ExpectedVersion",
+            "dnaxi@$ExpectedVersion",
             "--source", $resolvedPackageDirectory,
             "--no-http-cache", "--verbosity", "quiet",
             "--", "--version") `
@@ -448,7 +540,14 @@ try {
         schema = "dotnet-axi/release-candidate-platform-evidence/v1"
         candidate_commit = $ExpectedCommit
         requested_version = $ExpectedVersion
+        observed_package_id = $packageId
         observed_package_version = $packageVersion
+        observed_symbol_package_id = [string] $symbolMetadata.id
+        observed_symbol_package_version = [string] $symbolMetadata.version
+        observed_symbol_repository_commit =
+            [string] $symbolMetadata.repository.commit
+        observed_symbol_package_type =
+            [string] $symbolMetadata.packageTypes.packageType.name
         observed_versions = [ordered]@{
             global = $globalVersion
             local = $localVersion
@@ -475,5 +574,5 @@ finally {
 }
 
 Write-Host (
-    "Verified global, local, and dnx version parity for dotnet-axi " +
+    "Verified dnx-first, global, and local version parity for dnaxi " +
     "$ExpectedVersion on $RunnerOs.")

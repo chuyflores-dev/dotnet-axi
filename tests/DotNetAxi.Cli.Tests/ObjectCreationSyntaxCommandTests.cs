@@ -99,6 +99,9 @@ public sealed class ObjectCreationSyntaxCommandTests
             "matches[1]{id,file,line,construct,type_match,column}:",
             bounded.Output);
         Assert.Contains("retrieval_command:", bounded.Output);
+        Assert.Contains(
+            $"dnx dnaxi@{ToolVersion.Current} --verbosity quiet -- search syntax object-creation",
+            bounded.Output);
         Assert.Contains("--type 'Widget' --fields 'column' --full", bounded.Output);
         Assert.DoesNotContain("--limit", bounded.Output);
     }
