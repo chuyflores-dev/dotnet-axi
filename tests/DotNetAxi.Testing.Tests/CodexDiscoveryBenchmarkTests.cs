@@ -88,7 +88,7 @@ public sealed class CodexDiscoveryBenchmarkTests
         Assert.Equal(
             context.Request.Product.Skill.Path,
             context.CandidateTools.SkillDirectoryPath);
-        Assert.Equal("1.5.0", context.Adapter.Descriptor.Version);
+        Assert.Equal("1.6.0", context.Adapter.Descriptor.Version);
 
         var preparationPath = Path.Combine(fixture.Root, "preparation.json");
         await CodexDiscoveryBenchmarkPreparation.WriteCreateNewAsync(
