@@ -88,7 +88,7 @@ public sealed class CodexDiscoveryBenchmarkTests
         Assert.Equal(
             context.Request.Product.Skill.Path,
             context.CandidateTools.SkillDirectoryPath);
-        Assert.Equal("1.6.0", context.Adapter.Descriptor.Version);
+        Assert.Equal("1.5.0", context.Adapter.Descriptor.Version);
 
         var preparationPath = Path.Combine(fixture.Root, "preparation.json");
         await CodexDiscoveryBenchmarkPreparation.WriteCreateNewAsync(
@@ -392,6 +392,38 @@ public sealed class CodexDiscoveryBenchmarkTests
             "search.file",
             "/tmp/raw-tools/dnx"));
         Assert.True(CodexBenchmarkCommandEvidence.IsPinnedDnxInvocation(
+            "dnx.exe dnaxi@0.4.0 --source \"$DNAXI_LOCAL_FEED\" --verbosity quiet -- search file marker",
+            "dnaxi",
+            "0.4.0",
+            "/tmp/feed",
+            "DNAXI_LOCAL_FEED",
+            "search.file",
+            "/tmp/raw-tools/dnx.exe"));
+        Assert.True(CodexBenchmarkCommandEvidence.IsPinnedDnxInvocation(
+            "dnx dnaxi@0.4.0 --source \"$DNAXI_LOCAL_FEED\" --verbosity quiet -- search file marker",
+            "dnaxi",
+            "0.4.0",
+            "/tmp/feed",
+            "DNAXI_LOCAL_FEED",
+            "search.file",
+            "/tmp/raw-tools/dnx.exe"));
+        Assert.True(CodexBenchmarkCommandEvidence.IsPinnedDnxInvocation(
+            "/tmp/raw-tools/dnx.exe dnaxi@0.4.0 --source \"$DNAXI_LOCAL_FEED\" --verbosity quiet -- search file marker",
+            "dnaxi",
+            "0.4.0",
+            "/tmp/feed",
+            "DNAXI_LOCAL_FEED",
+            "search.file",
+            "/tmp/raw-tools/dnx.exe"));
+        Assert.False(CodexBenchmarkCommandEvidence.IsPinnedDnxInvocation(
+            "/tmp/shadow/dnx.exe dnaxi@0.4.0 --source \"$DNAXI_LOCAL_FEED\" --verbosity quiet -- search file marker",
+            "dnaxi",
+            "0.4.0",
+            "/tmp/feed",
+            "DNAXI_LOCAL_FEED",
+            "search.file",
+            "/tmp/raw-tools/dnx.exe"));
+        Assert.True(CodexBenchmarkCommandEvidence.IsPinnedDnxInvocation(
             "dnx dnaxi@0.4.0 --source \"$DNAXI_LOCAL_FEED\" --verbosity quiet -- search syntax class --attribute CorpusCase --path .",
             "dnaxi",
             "0.4.0",
@@ -465,6 +497,46 @@ public sealed class CodexDiscoveryBenchmarkTests
             "/tmp/raw-tools/dnx"));
         Assert.False(CodexBenchmarkCommandEvidence.IsPinnedDnxInvocation(
             "/bin/zsh -lc 'dnx dnaxi@0.4.0 --source '$DNAXI_LOCAL_FEED' --verbosity quiet -- search file '\"'Handler.cs' --path . --limit 200\"",
+            "dnaxi",
+            "0.4.0",
+            "/tmp/feed",
+            "DNAXI_LOCAL_FEED",
+            "search.file",
+            "/tmp/raw-tools/dnx"));
+        Assert.False(CodexBenchmarkCommandEvidence.IsPinnedDnxInvocation(
+            "/bin/zsh -lc 'dnx dnaxi@0.4.0 --source '\"'$DNAXI_LOCAL_FEED' --verbosity quiet -- search file Handler.cs\"",
+            "dnaxi",
+            "0.4.0",
+            "/tmp/feed",
+            "DNAXI_LOCAL_FEED",
+            "search.file",
+            "/tmp/raw-tools/dnx"));
+        Assert.False(CodexBenchmarkCommandEvidence.IsPinnedDnxInvocation(
+            "dnx dnaxi@0.4.0 --source \"$DNAXI_LOCAL_FEED\" --add-source /tmp/rogue --verbosity quiet -- search file Handler.cs",
+            "dnaxi",
+            "0.4.0",
+            "/tmp/feed",
+            "DNAXI_LOCAL_FEED",
+            "search.file",
+            "/tmp/raw-tools/dnx"));
+        Assert.False(CodexBenchmarkCommandEvidence.IsPinnedDnxInvocation(
+            "dnx dnaxi@0.4.0 --source \"$DNAXI_LOCAL_FEED\" --add-source=/tmp/rogue --verbosity quiet -- search file Handler.cs",
+            "dnaxi",
+            "0.4.0",
+            "/tmp/feed",
+            "DNAXI_LOCAL_FEED",
+            "search.file",
+            "/tmp/raw-tools/dnx"));
+        Assert.False(CodexBenchmarkCommandEvidence.IsPinnedDnxInvocation(
+            "dnx dnaxi@0.4.0 --source \"$DNAXI_LOCAL_FEED\" --source=/tmp/rogue --verbosity quiet -- search file Handler.cs",
+            "dnaxi",
+            "0.4.0",
+            "/tmp/feed",
+            "DNAXI_LOCAL_FEED",
+            "search.file",
+            "/tmp/raw-tools/dnx"));
+        Assert.False(CodexBenchmarkCommandEvidence.IsPinnedDnxInvocation(
+            "dnx dnaxi@0.4.0 --source \"$DNAXI_LOCAL_FEED\" --verbosity quiet --invalid \\\"; true \\\" -- search file Handler.cs",
             "dnaxi",
             "0.4.0",
             "/tmp/feed",

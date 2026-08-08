@@ -62,10 +62,7 @@ internal static partial class CodexBenchmarkCommandEvidence
             .ToArray();
         var executable = FindExecutable(tokens);
         if (executable < 0
-            || !string.Equals(
-                Path.GetFileName(tokens[executable]),
-                "dnx",
-                StringComparison.OrdinalIgnoreCase)
+            || !IsDnxExecutableName(tokens[executable])
             || executable + 1 >= tokens.Length
             || !string.Equals(
                 tokens[executable + 1],
@@ -93,8 +90,26 @@ internal static partial class CodexBenchmarkCommandEvidence
             var comparison = OperatingSystem.IsWindows()
                 ? StringComparison.OrdinalIgnoreCase
                 : StringComparison.Ordinal;
-            if (!string.Equals(executableToken, expectedName, comparison)
-                && !string.Equals(executableToken, expectedPath, comparison))
+            var bareExecutable = !executableToken.Contains('/')
+                                 && !executableToken.Contains('\\');
+            var bareNameMatches = bareExecutable
+                                  && (string.Equals(
+                                      executableToken,
+                                      expectedName,
+                                      comparison)
+                                      || (string.Equals(
+                                              expectedName,
+                                              "dnx.exe",
+                                              StringComparison.OrdinalIgnoreCase)
+                                          && string.Equals(
+                                              executableToken,
+                                              "dnx",
+                                              StringComparison.OrdinalIgnoreCase)));
+            if (!bareNameMatches
+                && !string.Equals(
+                    executableToken,
+                    expectedPath,
+                    comparison))
             {
                 return false;
             }
@@ -114,6 +129,13 @@ internal static partial class CodexBenchmarkCommandEvidence
                 token is "-?" or "-h" or "--help" or "--version"
                 || token.StartsWith(
                     "--version=",
+                    StringComparison.Ordinal)
+                || token is "--add-source"
+                || token.StartsWith(
+                    "--add-source=",
+                    StringComparison.Ordinal)
+                || token.StartsWith(
+                    "--source=",
                     StringComparison.Ordinal)))
         {
             return false;
@@ -571,7 +593,12 @@ internal static partial class CodexBenchmarkCommandEvidence
         var opening = displayBody.IndexOf(
             openingMarker,
             StringComparison.Ordinal);
+        var toolDelimiter = displayBody.IndexOf(
+            " -- ",
+            StringComparison.Ordinal);
         if (opening < 0
+            || toolDelimiter < 0
+            || opening <= toolDelimiter + " -- ".Length
             || displayBody.IndexOf(
                 openingMarker,
                 opening + openingMarker.Length,
@@ -614,8 +641,21 @@ internal static partial class CodexBenchmarkCommandEvidence
     private static bool ContainsUnquotedControlOperator(string command)
     {
         char quote = '\0';
+        var escaped = false;
         foreach (var character in command)
         {
+            if (escaped)
+            {
+                escaped = false;
+                continue;
+            }
+
+            if (quote != '\'' && character == '\\')
+            {
+                escaped = true;
+                continue;
+            }
+
             if (character is '\'' or '"')
             {
                 quote = quote == '\0'
@@ -632,7 +672,20 @@ internal static partial class CodexBenchmarkCommandEvidence
             }
         }
 
-        return quote != '\0';
+        return quote != '\0' || escaped;
+    }
+
+    private static bool IsDnxExecutableName(string value)
+    {
+        var name = Path.GetFileName(value);
+        return string.Equals(
+                   name,
+                   "dnx",
+                   StringComparison.OrdinalIgnoreCase)
+               || string.Equals(
+                   name,
+                   "dnx.exe",
+                   StringComparison.OrdinalIgnoreCase);
     }
 
     private static string Unquote(string value) =>
