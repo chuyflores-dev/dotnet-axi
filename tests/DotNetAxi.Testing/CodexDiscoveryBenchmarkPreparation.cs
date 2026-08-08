@@ -1291,12 +1291,6 @@ internal static partial class CodexDiscoveryBenchmarkPreparation
                 workspaceBaseline,
                 TimeSpan.FromSeconds(10),
                 CancellationToken.None);
-        var outputLines = result.StandardOutput.Text
-            .ReplaceLineEndings("\n")
-            .Split(
-                '\n',
-                StringSplitOptions.RemoveEmptyEntries
-                | StringSplitOptions.TrimEntries);
         if (result.Lifecycle is not ProcessLifecycle.Completed
             || result.Outcome is not ProcessRunOutcome.Completed
             || result.Exit?.ExitCode != 0
@@ -1304,22 +1298,71 @@ internal static partial class CodexDiscoveryBenchmarkPreparation
             || result.StandardError.LimitExceeded
             || !workspaceInspection.Complete
             || !workspaceInspection.MatchesBaseline
-            || !outputLines.Contains(
-                $"schema: {ProductSchema}",
-                StringComparer.Ordinal)
-            || !outputLines.Contains(
-                "command: version",
-                StringComparer.Ordinal)
-            || !outputLines.Contains(
-                "status: success",
-                StringComparer.Ordinal)
-            || !outputLines.Contains(
-                $"tool_version: {request.Product.PackageVersion}",
-                StringComparer.Ordinal))
+            || !IsExpectedCandidateVersionOutput(
+                result.StandardOutput.Text,
+                request.Product.PackageVersion))
         {
             throw new AgentBenchmarkException(
                 "The exact source-pinned dnaxi candidate failed its bounded local execution preflight; no paid benchmark run may start.");
         }
+    }
+
+    private static bool IsExpectedCandidateVersionOutput(
+        string output,
+        string packageVersion)
+    {
+        var lines = output.ReplaceLineEndings("\n").Split('\n');
+        if (lines.Length > 0 && lines[^1].Length == 0)
+        {
+            lines = lines[..^1];
+        }
+
+        string[] expectedHeader =
+        [
+            $"schema: {ProductSchema}",
+            "command: version",
+            "status: success",
+            "tool: dotnet-axi",
+            $"tool_version: {packageVersion}",
+            $"output_schema: {ProductSchema}",
+            "capabilities:",
+        ];
+        if (lines.Length <= expectedHeader.Length
+            || !lines.Take(expectedHeader.Length).SequenceEqual(
+                expectedHeader,
+                StringComparer.Ordinal))
+        {
+            return false;
+        }
+
+        var priorIndent = 0;
+        foreach (var line in lines.Skip(expectedHeader.Length))
+        {
+            var indent = 0;
+            while (indent < line.Length && line[indent] == ' ')
+            {
+                indent++;
+            }
+
+            if (indent < 2
+                || indent % 2 != 0
+                || indent > priorIndent + 2
+                || indent == line.Length)
+            {
+                return false;
+            }
+
+            var content = line[indent..];
+            var separator = content.IndexOf(':', StringComparison.Ordinal);
+            if (separator <= 0 && !content.Contains(','))
+            {
+                return false;
+            }
+
+            priorIndent = indent;
+        }
+
+        return true;
     }
 
     private static async ValueTask ValidatePromptInputExposureAsync(

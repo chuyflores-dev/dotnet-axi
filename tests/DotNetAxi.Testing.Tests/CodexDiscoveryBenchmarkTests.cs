@@ -116,6 +116,27 @@ public sealed class CodexDiscoveryBenchmarkTests
             StringComparison.Ordinal);
     }
 
+    [Theory]
+    [InlineData("contradictory")]
+    [InlineData("extra-field")]
+    [InlineData("invalid-nesting")]
+    public async Task Preparation_rejects_ambiguous_candidate_version_output(
+        string outputMode)
+    {
+        using var fixture = await PreparedFixture.CreateAsync(
+            dnxProbeOutputMode: outputMode);
+
+        var exception = await Assert.ThrowsAsync<AgentBenchmarkException>(() =>
+            CodexDiscoveryBenchmarkPreparation.PrepareAsync(
+                    fixture.RequestPath)
+                .AsTask());
+
+        Assert.Contains(
+            "no paid benchmark run may start",
+            exception.Message,
+            StringComparison.Ordinal);
+    }
+
     [Fact]
     public async Task Retained_series_reconciles_all_runs_and_thresholds()
     {
@@ -1124,6 +1145,7 @@ public sealed class CodexDiscoveryBenchmarkTests
             bool invalidPackageContents = false,
             bool descriptionCarriesInvocation = true,
             bool dnxProbeSucceeds = true,
+            string? dnxProbeOutputMode = null,
             string candidateVersion = "0.4.0")
         {
             var root = Path.Combine(
@@ -1144,7 +1166,8 @@ public sealed class CodexDiscoveryBenchmarkTests
             var executable = InstallCodexProbe(root);
             var dnxExecutable = InstallDnxProbe(
                 rawToolsPath,
-                dnxProbeSucceeds);
+                dnxProbeSucceeds,
+                dnxProbeOutputMode);
             if (persistentDnaxiOnPath)
             {
                 WriteExecutable(
@@ -1430,7 +1453,8 @@ public sealed class CodexDiscoveryBenchmarkTests
 
         private static string InstallDnxProbe(
             string destinationDirectory,
-            bool succeeds)
+            bool succeeds,
+            string? outputMode)
         {
             var executable = InstallProcessProbe(
                 destinationDirectory,
@@ -1440,6 +1464,15 @@ public sealed class CodexDiscoveryBenchmarkTests
                 File.WriteAllText(
                     Path.Combine(destinationDirectory, "dnx.exit-code"),
                     "73");
+            }
+
+            if (!string.IsNullOrWhiteSpace(outputMode))
+            {
+                File.WriteAllText(
+                    Path.Combine(
+                        destinationDirectory,
+                        "dnx.output-mode"),
+                    outputMode);
             }
 
             return executable;

@@ -222,10 +222,44 @@ static int DnxDiscoveryProbe(
         return 64;
     }
 
+    var outputModePath = Path.Combine(
+        stateDirectory,
+        "dnx.output-mode");
+    var outputMode = File.Exists(outputModePath)
+        ? File.ReadAllText(outputModePath).Trim()
+        : string.Empty;
+    if (string.Equals(
+            outputMode,
+            "contradictory",
+            StringComparison.Ordinal))
+    {
+        Console.WriteLine("status: failed");
+    }
+
     Console.WriteLine("schema: dotnet-axi/v1");
     Console.WriteLine("command: version");
     Console.WriteLine("status: success");
+    Console.WriteLine("tool: dotnet-axi");
     Console.WriteLine("tool_version: 0.4.0");
+    Console.WriteLine("output_schema: dotnet-axi/v1");
+    Console.WriteLine("capabilities:");
+    Console.WriteLine("  sdk:");
+    Console.WriteLine("    availability: present");
+    if (string.Equals(
+            outputMode,
+            "extra-field",
+            StringComparison.Ordinal))
+    {
+        Console.WriteLine("unexpected: value");
+    }
+    else if (string.Equals(
+                 outputMode,
+                 "invalid-nesting",
+                 StringComparison.Ordinal))
+    {
+        Console.WriteLine(" invalid: nesting");
+    }
+
     return 0;
 }
 
