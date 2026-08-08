@@ -116,7 +116,7 @@ internal sealed class HomeCommandHandler : ICommandHandler<HomeRequest>
                 "dotnet-axi",
                 ToolVersion.Current,
                 OutputSchema.Current,
-                AgentGuidanceCatalog.ForVersion(ToolVersion.Current),
+                AgentGuidanceCatalog.ForVersion(ToolVersion.Current).Summary,
                 new HomeWorkspacePayload(
                     DisplayPath(
                         workspace.RootPath,
@@ -277,7 +277,7 @@ internal sealed class HomeCommandHandler : ICommandHandler<HomeRequest>
         string Tool,
         string ToolVersion,
         string OutputSchema,
-        AgentCommandGuidance Guidance,
+        AgentCommandGuidanceSummary Guidance,
         HomeWorkspacePayload Workspace,
         HomeGitPayload Git,
         CapabilityReport Capabilities,

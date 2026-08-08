@@ -113,6 +113,14 @@ public static class AgentSkillDocuments
         lines.AddRange(
         [
             string.Empty,
+            "## Start with dnx",
+            string.Empty,
+        ]);
+        AddNumbered(lines, guidance.ActivationFlow);
+
+        lines.AddRange(
+        [
+            string.Empty,
             "## Invoke on demand",
             string.Empty,
         ]);
