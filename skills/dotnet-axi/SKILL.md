@@ -1,6 +1,6 @@
 ---
 name: dotnet-axi
-description: Use dotnet-axi to obtain deterministic structured evidence for .NET workspaces when the invoked version reports the needed capability, including workspace or source discovery, semantic evidence, impact, analysis, and validation. Use for .NET repository investigation and completion checks; skip for non-.NET work and direct reads of already-known files.
+description: Use dotnet-axi for deterministic .NET repository evidence. Trigger for finding .NET files by path, searching literal or regular-expression text, locating stable C# syntax shapes, inspecting workspace, semantic, impact, or analysis evidence, and validating completion. Route applicable source discovery through the exact version-pinned dnx dnaxi invocation; skip non-.NET work and direct reads of already-known files.
 ---
 
 # Use dotnet-axi
@@ -16,11 +16,17 @@ description: Use dotnet-axi to obtain deterministic structured evidence for .NET
 - Skip dotnet-axi when a direct read of an already-known file is the smaller operation.
 - Skip any capability that the invoked version does not report and use an available direct tool instead.
 
+## Start with dnx
+
+1. For .NET file, literal, regular-expression, or stable-syntax discovery, run the matching bounded `search` route through `dnx dnaxi@<exact-version> --verbosity quiet --` when the invoked version reports it.
+2. Invoke known source-discovery routes directly; do not add a help probe before a known route. If its options are unknown, inspect that selected leaf once, for example `dnx dnaxi@<exact-version> --verbosity quiet -- search file --help`, `dnx dnaxi@<exact-version> --verbosity quiet -- search text --help`, or `dnx dnaxi@<exact-version> --verbosity quiet -- search syntax invocation --help`. Use `dnx dnaxi@<exact-version> --verbosity quiet -- search --help` only when the route itself is unknown.
+3. Read an already-known file directly when that is smaller. If the required capability is unavailable, use an available direct tool and report the gap.
+
 ## Invoke on demand
 
-1. Prefer an already-verified persistent invocation only when one was selected: global `dnaxi <command>` or local `dotnet tool run dnaxi -- <command>`.
-2. Otherwise run one shot with `dnx dnaxi@<exact-version> --verbosity quiet -- <command>`. Keep the exact version pin and do not require a permanent installation.
-3. Start with `dnx dnaxi@<exact-version> --verbosity quiet --` for the passive home view or `dnx dnaxi@<exact-version> --verbosity quiet -- --help` for structured help. Use `dnx dnaxi@<exact-version> --verbosity quiet -- --version` when version identity matters.
+1. Default to one-shot `dnx dnaxi@<exact-version> --verbosity quiet -- <command>`. Keep the exact version pin and do not require a permanent installation.
+2. Use a global `dnaxi <command>` or local `dotnet tool run dnaxi -- <command>` only when that persistent invocation was explicitly selected and verified.
+3. Use `dnx dnaxi@<exact-version> --verbosity quiet --` for a passive workspace summary, `dnx dnaxi@<exact-version> --verbosity quiet -- --help` only when command grammar is unknown, and `dnx dnaxi@<exact-version> --verbosity quiet -- --version` when version identity matters.
 4. Treat the invoked version's structured help, version, and reported capabilities as authoritative. Never use a command or option that it does not expose.
 5. Remember that `dnx` package resolution may download or restore the tool. Keep that network operation explicit and subject to host policy.
 
@@ -38,11 +44,11 @@ Apply this flow only when the invoked version reports the relevant capability.
 
 ## Discover source with bounded queries
 
-1. Before source discovery, inspect the invoked version's structured help for the selected route and its options. If that route is unavailable, use an available direct tool and report the capability gap instead of inventing a command.
+1. Use the exact routes below directly when the invoked version reports them. Do not run a redundant help command before a known file, literal, regular-expression, or stable-syntax route. If a route is unavailable, use an available direct tool and report the capability gap instead of inventing a command.
 2. Find a file by normalized path with `dnx dnaxi@<exact-version> --verbosity quiet -- search file '<path-fragment>' --path <scope> --limit 20`. If the exact file is already known and a direct read is smaller, read it directly.
 3. Find literal text with `dnx dnaxi@<exact-version> --verbosity quiet -- search text '<literal>' --path <scope> --limit 20`.
 4. Find a .NET regular expression with `dnx dnaxi@<exact-version> --verbosity quiet -- search text '<dotnet-regex>' --regex --path <scope> --limit 20`; narrow the expression or path when a file times out.
-5. Find a C# syntax shape by checking `dnx dnaxi@<exact-version> --verbosity quiet -- search syntax --help` and selecting an exposed stable query. For example, use `dnx dnaxi@<exact-version> --verbosity quiet -- search syntax invocation --name SaveChangesAsync --path <scope> --limit 20`.
+5. Find a known C# syntax shape directly with an exposed stable query, for example `dnx dnaxi@<exact-version> --verbosity quiet -- search syntax invocation --name SaveChangesAsync --path <scope> --limit 20`. Inspect `dnx dnaxi@<exact-version> --verbosity quiet -- search syntax --help` once only when the query kind is unknown, or the selected leaf such as `dnx dnaxi@<exact-version> --verbosity quiet -- search syntax invocation --help` when its options are unknown.
 6. Treat stable syntax results as syntax candidates, never as compiler-verified symbol or type identity.
 7. Text search may use compatible `rg` acceleration. When that optional engine is absent, incompatible, or unsuitable for the query, `search text` degrades to its built-in engine with the same stable command behavior.
 8. Keep discovery bounded with a narrow `--path` and `--limit`. If output is truncated, follow its `retrieval_command` only when the remaining rows are needed; otherwise use the returned path or match to issue the next narrower file, text, or syntax query instead of dumping broad source.

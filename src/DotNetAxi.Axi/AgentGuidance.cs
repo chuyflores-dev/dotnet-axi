@@ -11,6 +11,7 @@ public sealed class AgentCommandGuidance
         IEnumerable<string> boundaries,
         IEnumerable<string> useWhen,
         IEnumerable<string> skipWhen,
+        IEnumerable<string> activationFlow,
         IEnumerable<string> invocationFlow,
         string capabilityCondition,
         IEnumerable<string> capabilityFlow,
@@ -27,6 +28,7 @@ public sealed class AgentCommandGuidance
         Boundaries = Copy(boundaries, nameof(boundaries));
         UseWhen = Copy(useWhen, nameof(useWhen));
         SkipWhen = Copy(skipWhen, nameof(skipWhen));
+        ActivationFlow = Copy(activationFlow, nameof(activationFlow));
         InvocationFlow = Copy(invocationFlow, nameof(invocationFlow));
         CapabilityCondition = RequiredText(
             capabilityCondition,
@@ -38,6 +40,10 @@ public sealed class AgentCommandGuidance
         SafetyFlow = Copy(safetyFlow, nameof(safetyFlow));
         Completion = RequiredText(completion, nameof(completion));
         EvidenceReport = RequiredText(evidenceReport, nameof(evidenceReport));
+        Summary = new AgentCommandGuidanceSummary(
+            Invocation,
+            Authority,
+            ActivationFlow);
     }
 
     public string Invocation { get; }
@@ -56,6 +62,8 @@ public sealed class AgentCommandGuidance
 
     public IReadOnlyList<string> SkipWhen { get; }
 
+    public IReadOnlyList<string> ActivationFlow { get; }
+
     public IReadOnlyList<string> InvocationFlow { get; }
 
     public string CapabilityCondition { get; }
@@ -69,6 +77,8 @@ public sealed class AgentCommandGuidance
     public string Completion { get; }
 
     public string EvidenceReport { get; }
+
+    public AgentCommandGuidanceSummary Summary { get; }
 
     private static IReadOnlyList<string> Copy(
         IEnumerable<string> values,
@@ -107,6 +117,25 @@ public sealed class AgentCommandGuidance
 
         return value;
     }
+}
+
+public sealed class AgentCommandGuidanceSummary
+{
+    internal AgentCommandGuidanceSummary(
+        string invocation,
+        string authority,
+        IReadOnlyList<string> nextSteps)
+    {
+        Invocation = invocation;
+        Authority = authority;
+        NextSteps = nextSteps;
+    }
+
+    public string Invocation { get; }
+
+    public string Authority { get; }
+
+    public IReadOnlyList<string> NextSteps { get; }
 }
 
 public sealed class CodexAgentGuidance
@@ -211,7 +240,7 @@ public static class AgentGuidanceCatalog
     public const string SkillName = "dotnet-axi";
 
     public const string SkillDescription =
-        "Use dotnet-axi to obtain deterministic structured evidence for .NET workspaces when the invoked version reports the needed capability, including workspace or source discovery, semantic evidence, impact, analysis, and validation. Use for .NET repository investigation and completion checks; skip for non-.NET work and direct reads of already-known files.";
+        "Use dotnet-axi for deterministic .NET repository evidence. Trigger for finding .NET files by path, searching literal or regular-expression text, locating stable C# syntax shapes, inspecting workspace, semantic, impact, or analysis evidence, and validating completion. Route applicable source discovery through the exact version-pinned dnx dnaxi invocation; skip non-.NET work and direct reads of already-known files.";
 
     public static AgentCommandGuidance Command { get; } =
         CreateCommand(ExactVersionPlaceholder);
@@ -315,11 +344,17 @@ public static class AgentGuidanceCatalog
             "Skip dotnet-axi when a direct read of an already-known file is the smaller operation.",
             "Skip any capability that the invoked version does not report and use an available direct tool instead.",
         ],
+        activationFlow:
+        [
+            $"For .NET file, literal, regular-expression, or stable-syntax discovery, run the matching bounded `search` route through `{commandPrefix}` when the invoked version reports it.",
+            $"Invoke known source-discovery routes directly; do not add a help probe before a known route. If its options are unknown, inspect that selected leaf once, for example `{commandPrefix} search file --help`, `{commandPrefix} search text --help`, or `{commandPrefix} search syntax invocation --help`. Use `{commandPrefix} search --help` only when the route itself is unknown.",
+            "Read an already-known file directly when that is smaller. If the required capability is unavailable, use an available direct tool and report the gap.",
+        ],
         invocationFlow:
         [
-            "Prefer an already-verified persistent invocation only when one was selected: global `dnaxi <command>` or local `dotnet tool run dnaxi -- <command>`.",
-            $"Otherwise run one shot with `{invocation}`. Keep the exact version pin and do not require a permanent installation.",
-            $"Start with `{homeInvocation}` for the passive home view or `{helpInvocation}` for structured help. Use `{versionInvocation}` when version identity matters.",
+            $"Default to one-shot `{invocation}`. Keep the exact version pin and do not require a permanent installation.",
+            "Use a global `dnaxi <command>` or local `dotnet tool run dnaxi -- <command>` only when that persistent invocation was explicitly selected and verified.",
+            $"Use `{homeInvocation}` for a passive workspace summary, `{helpInvocation}` only when command grammar is unknown, and `{versionInvocation}` when version identity matters.",
             authority,
             "Remember that `dnx` package resolution may download or restore the tool. Keep that network operation explicit and subject to host policy.",
         ],
@@ -337,11 +372,11 @@ public static class AgentGuidanceCatalog
         ],
         sourceDiscoveryFlow:
         [
-            "Before source discovery, inspect the invoked version's structured help for the selected route and its options. If that route is unavailable, use an available direct tool and report the capability gap instead of inventing a command.",
+            "Use the exact routes below directly when the invoked version reports them. Do not run a redundant help command before a known file, literal, regular-expression, or stable-syntax route. If a route is unavailable, use an available direct tool and report the capability gap instead of inventing a command.",
             $"Find a file by normalized path with `{commandPrefix} search file '<path-fragment>' --path <scope> --limit 20`. If the exact file is already known and a direct read is smaller, read it directly.",
             $"Find literal text with `{commandPrefix} search text '<literal>' --path <scope> --limit 20`.",
             $"Find a .NET regular expression with `{commandPrefix} search text '<dotnet-regex>' --regex --path <scope> --limit 20`; narrow the expression or path when a file times out.",
-            $"Find a C# syntax shape by checking `{commandPrefix} search syntax --help` and selecting an exposed stable query. For example, use `{commandPrefix} search syntax invocation --name SaveChangesAsync --path <scope> --limit 20`.",
+            $"Find a known C# syntax shape directly with an exposed stable query, for example `{commandPrefix} search syntax invocation --name SaveChangesAsync --path <scope> --limit 20`. Inspect `{commandPrefix} search syntax --help` once only when the query kind is unknown, or the selected leaf such as `{commandPrefix} search syntax invocation --help` when its options are unknown.",
             "Treat stable syntax results as syntax candidates, never as compiler-verified symbol or type identity.",
             "Text search may use compatible `rg` acceleration. When that optional engine is absent, incompatible, or unsuitable for the query, `search text` degrades to its built-in engine with the same stable command behavior.",
             "Keep discovery bounded with a narrow `--path` and `--limit`. If output is truncated, follow its `retrieval_command` only when the remaining rows are needed; otherwise use the returned path or match to issue the next narrower file, text, or syntax query instead of dumping broad source.",

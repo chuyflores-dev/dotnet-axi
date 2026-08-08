@@ -46,6 +46,20 @@ public sealed class AgentSkillGenerationTests
         Assert.Contains(guidance.CapabilityCondition, skill);
         Assert.Contains(guidance.Completion, skill);
         Assert.Contains("references/codex.md", skill);
+        Assert.Contains("## Start with dnx", skill);
+        Assert.Contains("Default to one-shot", skill);
+        Assert.Contains("do not add a help probe before a known route", skill);
+        Assert.Contains("search file --help", skill);
+        Assert.Contains("search text --help", skill);
+        Assert.Contains("search syntax invocation --help", skill);
+        Assert.DoesNotContain("route or options are unknown", skill);
+        Assert.DoesNotContain(
+            "Before source discovery, inspect the invoked version's structured help",
+            skill);
+        foreach (var item in guidance.ActivationFlow)
+        {
+            Assert.Contains(item, skill);
+        }
         foreach (var item in guidance.UseWhen
                      .Concat(guidance.SkipWhen)
                      .Concat(guidance.CapabilityFlow)
@@ -221,14 +235,14 @@ public sealed class AgentSkillGenerationTests
             Assert.Equal(string.Empty, helpError.ToString());
             var runtimeGuidance =
                 AgentGuidanceCatalog.ForVersion(ToolVersion.Current);
-            foreach (var item in GuidanceText(runtimeGuidance))
+            foreach (var item in SummaryText(runtimeGuidance.Summary))
             {
                 Assert.Contains(item, homeOutput.ToString());
                 Assert.Contains(item, helpOutput.ToString());
             }
 
-            AssertSourceDiscoveryGuidance(homeOutput.ToString());
-            AssertSourceDiscoveryGuidance(helpOutput.ToString());
+            AssertCompactRuntimeGuidance(homeOutput.ToString());
+            AssertCompactRuntimeGuidance(helpOutput.ToString());
         }
         finally
         {
@@ -236,24 +250,12 @@ public sealed class AgentSkillGenerationTests
         }
     }
 
-    private static IEnumerable<string> GuidanceText(
-        AgentCommandGuidance guidance) =>
+    private static IEnumerable<string> SummaryText(
+        AgentCommandGuidanceSummary guidance) =>
     [
         guidance.Invocation,
-        guidance.HomeInvocation,
-        guidance.HelpInvocation,
-        guidance.VersionInvocation,
         guidance.Authority,
-        .. guidance.Boundaries,
-        .. guidance.UseWhen,
-        .. guidance.SkipWhen,
-        .. guidance.InvocationFlow,
-        guidance.CapabilityCondition,
-        .. guidance.CapabilityFlow,
-        .. guidance.SourceDiscoveryFlow,
-        .. guidance.SafetyFlow,
-        guidance.Completion,
-        guidance.EvidenceReport,
+        .. guidance.NextSteps,
     ];
 
     private static void AssertPortableMetadata(string skill)
@@ -265,6 +267,8 @@ public sealed class AgentSkillGenerationTests
             $"description: {AgentGuidanceCatalog.SkillDescription}",
             lines[2]);
         Assert.Equal("---", lines[3]);
+        Assert.Contains("Trigger for finding .NET files", lines[2]);
+        Assert.Contains("exact version-pinned dnx dnaxi invocation", lines[2]);
         Assert.DoesNotContain("display_name:", skill);
         Assert.DoesNotContain("allowed-tools:", skill);
     }
@@ -327,6 +331,9 @@ public sealed class AgentSkillGenerationTests
                      "search text '<literal>'",
                      "search text '<dotnet-regex>' --regex",
                      "search syntax --help",
+                     "search file --help",
+                     "search text --help",
+                     "search syntax invocation --help",
                      "search syntax invocation --name SaveChangesAsync",
                      "--path <scope> --limit 20",
                      "built-in engine",
@@ -348,6 +355,31 @@ public sealed class AgentSkillGenerationTests
         {
             Assert.DoesNotContain(futureSemanticCommand, content);
         }
+    }
+
+    private static void AssertCompactRuntimeGuidance(string content)
+    {
+        Assert.Contains("guidance:\n  invocation: dnx dnaxi@", content);
+        Assert.Contains("\n  authority:", content);
+        Assert.Contains("\n  next_steps[3]:", content);
+        foreach (var omitted in new[]
+                 {
+                     "boundaries:",
+                     "use_when:",
+                     "skip_when:",
+                     "activation_flow:",
+                     "invocation_flow:",
+                     "capability_flow:",
+                     "source_discovery_flow:",
+                     "safety_flow:",
+                     "completion:",
+                 })
+        {
+            Assert.DoesNotContain(omitted, content);
+        }
+
+        Assert.DoesNotContain("dotnet tool run dnaxi", content);
+        Assert.DoesNotContain("source_discovery_flow", content);
     }
 
     private static string CreateTemporaryDirectory()

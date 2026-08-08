@@ -162,10 +162,17 @@ function Assert-InstalledAgentSkill {
 
     $requiredSourceDiscoveryGuidance = @(
         "dnx dnaxi@<exact-version> --verbosity quiet -- <command>",
+        "Trigger for finding .NET files",
+        "## Start with dnx",
+        "Default to one-shot",
+        "do not add a help probe before a known route",
         "search file '<path-fragment>'",
+        "search file --help",
         "search text '<literal>'",
+        "search text --help",
         "search text '<dotnet-regex>' --regex",
         "search syntax --help",
+        "search syntax invocation --help",
         "search syntax invocation --name SaveChangesAsync",
         "--path <scope> --limit 20",
         "built-in engine",
@@ -567,8 +574,25 @@ function Assert-HelpOutput {
         -not $Result.StandardOutput.Contains(
             "invocation: dnx dnaxi@$Version --verbosity quiet -- <command>") -or
         -not $Result.StandardOutput.Contains(
-            "Treat the invoked version's structured help")) {
-        throw "Help output does not contain canonical Agent Skill guidance."
+            "Treat the invoked version's structured help") -or
+        -not $Result.StandardOutput.Contains("next_steps[3]:") -or
+        -not $Result.StandardOutput.Contains(
+            "Invoke known source-discovery routes directly") -or
+        -not $Result.StandardOutput.Contains("search file --help") -or
+        -not $Result.StandardOutput.Contains("search text --help") -or
+        -not $Result.StandardOutput.Contains(
+            "search syntax invocation --help")) {
+        throw "Help output does not contain compact activation guidance."
+    }
+
+    foreach ($omitted in @(
+            "source_discovery_flow:",
+            "invocation_flow:",
+            "safety_flow:",
+            "completion:")) {
+        if ($Result.StandardOutput.Contains($omitted)) {
+            throw "Help output embeds full Agent Skill field '$omitted'."
+        }
     }
 }
 
@@ -597,8 +621,14 @@ function Assert-HomeOutput {
         "command_engines[1]{command,preferred_engine,selected_engine,degradation}",
         "guidance:",
         "invocation: dnx dnaxi@$Version --verbosity quiet -- <command>",
+        "next_steps[3]:",
+        "Invoke known source-discovery routes directly",
+        "search file --help",
+        "search text --help",
+        "search syntax invocation --help",
+        "Read an already-known file directly when that is smaller.",
         "suggestions[1]:`n  - command: dnx`n    arguments[5]: dnaxi@$Version,`"--verbosity`",quiet,`"--`",`"--help`"",
-        "Do not claim completion solely because files changed."
+        "do not add a help probe before a known route."
     )
     foreach ($text in $required) {
         if (-not $Result.StandardOutput.Contains($text)) {
