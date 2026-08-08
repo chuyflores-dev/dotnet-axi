@@ -19,7 +19,7 @@ description: Use dotnet-axi for deterministic .NET repository evidence. Trigger 
 ## Start with dnx
 
 1. For .NET file, literal, regular-expression, or stable-syntax discovery, run the matching bounded `search` route through `dnx dnaxi@0.4.0 --verbosity quiet --` when the invoked version reports it.
-2. Invoke known source-discovery routes directly; do not add a help probe before a known route. If its options are unknown, inspect that selected leaf once, for example `dnx dnaxi@0.4.0 --verbosity quiet -- search file --help`, `dnx dnaxi@0.4.0 --verbosity quiet -- search text --help`, or `dnx dnaxi@0.4.0 --verbosity quiet -- search syntax invocation --help`. Use `dnx dnaxi@0.4.0 --verbosity quiet -- search --help` only when the route itself is unknown.
+2. Invoke known source-discovery routes directly; do not add a help probe before a known route. Inspect only the narrowest relevant help once when no documented route or option applies.
 3. Read an already-known file directly when that is smaller. If the required capability is unavailable, use an available direct tool and report the gap.
 
 ## Invoke on demand
@@ -49,11 +49,12 @@ Apply this flow only when the invoked version reports the relevant capability.
 2. Find a file by normalized path with `dnx dnaxi@0.4.0 --verbosity quiet -- search file '<path-fragment>' --path <scope> --limit 20`. If the exact file is already known and a direct read is smaller, read it directly.
 3. Find literal text with `dnx dnaxi@0.4.0 --verbosity quiet -- search text '<literal>' --path <scope> --limit 20`.
 4. Find a .NET regular expression with `dnx dnaxi@0.4.0 --verbosity quiet -- search text '<dotnet-regex>' --regex --path <scope> --limit 20`; narrow the expression or path when a file times out.
-5. Find a known C# syntax shape directly with an exposed stable query, for example `dnx dnaxi@0.4.0 --verbosity quiet -- search syntax invocation --name SaveChangesAsync --path <scope> --limit 20`. Inspect `dnx dnaxi@0.4.0 --verbosity quiet -- search syntax --help` once only when the query kind is unknown, or the selected leaf such as `dnx dnaxi@0.4.0 --verbosity quiet -- search syntax invocation --help` when its options are unknown.
-6. When a bounded result reports complete coverage, return its requested facts directly without a redundant help probe or matched-file reread.
-7. Treat stable syntax results as syntax candidates, never as compiler-verified symbol or type identity.
-8. Text search may use compatible `rg` acceleration. When that optional engine is absent, incompatible, or unsuitable for the query, `search text` degrades to its built-in engine with the same stable command behavior.
-9. Keep discovery bounded with a narrow `--path` and `--limit`. If output is truncated, follow its `retrieval_command` only when the remaining rows are needed; otherwise use the returned path or match to issue the next narrower file, text, or syntax query instead of dumping broad source.
+5. Find a known C# syntax shape directly with one of these stable routes: `dnx dnaxi@0.4.0 --verbosity quiet -- search syntax invocation --name SaveChangesAsync --path <scope> --limit 20`, `dnx dnaxi@0.4.0 --verbosity quiet -- search syntax class --attribute <attribute> --path <scope> --limit 20`, `dnx dnaxi@0.4.0 --verbosity quiet -- search syntax object-creation --type <type> --path <scope> --limit 20`, or `dnx dnaxi@0.4.0 --verbosity quiet -- search syntax catch --type <type> --path <scope> --limit 20`.
+6. When a request requires object-creation syntax to expose the requested type, keep only `type_match: exact`; do not report `type_match: unresolved` target-typed `new()` as a requested-type match because resolving it requires compiler semantics.
+7. When a bounded result reports complete coverage, return its requested facts directly without a redundant help probe or matched-file reread.
+8. Treat stable syntax results as syntax candidates, never as compiler-verified symbol or type identity.
+9. Text search may use compatible `rg` acceleration. When that optional engine is absent, incompatible, or unsuitable for the query, `search text` degrades to its built-in engine with the same stable command behavior.
+10. Keep discovery bounded with a narrow `--path` and `--limit`. If output is truncated, follow its `retrieval_command` only when the remaining rows are needed; otherwise use the returned path or match to issue the next narrower file, text, or syntax query instead of dumping broad source.
 
 ## Preserve evidence and safety
 

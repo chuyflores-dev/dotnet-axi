@@ -99,9 +99,10 @@ The skill uses trigger-shaped metadata for .NET file, literal,
 regular-expression, and stable-syntax discovery and teaches exact
 version-pinned `dnx dnaxi@<version> --verbosity quiet -- <command>` invocation
 so an agent does not require a permanent global-tool installation. Known
-reported routes are invoked directly without a redundant help probe. Help is
-used when a route or its options are unknown. A verified local or global
-invocation MAY be used only when explicitly selected. Guidance treats the
+reported routes are invoked directly without a redundant help probe. The
+narrowest relevant help is inspected once only when no documented route or
+option applies. A verified local or global invocation MAY be used only when
+explicitly selected. Guidance treats the
 invoked tool's help, version, and capability output as authoritative and never
 assumes that a command exists merely because a newer skill mentions it.
 
@@ -129,8 +130,11 @@ teach agents to:
 - Treat compatible `rg` use as optional acceleration: unavailable,
   incompatible, or unsuitable acceleration degrades to the built-in text
   engine without changing the stable command contract.
-- Select only stable syntax query kinds exposed by the invoked help, and label
-  their results as syntax candidates rather than compiler-verified identity.
+- Invoke the documented stable class, catch, invocation, and object-creation
+  syntax routes directly. Label their results as syntax candidates rather than
+  compiler-verified identity. When a request requires object-creation syntax
+  to expose the requested type, include only exact type matches and exclude
+  unresolved target-typed `new()` candidates.
 - Use a returned path or match to choose the next narrower evidence-producing
   file, text, or syntax query instead of broadly dumping source. A truncated
   result's retrieval command is used only when the omitted rows are needed.
