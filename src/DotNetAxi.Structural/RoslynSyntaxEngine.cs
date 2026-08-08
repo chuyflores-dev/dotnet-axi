@@ -114,7 +114,14 @@ public sealed class RoslynSyntaxEngine
                         $"Syntax query '{queryKind}' returned a node outside the selected syntax tree.");
                 }
 
-                var lineSpan = tree.GetLineSpan(node.Span, cancellationToken).Span;
+                var reportedSpan = node is ClassDeclarationSyntax declaration
+                    ? TextSpan.FromBounds(
+                        declaration.Keyword.SpanStart,
+                        declaration.Span.End)
+                    : node.Span;
+                var lineSpan = tree.GetLineSpan(
+                    reportedSpan,
+                    cancellationToken).Span;
                 var range = new StructuralSourceRange(
                     SourceLocation.FromZeroBasedUtf16(
                         path.RelativePath,

@@ -279,7 +279,10 @@ file changes, tool outcomes, and portable inspected file/project scope.
 One thread and one turn follow an explicit start, item, and terminal transition
 model; duplicate or out-of-order lifecycle events fail closed. Bare, rooted,
 and quoted repository paths are normalized only after preserving root
-semantics, and recognized paths outside the workspace are unsafe. Malformed,
+semantics, and recognized paths outside the workspace are unsafe. Bounded
+shell wrappers are decoded before command-scope extraction, and command-class
+selection uses the invoked executable rather than executable names appearing
+only as arguments. Malformed,
 duplicate, overflowing, permission-denied, read-only, network-denied, and
 untrusted-scope evidence fails closed while preserving the complete trajectory.
 After timeout, the runner preserves the pre-cleanup snapshot, performs bounded

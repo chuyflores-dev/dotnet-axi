@@ -57,6 +57,7 @@ public sealed class AttributedClassSyntaxCommandTests
         Assert.Contains("Attributes.cs", result.Output);
         Assert.Contains("Malformed.cs", result.Output);
         Assert.Contains("matches[6]{id,file,line,construct}:", result.Output);
+        Assert.Contains(",Attributes.cs,4,class", result.Output);
         Assert.Contains(",class", result.Output);
     }
 

@@ -53,6 +53,9 @@ public sealed class AgentSkillGenerationTests
         Assert.Contains("search file --help", skill);
         Assert.Contains("search text --help", skill);
         Assert.Contains("search syntax invocation --help", skill);
+        Assert.Contains(
+            "return its requested facts directly without a redundant help probe or matched-file reread",
+            skill);
         Assert.DoesNotContain("route or options are unknown", skill);
         Assert.DoesNotContain(
             "Before source discovery, inspect the invoked version's structured help",

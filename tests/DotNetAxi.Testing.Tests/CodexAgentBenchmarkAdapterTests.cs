@@ -352,6 +352,35 @@ public sealed class CodexAgentBenchmarkAdapterTests
     }
 
     [Fact]
+    public void Command_scope_accepts_shell_wrapped_numbered_repository_read()
+    {
+        using var workspace = new TemporaryWorkspace();
+        var files = new HashSet<string>(StringComparer.Ordinal);
+        var projects = new HashSet<string>(StringComparer.Ordinal);
+
+        var valid = CodexBenchmarkCommandEvidence.ObserveCommandScope(
+            "/bin/zsh -lc '/bin/cat -n src/Discovery/Cases/CatchCases.cs'",
+            workspace.Path,
+            files,
+            projects);
+
+        Assert.True(valid);
+        Assert.Equal(["src/Discovery/Cases/CatchCases.cs"], files);
+        Assert.Empty(projects);
+    }
+
+    [Fact]
+    public void Classification_ignores_executable_names_in_whence_arguments()
+    {
+        var toolClass = CodexBenchmarkCommandEvidence.Classify(
+            "/bin/zsh -lc 'whence -a dnx dotnet python3 node'",
+            "read-only",
+            ["repository-read", "source-search"]);
+
+        Assert.Equal("repository-read", toolClass);
+    }
+
+    [Fact]
     public void Output_scope_rejects_unquoted_outside_paths_with_spaces()
     {
         using var workspace = new TemporaryWorkspace();

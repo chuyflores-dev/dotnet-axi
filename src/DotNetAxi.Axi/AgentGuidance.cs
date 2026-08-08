@@ -378,6 +378,7 @@ public static class AgentGuidanceCatalog
             $"Find literal text with `{commandPrefix} search text '<literal>' --path <scope> --limit 20`.",
             $"Find a .NET regular expression with `{commandPrefix} search text '<dotnet-regex>' --regex --path <scope> --limit 20`; narrow the expression or path when a file times out.",
             $"Find a known C# syntax shape directly with an exposed stable query, for example `{commandPrefix} search syntax invocation --name SaveChangesAsync --path <scope> --limit 20`. Inspect `{commandPrefix} search syntax --help` once only when the query kind is unknown, or the selected leaf such as `{commandPrefix} search syntax invocation --help` when its options are unknown.",
+            "When a bounded result reports complete coverage, return its requested facts directly without a redundant help probe or matched-file reread.",
             "Treat stable syntax results as syntax candidates, never as compiler-verified symbol or type identity.",
             "Text search may use compatible `rg` acceleration. When that optional engine is absent, incompatible, or unsuitable for the query, `search text` degrades to its built-in engine with the same stable command behavior.",
             "Keep discovery bounded with a narrow `--path` and `--limit`. If output is truncated, follow its `retrieval_command` only when the remaining rows are needed; otherwise use the returned path or match to issue the next narrower file, text, or syntax query instead of dumping broad source.",

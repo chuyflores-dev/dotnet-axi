@@ -9,22 +9,23 @@ internal static partial class CodexBenchmarkCommandEvidence
         string sandbox,
         IReadOnlyList<string> permittedTools)
     {
-        if (SourceSearchCommandRegex().IsMatch(command))
+        var invocation = UnwrapShell(command);
+        if (SourceSearchCommandRegex().IsMatch(invocation))
         {
             return "source-search";
         }
 
-        if (RepositoryReadCommandRegex().IsMatch(command))
+        if (RepositoryReadCommandRegex().IsMatch(invocation))
         {
             return "repository-read";
         }
 
-        if (DotNetCommandRegex().IsMatch(command))
+        if (IsExecutableNamed(invocation, "dotnet"))
         {
             return "dotnet-sdk";
         }
 
-        if (GitCommandRegex().IsMatch(command))
+        if (IsExecutableNamed(invocation, "git"))
         {
             return "git";
         }
@@ -373,12 +374,13 @@ internal static partial class CodexBenchmarkCommandEvidence
         ISet<string> files,
         ISet<string> projects)
     {
-        if (SourceSearchCommandRegex().IsMatch(command))
+        var invocation = UnwrapShell(command);
+        if (SourceSearchCommandRegex().IsMatch(invocation))
         {
-            return RejectOutsideSearchPaths(command, workspacePath);
+            return RejectOutsideSearchPaths(invocation, workspacePath);
         }
 
-        return ObserveScopeText(command, workspacePath, files, projects);
+        return ObserveScopeText(invocation, workspacePath, files, projects);
     }
 
     public static bool ObserveOutputScope(
@@ -574,6 +576,19 @@ internal static partial class CodexBenchmarkCommandEvidence
         return index < tokens.Count ? index : -1;
     }
 
+    private static bool IsExecutableNamed(string command, string name)
+    {
+        var tokens = CommandArgumentRegex().Matches(command)
+            .Select(static match => Unquote(match.Value))
+            .ToArray();
+        var executable = FindExecutable(tokens);
+        return executable >= 0
+               && string.Equals(
+                   Path.GetFileName(tokens[executable]),
+                   name,
+                   StringComparison.OrdinalIgnoreCase);
+    }
+
     private static string UnwrapShell(string command)
     {
         var trimmed = command.Trim();
@@ -766,16 +781,6 @@ internal static partial class CodexBenchmarkCommandEvidence
         "(?:^|[\\s;'\"|&()])(?:cat|sed|head|tail|type|Get-Content)(?=$|[\\s;'\"|&()])",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex RepositoryReadCommandRegex();
-
-    [GeneratedRegex(
-        "(?:^|[\\s;'\"|&()])dotnet(?=$|[\\s;'\"|&()])",
-        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
-    private static partial Regex DotNetCommandRegex();
-
-    [GeneratedRegex(
-        "(?:^|[\\s;'\"|&()])git(?=$|[\\s;'\"|&()])",
-        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
-    private static partial Regex GitCommandRegex();
 
     [GeneratedRegex(
         "(?:(?<quote>[\"'])(?<quotedPath>[^\"'\\r\\n]+\\.(?:csproj|cs))\\k<quote>|(?<path>(?:(?:[A-Za-z]:[\\\\/]|/|\\\\\\\\)?[A-Za-z0-9_.-]+(?:[\\\\/][A-Za-z0-9_.-]+)*)\\.(?:csproj|cs)))",

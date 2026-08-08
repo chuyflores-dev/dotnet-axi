@@ -128,7 +128,9 @@ once even when several attributes match; nested, static, and partial classes
 remain ordinary class candidates. Records, structs, interfaces, and
 compilation-unit attributes are not class candidates. Recoverable malformed
 syntax remains a candidate only when Roslyn attaches both the attribute name
-and the class declaration. The query does not resolve the attribute type,
+and the class declaration. Its reported start location is the class keyword,
+not a preceding attribute list, so declaration path-and-line facts identify
+the declaration line. The query does not resolve the attribute type,
 aliases, target validity, or any other compiler meaning. `--path` and
 `--include-generated` follow the shared traversal policy.
 

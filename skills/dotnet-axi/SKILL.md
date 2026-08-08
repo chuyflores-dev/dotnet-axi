@@ -50,9 +50,10 @@ Apply this flow only when the invoked version reports the relevant capability.
 3. Find literal text with `dnx dnaxi@0.4.0 --verbosity quiet -- search text '<literal>' --path <scope> --limit 20`.
 4. Find a .NET regular expression with `dnx dnaxi@0.4.0 --verbosity quiet -- search text '<dotnet-regex>' --regex --path <scope> --limit 20`; narrow the expression or path when a file times out.
 5. Find a known C# syntax shape directly with an exposed stable query, for example `dnx dnaxi@0.4.0 --verbosity quiet -- search syntax invocation --name SaveChangesAsync --path <scope> --limit 20`. Inspect `dnx dnaxi@0.4.0 --verbosity quiet -- search syntax --help` once only when the query kind is unknown, or the selected leaf such as `dnx dnaxi@0.4.0 --verbosity quiet -- search syntax invocation --help` when its options are unknown.
-6. Treat stable syntax results as syntax candidates, never as compiler-verified symbol or type identity.
-7. Text search may use compatible `rg` acceleration. When that optional engine is absent, incompatible, or unsuitable for the query, `search text` degrades to its built-in engine with the same stable command behavior.
-8. Keep discovery bounded with a narrow `--path` and `--limit`. If output is truncated, follow its `retrieval_command` only when the remaining rows are needed; otherwise use the returned path or match to issue the next narrower file, text, or syntax query instead of dumping broad source.
+6. When a bounded result reports complete coverage, return its requested facts directly without a redundant help probe or matched-file reread.
+7. Treat stable syntax results as syntax candidates, never as compiler-verified symbol or type identity.
+8. Text search may use compatible `rg` acceleration. When that optional engine is absent, incompatible, or unsuitable for the query, `search text` degrades to its built-in engine with the same stable command behavior.
+9. Keep discovery bounded with a narrow `--path` and `--limit`. If output is truncated, follow its `retrieval_command` only when the remaining rows are needed; otherwise use the returned path or match to issue the next narrower file, text, or syntax query instead of dumping broad source.
 
 ## Preserve evidence and safety
 
