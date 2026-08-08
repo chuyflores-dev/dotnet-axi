@@ -506,15 +506,10 @@ package resolution remains local and network-disabled. The CLI is not
 represented as an MCP server, and API-key authentication or API-key artifacts
 are not accepted.
 
-The corrected Codex discovery protocol uses version 2 retained-run and report
-schemas, version 3 summaries, and Codex adapter version 1.5. Reconciliation
-corrections do not relabel retained adapter evidence; newly prepared series pin
-harness version 2.1. The fixture home
-restores the sealed raw-tool path after login-shell initialization, and every
-run revalidates that the login shell resolves `dnx` to the pinned executable
-before Codex starts. The protocol derives
-normalized and raw-event command classification and inspected scope through
-the same rules.
+The corrected Codex discovery protocol uses version 2 retained-run and report schemas, version 3 summaries, and Codex adapter version 1.5.
+Reconciliation corrections do not relabel retained adapter evidence; newly prepared series pin harness version 2.1.
+The fixture home restores the sealed raw-tool path after login-shell initialization, and every run revalidates that the login shell resolves `dnx` to the pinned executable before Codex starts.
+The protocol derives normalized and raw-event command classification and inspected scope through the same rules.
 Condition metrics count command executions of the manifest-pinned `dnx
 <package-id>@<version>` identity only when the command also carries the pinned
 local source and quiet verbosity before the tool delimiter. Successful
