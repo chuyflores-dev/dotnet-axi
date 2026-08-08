@@ -8,6 +8,49 @@ namespace DotNetAxi.Testing.Tests;
 public sealed class AgentBenchmarkRunnerTests
 {
     [Fact]
+    public async Task Exact_fact_sets_ignore_response_order_and_duplicates()
+    {
+        var source = await SingleTaskCorpusAsync();
+        var expectedFacts = new[]
+        {
+            "src/Discovery/Case10.cs:10",
+            "src/Discovery/Case2.cs:2",
+        };
+        var task = source.Tasks[0] with
+        {
+            SuccessOracle = source.Tasks[0].SuccessOracle with
+            {
+                ExpectedFacts = expectedFacts,
+            },
+        };
+        var corpus = source with { Tasks = [task] };
+        var fake = new DeterministicFakeAgentBenchmarkAdapter();
+        var adapter = new DelegatingAdapter(
+            fake.Descriptor,
+            async (input, cancellationToken) =>
+            {
+                await using var execution = await fake.StartAsync(
+                    input,
+                    cancellationToken);
+                var result = await execution.Completion;
+                return new CompletedExecution(
+                    result with
+                    {
+                        Answer = string.Join(
+                            '\n',
+                            expectedFacts[1],
+                            expectedFacts[0],
+                            expectedFacts[1]),
+                    },
+                    result.RawEvents);
+            });
+
+        var series = await RunAsync(corpus, adapter, Configuration(7));
+
+        Assert.All(series.Runs, static run => Assert.True(run.Success));
+    }
+
+    [Fact]
     public async Task Full_run_matrix_is_randomized_and_replayable()
     {
         var corpus = await SingleTaskCorpusAsync();

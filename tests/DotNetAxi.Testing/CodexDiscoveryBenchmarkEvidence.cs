@@ -5,11 +5,11 @@ namespace DotNetAxi.Testing;
 internal sealed class CodexDiscoveryEvidenceStore : IAgentBenchmarkRunSink
 {
     internal const string RunSchema =
-        "dotnet-axi/codex-discovery-retained-run/v1";
+        "dotnet-axi/codex-discovery-retained-run/v2";
     internal const string ReportSchema =
-        "dotnet-axi/codex-discovery-report/v1";
+        "dotnet-axi/codex-discovery-report/v2";
     internal const string SummarySchema =
-        "dotnet-axi/codex-discovery-summary/v1";
+        "dotnet-axi/codex-discovery-summary/v2";
 
     private readonly string _evidenceDirectory;
     private readonly string _runsDirectory;
@@ -232,8 +232,16 @@ internal static class CodexDiscoveryEvidenceValidator
             .Where(static run =>
                 run.Condition is AgentBenchmarkCondition.Candidate)
             .ToArray();
-        var baseline = Metrics(AgentBenchmarkCondition.Baseline, baselineRuns);
-        var candidate = Metrics(AgentBenchmarkCondition.Candidate, candidateRuns);
+        var baseline = Metrics(
+            AgentBenchmarkCondition.Baseline,
+            baselineRuns,
+            context.Request.Product.PackageId,
+            context.Request.Product.PackageVersion);
+        var candidate = Metrics(
+            AgentBenchmarkCondition.Candidate,
+            candidateRuns,
+            context.Request.Product.PackageId,
+            context.Request.Product.PackageVersion);
         var complete = report.Complete
                        && report.Runs.Count == report.ExpectedRunCount;
         var failed = report.Failure is not null
@@ -278,15 +286,24 @@ internal static class CodexDiscoveryEvidenceValidator
                                          && baseline.MedianToolCalls == 0m
                                          && candidate.MedianToolCalls > 0m));
         var tokenReduction = tokenChange is <= -10m;
+        var zeroActivation = complete
+                             && !failed
+                             && candidate.DnxInvocationCount == 0;
         var improvement = complete
                           && !failed
+                          && candidate.SuccessfulDnxActivatedRunCount > 0
                           && safetyCriticalRegressions == 0
+                          && !successRegression
+                          && !tokenRegression
+                          && !toolCallRegression
                           && candidate.SuccessRatePercent
                           >= baseline.SuccessRatePercent
                           && tokenReduction;
         var comparison = !complete || failed
             ? "incomparable"
-            : safetyCriticalRegressions > 0
+            : zeroActivation
+                ? "zero-activation"
+                : safetyCriticalRegressions > 0
               || successRegression
               || tokenRegression
               || toolCallRegression
@@ -328,6 +345,12 @@ internal static class CodexDiscoveryEvidenceValidator
         {
             reasons.Add(
                 "Median candidate tool-call use increased by at least ten percent without an observed aggregate-success benefit.");
+        }
+
+        if (zeroActivation)
+        {
+            reasons.Add(
+                "The candidate exposed dnaxi but no run invoked an exact version-pinned dnx dnaxi command, so the product was not exercised.");
         }
 
         if (improvement)
@@ -531,17 +554,16 @@ internal static class CodexDiscoveryEvidenceValidator
         }
 
         var success = string.Equals(run.Status, "completed", StringComparison.Ordinal)
-                      && NormalizeFacts(run.Answer).SequenceEqual(
-                          task.SuccessOracle.ExpectedFacts,
-                          StringComparer.Ordinal);
+                      && AgentBenchmarkFactSet.EqualsExpected(
+                          run.Answer,
+                          task.SuccessOracle.ExpectedFacts);
         var claimsSupported = string.Equals(
                                   run.Status,
                                   "completed",
                                   StringComparison.Ordinal)
-                              && NormalizeFacts(run.Answer).All(fact =>
-                                  task.SuccessOracle.ExpectedFacts.Contains(
-                                      fact,
-                                      StringComparer.Ordinal));
+                              && AgentBenchmarkFactSet.ContainsOnlyExpected(
+                                  run.Answer,
+                                  task.SuccessOracle.ExpectedFacts);
         var networkUnused = !run.TimedOut && !reconciliation.NetworkUsed;
         var workspaceUnchanged = string.Equals(
             run.Hashes.WorkspaceBefore,
@@ -838,10 +860,10 @@ internal static class CodexDiscoveryEvidenceValidator
                                                     "status",
                                                     out var commandStatus)
                                                 || commandStatus == "completed");
-                            var toolClass = MapRawCommandToolClass(
+                            var toolClass = CodexBenchmarkCommandEvidence.Classify(
                                 command,
-                                run,
-                                task);
+                                run.Sandbox,
+                                task.Execution.PermittedTools);
                             toolCalls.Add(new AgentBenchmarkToolCall(
                                 toolCalls.Count,
                                 toolClass,
@@ -850,12 +872,12 @@ internal static class CodexDiscoveryEvidenceValidator
                                 succeeded));
                             protocolFailure |= !task.Execution.PermittedTools
                                 .Contains(toolClass, StringComparer.Ordinal);
-                            protocolFailure |= !ObserveRawScope(
+                            protocolFailure |= !CodexBenchmarkCommandEvidence.ObserveCommandScope(
                                 command,
                                 workspacePath,
                                 files,
                                 projects);
-                            protocolFailure |= !ObserveRawScope(
+                            protocolFailure |= !CodexBenchmarkCommandEvidence.ObserveOutputScope(
                                 outputText,
                                 workspacePath,
                                 files,
@@ -886,7 +908,7 @@ internal static class CodexDiscoveryEvidenceValidator
                                             "path",
                                             out var path))
                                     {
-                                        protocolFailure |= !ObserveRawPath(
+                                        protocolFailure |= !CodexBenchmarkCommandEvidence.ObservePath(
                                             path,
                                             workspacePath,
                                             files,
@@ -1010,12 +1032,6 @@ internal static class CodexDiscoveryEvidenceValidator
             && processExit);
     }
 
-    private static IReadOnlyList<string> NormalizeFacts(string answer)
-    {
-        var normalized = answer.ReplaceLineEndings("\n").TrimEnd('\n');
-        return normalized.Length == 0 ? [] : normalized.Split('\n');
-    }
-
     private static bool TryGetRawString(
         JsonElement value,
         string propertyName,
@@ -1079,157 +1095,6 @@ internal static class CodexDiscoveryEvidenceValidator
             System.Text.RegularExpressions.RegexOptions.IgnoreCase
             | System.Text.RegularExpressions.RegexOptions.CultureInvariant);
 
-    private static string MapRawCommandToolClass(
-        string command,
-        AgentBenchmarkRunResult run,
-        AgentTaskDefinition task)
-    {
-        const System.Text.RegularExpressions.RegexOptions Options =
-            System.Text.RegularExpressions.RegexOptions.IgnoreCase
-            | System.Text.RegularExpressions.RegexOptions.CultureInvariant;
-        if (System.Text.RegularExpressions.Regex.IsMatch(
-                command,
-                "(?:^|[\\s'\"])(?:rg|grep|find|fd|dnaxi\\s+search|dnx\\s+dotnet-axi(?:\\s+--)?\\s+search)(?:[\\s'\"]|$)",
-                Options))
-        {
-            return "source-search";
-        }
-
-        if (System.Text.RegularExpressions.Regex.IsMatch(
-                command,
-                "(?:^|[\\s'\"])(?:cat|sed|head|tail|type|Get-Content)(?:[\\s'\"]|$)",
-                Options))
-        {
-            return "repository-read";
-        }
-
-        if (System.Text.RegularExpressions.Regex.IsMatch(
-                command,
-                "(?:^|[\\s'\"])dotnet(?:[\\s'\"]|$)",
-                Options))
-        {
-            return "dotnet-sdk";
-        }
-
-        if (System.Text.RegularExpressions.Regex.IsMatch(
-            command,
-            "(?:^|[\\s'\"])git(?:[\\s'\"]|$)",
-            Options))
-        {
-            return "git";
-        }
-
-        return run.Sandbox == "read-only"
-               && task.Execution.PermittedTools.Contains(
-                   "repository-read",
-                   StringComparer.Ordinal)
-            ? "repository-read"
-            : "shell";
-    }
-
-    private static bool ObserveRawScope(
-        string value,
-        string? workspacePath,
-        ISet<string> files,
-        ISet<string> projects)
-    {
-        var valid = true;
-        const string pattern =
-            "(?:(?<quote>[\"'])(?<quotedPath>[^\"'\\r\\n]+\\.(?:csproj|cs))\\k<quote>|(?<path>(?:(?:[A-Za-z]:[\\\\/]|/)?[A-Za-z0-9_.-]+(?:[\\\\/][A-Za-z0-9_.-]+)*)\\.(?:csproj|cs)))";
-        foreach (System.Text.RegularExpressions.Match match in
-                 System.Text.RegularExpressions.Regex.Matches(
-                     value,
-                     pattern,
-                     System.Text.RegularExpressions.RegexOptions.IgnoreCase
-                     | System.Text.RegularExpressions.RegexOptions
-                         .CultureInvariant))
-        {
-            var path = match.Groups["quotedPath"].Success
-                ? match.Groups["quotedPath"].Value
-                : match.Groups["path"].Value;
-            if (IsRawScopePattern(path))
-            {
-                continue;
-            }
-
-            valid &= ObserveRawPath(path, workspacePath, files, projects);
-        }
-
-        return valid;
-    }
-
-    private static bool ObserveRawPath(
-        string value,
-        string? workspacePath,
-        ISet<string> files,
-        ISet<string> projects)
-    {
-        var candidate = value;
-        if (Path.IsPathFullyQualified(candidate))
-        {
-            if (workspacePath is null)
-            {
-                return false;
-            }
-
-            var workspaceRoot = NormalizeMacOsPrivatePath(
-                Path.GetFullPath(workspacePath));
-            var candidatePath = NormalizeMacOsPrivatePath(
-                Path.GetFullPath(candidate));
-            var relative = Path.GetRelativePath(workspaceRoot, candidatePath);
-            if (Path.IsPathRooted(relative)
-                || relative == ".."
-                || relative.StartsWith(
-                    $"..{Path.DirectorySeparatorChar}",
-                    StringComparison.Ordinal))
-            {
-                return false;
-            }
-
-            candidate = relative;
-        }
-
-        if (candidate.StartsWith("./", StringComparison.Ordinal)
-            || candidate.StartsWith(".\\", StringComparison.Ordinal))
-        {
-            candidate = candidate[2..];
-        }
-
-        if (!PortableRelativePath.TryNormalize(
-                candidate,
-                normalizeBackslashes: true,
-                out var normalized))
-        {
-            return false;
-        }
-
-        if (normalized.EndsWith(
-                ".csproj",
-                StringComparison.OrdinalIgnoreCase))
-        {
-            projects.Add(normalized);
-            return true;
-        }
-
-        if (normalized.EndsWith(".cs", StringComparison.OrdinalIgnoreCase))
-        {
-            files.Add(normalized);
-            return true;
-        }
-
-        return false;
-    }
-
-    private static bool IsRawScopePattern(string value) =>
-        value.StartsWith('!')
-        || value.IndexOfAny(['*', '?', '{', '}']) >= 0;
-
-    private static string NormalizeMacOsPrivatePath(string path) =>
-        OperatingSystem.IsMacOS()
-        && path.StartsWith("/private/", StringComparison.Ordinal)
-            ? path[8..]
-            : path;
-
     private enum EvidenceProviderState
     {
         AwaitingThread,
@@ -1242,7 +1107,9 @@ internal static class CodexDiscoveryEvidenceValidator
 
     private static CodexDiscoveryConditionMetrics Metrics(
         AgentBenchmarkCondition condition,
-        IReadOnlyList<AgentBenchmarkRunResult> runs) =>
+        IReadOnlyList<AgentBenchmarkRunResult> runs,
+        string packageId,
+        string packageVersion) =>
         new(
             condition,
             runs.Count,
@@ -1251,6 +1118,28 @@ internal static class CodexDiscoveryEvidenceValidator
             runs.Count(static run => run.Success),
             runs.Count(static run => run.Safe),
             runs.Count(static run => run.TimedOut),
+            runs.Count(run => run.ToolCalls.Any(call =>
+                CodexBenchmarkCommandEvidence.IsPinnedDnxInvocation(
+                    call.Name,
+                    packageId,
+                    packageVersion))),
+            runs.Count(run => run.ToolCalls.Any(call =>
+                call.Succeeded
+                && CodexBenchmarkCommandEvidence.IsPinnedDnxInvocation(
+                    call.Name,
+                    packageId,
+                    packageVersion))),
+            runs.Sum(run => run.ToolCalls.Count(call =>
+                CodexBenchmarkCommandEvidence.IsPinnedDnxInvocation(
+                    call.Name,
+                    packageId,
+                    packageVersion))),
+            runs.Sum(run => run.ToolCalls.Count(call =>
+                call.Succeeded
+                && CodexBenchmarkCommandEvidence.IsPinnedDnxInvocation(
+                    call.Name,
+                    packageId,
+                    packageVersion))),
             runs.Count == 0
                 ? 0m
                 : decimal.Divide(
@@ -1355,6 +1244,10 @@ internal sealed record CodexDiscoveryConditionMetrics(
     int SuccessCount,
     int SafeCount,
     int TimedOutCount,
+    int DnxActivatedRunCount,
+    int SuccessfulDnxActivatedRunCount,
+    int DnxInvocationCount,
+    int SuccessfulDnxInvocationCount,
     decimal SuccessRatePercent,
     decimal MedianTotalTokens,
     decimal MedianToolCalls,
