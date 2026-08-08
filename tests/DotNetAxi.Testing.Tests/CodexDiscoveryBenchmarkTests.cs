@@ -88,7 +88,7 @@ public sealed class CodexDiscoveryBenchmarkTests
         Assert.Equal(
             context.Request.Product.Skill.Path,
             context.CandidateTools.SkillDirectoryPath);
-        Assert.Equal("1.4.0", context.Adapter.Descriptor.Version);
+        Assert.Equal("1.5.0", context.Adapter.Descriptor.Version);
 
         var preparationPath = Path.Combine(fixture.Root, "preparation.json");
         await CodexDiscoveryBenchmarkPreparation.WriteCreateNewAsync(
@@ -97,6 +97,46 @@ public sealed class CodexDiscoveryBenchmarkTests
         await CodexDiscoveryBenchmarkPreparation.ValidatePreparationAsync(
             fixture.RequestPath,
             preparationPath);
+    }
+
+    [Fact]
+    public async Task Preparation_rejects_a_candidate_that_cannot_execute()
+    {
+        using var fixture = await PreparedFixture.CreateAsync(
+            dnxProbeSucceeds: false);
+
+        var exception = await Assert.ThrowsAsync<AgentBenchmarkException>(() =>
+            CodexDiscoveryBenchmarkPreparation.PrepareAsync(
+                    fixture.RequestPath)
+                .AsTask());
+
+        Assert.Contains(
+            "no paid benchmark run may start",
+            exception.Message,
+            StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("contradictory")]
+    [InlineData("extra-field")]
+    [InlineData("invalid-nesting")]
+    [InlineData("malformed-row")]
+    [InlineData("scalar-parent")]
+    public async Task Preparation_rejects_ambiguous_candidate_version_output(
+        string outputMode)
+    {
+        using var fixture = await PreparedFixture.CreateAsync(
+            dnxProbeOutputMode: outputMode);
+
+        var exception = await Assert.ThrowsAsync<AgentBenchmarkException>(() =>
+            CodexDiscoveryBenchmarkPreparation.PrepareAsync(
+                    fixture.RequestPath)
+                .AsTask());
+
+        Assert.Contains(
+            "no paid benchmark run may start",
+            exception.Message,
+            StringComparison.Ordinal);
     }
 
     [Fact]
@@ -1106,6 +1146,8 @@ public sealed class CodexDiscoveryBenchmarkTests
             bool packageCarriesSkill = false,
             bool invalidPackageContents = false,
             bool descriptionCarriesInvocation = true,
+            bool dnxProbeSucceeds = true,
+            string? dnxProbeOutputMode = null,
             string candidateVersion = "0.4.0")
         {
             var root = Path.Combine(
@@ -1124,11 +1166,10 @@ public sealed class CodexDiscoveryBenchmarkTests
                         ? $"raw{Path.PathSeparator}tools"
                         : "raw-tools")).FullName;
             var executable = InstallCodexProbe(root);
-            var dnxExecutable = WriteExecutable(
-                Path.Combine(
-                    rawToolsPath,
-                    OperatingSystem.IsWindows() ? "dnx.exe" : "dnx"),
-                "dnx probe");
+            var dnxExecutable = InstallDnxProbe(
+                rawToolsPath,
+                dnxProbeSucceeds,
+                dnxProbeOutputMode);
             if (persistentDnaxiOnPath)
             {
                 WriteExecutable(
@@ -1409,6 +1450,40 @@ public sealed class CodexDiscoveryBenchmarkTests
 
         private static string InstallCodexProbe(string destinationDirectory)
         {
+            return InstallProcessProbe(destinationDirectory, "codex");
+        }
+
+        private static string InstallDnxProbe(
+            string destinationDirectory,
+            bool succeeds,
+            string? outputMode)
+        {
+            var executable = InstallProcessProbe(
+                destinationDirectory,
+                "dnx");
+            if (!succeeds)
+            {
+                File.WriteAllText(
+                    Path.Combine(destinationDirectory, "dnx.exit-code"),
+                    "73");
+            }
+
+            if (!string.IsNullOrWhiteSpace(outputMode))
+            {
+                File.WriteAllText(
+                    Path.Combine(
+                        destinationDirectory,
+                        "dnx.output-mode"),
+                    outputMode);
+            }
+
+            return executable;
+        }
+
+        private static string InstallProcessProbe(
+            string destinationDirectory,
+            string executableName)
+        {
             const string applicationName =
                 "DotNetAxi.DotNet.ProcessTestApp";
             var sourceDirectory = Path.GetFullPath(Path.Combine(
@@ -1434,7 +1509,9 @@ public sealed class CodexDiscoveryBenchmarkTests
                     : applicationName);
             var destinationHost = Path.Combine(
                 destinationDirectory,
-                OperatingSystem.IsWindows() ? "codex.exe" : "codex");
+                OperatingSystem.IsWindows()
+                    ? $"{executableName}.exe"
+                    : executableName);
             File.Copy(sourceHost, destinationHost);
             foreach (var extension in new[]
                      {

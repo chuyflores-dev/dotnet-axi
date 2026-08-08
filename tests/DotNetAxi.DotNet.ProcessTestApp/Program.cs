@@ -23,6 +23,11 @@ if (Path.GetFileNameWithoutExtension(Environment.ProcessPath) == "codex")
     return CodexDiscoveryProbe(args);
 }
 
+if (Path.GetFileNameWithoutExtension(Environment.ProcessPath) == "dnx")
+{
+    return DnxDiscoveryProbe(args, AppContext.BaseDirectory);
+}
+
 return args.FirstOrDefault() switch
 {
     "echo" => Echo(args[1..]),
@@ -148,7 +153,129 @@ static int CodexDiscoveryProbe(IReadOnlyList<string> values)
         return 0;
     }
 
+    if (values.Count >= 10
+        && string.Equals(values[0], "sandbox", StringComparison.Ordinal))
+    {
+        return CodexSandboxProbe(values);
+    }
+
     return 64;
+}
+
+static int CodexSandboxProbe(IReadOnlyList<string> values)
+{
+    var delimiter = values.ToList().IndexOf("--");
+    if (delimiter < 7
+        || delimiter + 2 >= values.Count
+        || !values.Take(delimiter).Contains(
+            "dnaxi-benchmark",
+            StringComparer.Ordinal)
+        || !values.Take(delimiter).Any(value => value.Contains(
+            "permissions={dnaxi-benchmark=",
+            StringComparison.Ordinal)))
+    {
+        return 64;
+    }
+
+    var dnxExecutable = values[delimiter + 1];
+    if (!string.Equals(
+            Path.GetFileNameWithoutExtension(dnxExecutable),
+            "dnx",
+            StringComparison.Ordinal))
+    {
+        return 64;
+    }
+
+    return DnxDiscoveryProbe(
+        values.Skip(delimiter + 2).ToArray(),
+        Path.GetDirectoryName(dnxExecutable)
+        ?? AppContext.BaseDirectory);
+}
+
+static int DnxDiscoveryProbe(
+    IReadOnlyList<string> values,
+    string stateDirectory)
+{
+    var exitCodePath = Path.Combine(
+        stateDirectory,
+        "dnx.exit-code");
+    if (File.Exists(exitCodePath)
+        && int.TryParse(
+            File.ReadAllText(exitCodePath),
+            NumberStyles.Integer,
+            CultureInfo.InvariantCulture,
+            out var configuredExitCode)
+        && configuredExitCode != 0)
+    {
+        return configuredExitCode;
+    }
+
+    if (values.Count != 7
+        || !string.Equals(values[0], "dnaxi@0.4.0", StringComparison.Ordinal)
+        || !string.Equals(values[1], "--source", StringComparison.Ordinal)
+        || string.IsNullOrWhiteSpace(values[2])
+        || !string.Equals(values[3], "--verbosity", StringComparison.Ordinal)
+        || !string.Equals(values[4], "quiet", StringComparison.Ordinal)
+        || !string.Equals(values[5], "--", StringComparison.Ordinal)
+        || !string.Equals(values[6], "--version", StringComparison.Ordinal))
+    {
+        return 64;
+    }
+
+    var outputModePath = Path.Combine(
+        stateDirectory,
+        "dnx.output-mode");
+    var outputMode = File.Exists(outputModePath)
+        ? File.ReadAllText(outputModePath).Trim()
+        : string.Empty;
+    if (string.Equals(
+            outputMode,
+            "contradictory",
+            StringComparison.Ordinal))
+    {
+        Console.WriteLine("status: failed");
+    }
+
+    Console.WriteLine("schema: dotnet-axi/v1");
+    Console.WriteLine("command: version");
+    Console.WriteLine("status: success");
+    Console.WriteLine("tool: dotnet-axi");
+    Console.WriteLine("tool_version: 0.4.0");
+    Console.WriteLine("output_schema: dotnet-axi/v1");
+    Console.WriteLine("capabilities:");
+    Console.WriteLine("  sdk:");
+    Console.WriteLine("    availability: present");
+    if (string.Equals(
+            outputMode,
+            "extra-field",
+            StringComparison.Ordinal))
+    {
+        Console.WriteLine("unexpected: value");
+    }
+    else if (string.Equals(
+                 outputMode,
+                 "invalid-nesting",
+                 StringComparison.Ordinal))
+    {
+        Console.WriteLine(" invalid: nesting");
+    }
+    else if (string.Equals(
+                 outputMode,
+                 "malformed-row",
+                 StringComparison.Ordinal))
+    {
+        Console.WriteLine("  malformed,row");
+    }
+    else if (string.Equals(
+                 outputMode,
+                 "scalar-parent",
+                 StringComparison.Ordinal))
+    {
+        Console.WriteLine("  scalar: value");
+        Console.WriteLine("    nested: value");
+    }
+
+    return 0;
 }
 
 static string ReadProbeValue(

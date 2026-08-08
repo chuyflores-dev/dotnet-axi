@@ -26,6 +26,15 @@ configuration and harness and are not pooled with Claude.
   Skill and the exact
   `dnx dnaxi@<candidate-version> --source <local-feed> --verbosity quiet --`
   command without a persistent `dnaxi` installation or task-specific prompt.
+- Preparation and pre-run revalidation execute the exact source-pinned
+  candidate with `-- --version` against disposable isolated .NET and NuGet
+  state through the measured permission profile. A failure or mismatched
+  structured version response stops before any paid agent run starts.
+- Measured workspaces use a scoped Codex permission profile that keeps
+  repository content read-only while granting write access only to the
+  fixture-owned runtime-state sibling used by .NET, NuGet, temporary files,
+  and diagnostic artifacts, plus .NET's platform runtime directory for named
+  synchronization primitives when required.
 - Retained trajectories count actual `dnx` command activation separately from
   skill availability. Zero aggregate activation, or a discovery route with no
   successful activated candidate run, blocks 0.4.0.

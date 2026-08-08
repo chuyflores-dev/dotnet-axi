@@ -1,4 +1,5 @@
 using System.Buffers.Binary;
+using System.Globalization;
 using System.IO.Compression;
 using System.Security.Cryptography;
 using System.Text;
@@ -289,6 +290,22 @@ internal static partial class CodexDiscoveryBenchmarkPreparation
                 request.Corpus.Artifact.Path)
             ?? throw new AgentBenchmarkException(
                 "The source-discovery corpus must have a parent directory.");
+        var candidateProbeManifest = Path.GetFullPath(Path.Combine(
+            corpusDirectory,
+            selectedCorpus.Tasks[0].Repository.FixtureManifest.Replace(
+                '/',
+                Path.DirectorySeparatorChar)));
+        await using (var candidateProbeFixture =
+                     await new RepositoryFixtureFactory().CreateAsync(
+                         candidateProbeManifest,
+                         cancellationToken: cancellationToken))
+        {
+            await ValidateCandidateExecutionAsync(
+                request,
+                candidateProbeFixture,
+                cancellationToken);
+        }
+
         var configuration = new AgentBenchmarkConfiguration(
             request.SeriesId,
             corpusDirectory,
@@ -1221,6 +1238,235 @@ internal static partial class CodexDiscoveryBenchmarkPreparation
         }
     }
 
+    private static async ValueTask ValidateCandidateExecutionAsync(
+        CodexDiscoveryBenchmarkRequest request,
+        RepositoryFixture fixture,
+        CancellationToken cancellationToken)
+    {
+        var codexHome = Directory.CreateDirectory(Path.Combine(
+            fixture.StatePath,
+            "codex-preflight-home")).FullName;
+        var environment = fixture.EnvironmentVariables.ToDictionary(
+            static variable => variable.Key,
+            static variable => variable.Value,
+            StringComparer.Ordinal);
+        environment["CODEX_HOME"] = codexHome;
+        var workspaceBaseline =
+            await AgentBenchmarkWorkspaceHasher.CaptureBaselineAsync(
+                fixture.WorkspacePath,
+                fixture.ContentFiles,
+                TimeSpan.FromSeconds(10),
+                cancellationToken);
+        var result = await new ProcessRunner().RunAsync(
+            new ProcessRunRequest(
+                request.CodexExecutable.Path,
+                fixture.WorkspacePath,
+                [
+                    "sandbox",
+                    "--permission-profile",
+                    CodexAgentBenchmarkAdapter.RuntimePermissionProfileName,
+                    "--config",
+                    CodexAgentBenchmarkAdapter
+                        .CreateRuntimePermissionProfileConfig(
+                            fixture.StatePath,
+                            Sandbox),
+                    "--cd",
+                    fixture.WorkspacePath,
+                    "--",
+                    request.DnxExecutable.Path,
+                    $"{request.Product.PackageId}@{request.Product.PackageVersion}",
+                    "--source",
+                    request.Product.PackageSource.Path,
+                    "--verbosity",
+                    "quiet",
+                    "--",
+                    "--version",
+                ],
+                environment,
+                new ProcessOutputLimits(1024 * 1024, 64 * 1024),
+                TimeSpan.FromSeconds(60)),
+            cancellationToken);
+        var workspaceInspection =
+            await AgentBenchmarkWorkspaceHasher.InspectAsync(
+                fixture.WorkspacePath,
+                workspaceBaseline,
+                TimeSpan.FromSeconds(10),
+                CancellationToken.None);
+        if (result.Lifecycle is not ProcessLifecycle.Completed
+            || result.Outcome is not ProcessRunOutcome.Completed
+            || result.Exit?.ExitCode != 0
+            || result.StandardOutput.LimitExceeded
+            || result.StandardError.LimitExceeded
+            || !workspaceInspection.Complete
+            || !workspaceInspection.MatchesBaseline
+            || !IsExpectedCandidateVersionOutput(
+                result.StandardOutput.Text,
+                request.Product.PackageVersion))
+        {
+            throw new AgentBenchmarkException(
+                "The exact source-pinned dnaxi candidate failed its bounded local execution preflight; no paid benchmark run may start.");
+        }
+    }
+
+    private static bool IsExpectedCandidateVersionOutput(
+        string output,
+        string packageVersion)
+    {
+        var lines = output.ReplaceLineEndings("\n").Split('\n');
+        if (lines.Length > 0 && lines[^1].Length == 0)
+        {
+            lines = lines[..^1];
+        }
+
+        string[] expectedHeader =
+        [
+            $"schema: {ProductSchema}",
+            "command: version",
+            "status: success",
+            "tool: dotnet-axi",
+            $"tool_version: {packageVersion}",
+            $"output_schema: {ProductSchema}",
+            "capabilities:",
+        ];
+        if (lines.Length <= expectedHeader.Length
+            || !lines.Take(expectedHeader.Length).SequenceEqual(
+                expectedHeader,
+                StringComparer.Ordinal))
+        {
+            return false;
+        }
+
+        var lineIndex = expectedHeader.Length;
+        return ValidateToonMapping(lines, ref lineIndex, indent: 2)
+            && lineIndex == lines.Length;
+    }
+
+    private static bool ValidateToonMapping(
+        IReadOnlyList<string> lines,
+        ref int lineIndex,
+        int indent)
+    {
+        var keys = new HashSet<string>(StringComparer.Ordinal);
+        var entryCount = 0;
+        while (lineIndex < lines.Count)
+        {
+            var line = lines[lineIndex];
+            var actualIndent = CountLeadingSpaces(line);
+            if (actualIndent < indent)
+            {
+                break;
+            }
+
+            if (actualIndent != indent)
+            {
+                return false;
+            }
+
+            var content = line[indent..];
+            var table = ToonTableHeaderRegex().Match(content);
+            if (table.Success)
+            {
+                if (!keys.Add(table.Groups["key"].Value)
+                    || !int.TryParse(
+                        table.Groups["rows"].Value,
+                        NumberStyles.None,
+                        CultureInfo.InvariantCulture,
+                        out var rowCount))
+                {
+                    return false;
+                }
+
+                var fieldCount = table.Groups["fields"].Value.Count(
+                    static character => character == ',') + 1;
+                lineIndex++;
+                for (var row = 0; row < rowCount; row++)
+                {
+                    if (lineIndex >= lines.Count
+                        || CountLeadingSpaces(lines[lineIndex]) != indent + 2
+                        || !HasExpectedToonFieldCount(
+                            lines[lineIndex][(indent + 2)..],
+                            fieldCount))
+                    {
+                        return false;
+                    }
+
+                    lineIndex++;
+                }
+
+                entryCount++;
+                continue;
+            }
+
+            var separator = content.IndexOf(':', StringComparison.Ordinal);
+            if (separator <= 0
+                || !ToonKeyRegex().IsMatch(content[..separator])
+                || !keys.Add(content[..separator]))
+            {
+                return false;
+            }
+
+            entryCount++;
+            lineIndex++;
+            if (separator != content.Length - 1)
+            {
+                continue;
+            }
+
+            if (!ValidateToonMapping(lines, ref lineIndex, indent + 2))
+            {
+                return false;
+            }
+        }
+
+        return entryCount > 0;
+    }
+
+    private static int CountLeadingSpaces(string line)
+    {
+        var count = 0;
+        while (count < line.Length && line[count] == ' ')
+        {
+            count++;
+        }
+
+        return count;
+    }
+
+    private static bool HasExpectedToonFieldCount(
+        string row,
+        int expectedFieldCount)
+    {
+        var fieldCount = 1;
+        var inQuotes = false;
+        var escaped = false;
+        foreach (var character in row)
+        {
+            if (escaped)
+            {
+                escaped = false;
+                continue;
+            }
+
+            if (inQuotes && character == '\\')
+            {
+                escaped = true;
+            }
+            else if (character == '"')
+            {
+                inQuotes = !inQuotes;
+            }
+            else if (!inQuotes && character == ',')
+            {
+                fieldCount++;
+            }
+        }
+
+        return row.Length > 0
+            && !inQuotes
+            && !escaped
+            && fieldCount == expectedFieldCount;
+    }
+
     private static async ValueTask ValidatePromptInputExposureAsync(
         CodexDiscoveryBenchmarkRequest request,
         CancellationToken cancellationToken)
@@ -1479,6 +1725,16 @@ internal static partial class CodexDiscoveryBenchmarkPreparation
         "\\bdnx[ \\t]+dnaxi@(?<version>[0-9]+\\.[0-9]+\\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?)",
         RegexOptions.CultureInvariant)]
     private static partial Regex DnaxiInvocationVersionRegex();
+
+    [GeneratedRegex(
+        "^[a-z][a-z0-9_]*$",
+        RegexOptions.CultureInvariant)]
+    private static partial Regex ToonKeyRegex();
+
+    [GeneratedRegex(
+        "^(?<key>[a-z][a-z0-9_]*)\\[(?<rows>[0-9]+)\\]\\{(?<fields>[a-z][a-z0-9_]*(?:,[a-z][a-z0-9_]*)*)\\}:$",
+        RegexOptions.CultureInvariant)]
+    private static partial Regex ToonTableHeaderRegex();
 }
 
 internal sealed record CodexDiscoveryArtifactPin(

@@ -172,6 +172,29 @@ public sealed class CodexAgentBenchmarkAdapter : IAgentBenchmarkAdapter
 {
     internal const string ShellSearchPathEnvironmentVariable =
         "DOTNET_AXI_BENCHMARK_PATH";
+    internal const string RuntimePermissionProfileName =
+        "dnaxi-benchmark";
+    internal const string UnixDotNetMutexDirectory = "/tmp/.dotnet";
+
+    private static readonly string[] RuntimeStatePathVariables =
+    [
+        "HOME",
+        "USERPROFILE",
+        "APPDATA",
+        "LOCALAPPDATA",
+        "XDG_CONFIG_HOME",
+        "XDG_CACHE_HOME",
+        "GIT_CONFIG_GLOBAL",
+        "DOTNET_CLI_HOME",
+        "NUGET_PACKAGES",
+        "NUGET_HTTP_CACHE_PATH",
+        "NUGET_PLUGINS_CACHE_PATH",
+        "RestoreConfigFile",
+        "TMPDIR",
+        "TMP",
+        "TEMP",
+        "DOTNET_AXI_ARTIFACTS",
+    ];
 
     private static readonly HashSet<string> RemovedNetworkEnvironmentVariables =
         new(StringComparer.OrdinalIgnoreCase)
@@ -192,7 +215,7 @@ public sealed class CodexAgentBenchmarkAdapter : IAgentBenchmarkAdapter
     }
 
     public AgentBenchmarkAdapterDescriptor Descriptor { get; } =
-        new("codex", "1.4.0");
+        new("codex", "1.5.0");
 
     public ValueTask PrepareWorkspaceAsync(
         AgentBenchmarkAdapterInput input,
@@ -470,8 +493,24 @@ public sealed class CodexAgentBenchmarkAdapter : IAgentBenchmarkAdapter
         arguments.Add(input.Execution.ModelId);
         arguments.Add("--cd");
         arguments.Add(input.WorkspacePath);
-        arguments.Add("--sandbox");
-        arguments.Add(input.Execution.Sandbox);
+        var runtimeStateRoot = GetRuntimeStateRoot(input);
+        if (runtimeStateRoot is null)
+        {
+            arguments.Add("--sandbox");
+            arguments.Add(input.Execution.Sandbox);
+        }
+        else
+        {
+            AddConfig(
+                arguments,
+                "default_permissions",
+                RuntimePermissionProfileName);
+            arguments.Add("--config");
+            arguments.Add(CreateRuntimePermissionProfileConfig(
+                runtimeStateRoot,
+                input.Execution.Sandbox));
+        }
+
         AddConfig(
             arguments,
             "model_reasoning_effort",
@@ -481,8 +520,12 @@ public sealed class CodexAgentBenchmarkAdapter : IAgentBenchmarkAdapter
             "approval_policy",
             input.Execution.PermissionProfile);
         AddConfig(arguments, "web_search", "disabled");
-        arguments.Add("--config");
-        arguments.Add("sandbox_workspace_write.network_access=false");
+        if (runtimeStateRoot is null)
+        {
+            arguments.Add("--config");
+            arguments.Add("sandbox_workspace_write.network_access=false");
+        }
+
         var exposure = Exposure(input.Condition);
         foreach (var configurationOverride in exposure.ConfigurationOverrides)
         {
@@ -493,6 +536,121 @@ public sealed class CodexAgentBenchmarkAdapter : IAgentBenchmarkAdapter
         arguments.Add("--");
         arguments.Add(input.Task.Prompt);
     }
+
+    internal static string CreateRuntimePermissionProfileConfig(
+        string runtimeStateRoot,
+        string sandbox)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(runtimeStateRoot);
+        if (!Path.IsPathFullyQualified(runtimeStateRoot))
+        {
+            throw new ArgumentException(
+                "The benchmark runtime state root must be absolute.",
+                nameof(runtimeStateRoot));
+        }
+
+        var parentProfile = sandbox switch
+        {
+            "read-only" => ":read-only",
+            "workspace-write" => ":workspace",
+            _ => throw new ArgumentException(
+                "The benchmark sandbox cannot be represented by the isolated runtime permission profile.",
+                nameof(sandbox)),
+        };
+        var writableFileSystem = string.Concat(
+            JsonSerializer.Serialize(Path.GetFullPath(runtimeStateRoot)),
+            "=\"write\"",
+            OperatingSystem.IsWindows()
+                ? string.Empty
+                : string.Concat(
+                    ",",
+                    JsonSerializer.Serialize(UnixDotNetMutexDirectory),
+                    "=\"write\""));
+        return string.Concat(
+            "permissions={",
+            RuntimePermissionProfileName,
+            "={extends=",
+            JsonSerializer.Serialize(parentProfile),
+            ",filesystem={",
+            writableFileSystem,
+            "},network={enabled=false}}}");
+    }
+
+    private static string? GetRuntimeStateRoot(
+        AgentBenchmarkAdapterInput input)
+    {
+        if (!input.EnvironmentVariables.TryGetValue(
+                "DOTNET_CLI_HOME",
+                out var dotNetHomePath))
+        {
+            return null;
+        }
+
+        if (!Path.IsPathFullyQualified(dotNetHomePath))
+        {
+            throw InvalidRuntimeState();
+        }
+
+        var runtimeStateRoot = Path.GetDirectoryName(
+                Path.GetFullPath(dotNetHomePath))
+            ?? throw InvalidRuntimeState();
+        var workspaceParent = Path.GetDirectoryName(
+                Path.GetFullPath(input.WorkspacePath))
+            ?? throw InvalidRuntimeState();
+        var runtimeStateParent = Path.GetDirectoryName(runtimeStateRoot);
+        if (!PathsEqual(workspaceParent, runtimeStateParent)
+            || IsContained(runtimeStateRoot, input.WorkspacePath))
+        {
+            throw InvalidRuntimeState();
+        }
+
+        foreach (var variableName in RuntimeStatePathVariables)
+        {
+            if (!input.EnvironmentVariables.TryGetValue(
+                    variableName,
+                    out var value))
+            {
+                continue;
+            }
+
+            if (!Path.IsPathFullyQualified(value)
+                || !IsContained(runtimeStateRoot, value))
+            {
+                throw InvalidRuntimeState();
+            }
+        }
+
+        return runtimeStateRoot;
+    }
+
+    private static bool IsContained(string root, string path)
+    {
+        var relative = Path.GetRelativePath(
+            Path.GetFullPath(root),
+            Path.GetFullPath(path));
+        return !Path.IsPathFullyQualified(relative)
+               && !string.Equals(relative, "..", StringComparison.Ordinal)
+               && !relative.StartsWith(
+                   $"..{Path.DirectorySeparatorChar}",
+                   StringComparison.Ordinal)
+               && !relative.StartsWith(
+                   $"..{Path.AltDirectorySeparatorChar}",
+                   StringComparison.Ordinal);
+    }
+
+    private static bool PathsEqual(string left, string? right) =>
+        right is not null
+        && string.Equals(
+            Path.GetFullPath(left),
+            Path.GetFullPath(right),
+            OperatingSystem.IsWindows()
+                ? StringComparison.OrdinalIgnoreCase
+                : StringComparison.Ordinal);
+
+    private static AgentBenchmarkStartException InvalidRuntimeState() =>
+        new(
+            "The isolated benchmark runtime state must be a workspace sibling and contain every declared writable runtime path.",
+            retryable: false);
 
     private static void AddConfig(
         Collection<string> arguments,
