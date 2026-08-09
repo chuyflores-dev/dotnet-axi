@@ -365,9 +365,10 @@ capability errors.
 Missing optional accelerators return concise capability information without
 breaking unrelated commands.
 
-Version and home output report `dotnet-axi` version, output schema, selected
-SDK, relevant Roslyn/MSBuild compatibility, Git availability, and optional
-engine availability.
+Version output reports the `dotnet-axi` version and output schema. Home retains
+the envelope schema and reports the selected SDK, relevant Roslyn/MSBuild
+compatibility, Git availability, and optional engine availability without
+repeating product, version, or schema fields in its payload.
 
 Capability reporting keeps availability (`present`, `missing`, or `unverified`)
 separate from compatibility (`supported`, `unsupported`, or `unverified`). It identifies the

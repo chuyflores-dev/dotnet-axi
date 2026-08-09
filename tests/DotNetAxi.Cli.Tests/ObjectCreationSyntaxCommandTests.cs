@@ -34,16 +34,17 @@ public sealed class ObjectCreationSyntaxCommandTests
         Assert.Equal(0, result.ExitCode);
         Assert.Contains("command: search syntax object-creation", result.Output);
         Assert.Contains("resolution: syntax", result.Output);
-        Assert.Contains("confidence: candidate", result.Output);
+        Assert.DoesNotContain("confidence:", result.Output);
         Assert.Contains("count: 8", result.Output);
         Assert.Contains("total: 8", result.Output);
         Assert.Contains("Creations.cs", result.Output);
         Assert.Contains("Malformed.cs", result.Output);
         Assert.Contains(
-            "matches[8]{id,file,line,construct,type_match}:",
+            "matches[8]{file,line,type_match}:",
             result.Output);
-        Assert.Contains(",object-creation,exact", result.Output);
-        Assert.Contains(",object-creation,unresolved", result.Output);
+        Assert.Contains(",exact", result.Output);
+        Assert.Contains(",unresolved", result.Output);
+        Assert.DoesNotContain("syntax/v1/", result.Output);
     }
 
     [Fact]
@@ -87,7 +88,7 @@ public sealed class ObjectCreationSyntaxCommandTests
 
         var bounded = await workspace.RunAsync(
             "search", "syntax", "object-creation", "--type", "Widget",
-            "--limit", "1", "--fields", "column");
+            "--limit", "1", "--fields", "id", "construct", "column");
 
         Assert.Equal(0, bounded.ExitCode);
         Assert.Contains("count: 1", bounded.Output);
@@ -102,7 +103,7 @@ public sealed class ObjectCreationSyntaxCommandTests
         Assert.Contains(
             $"dnx dnaxi@{ToolVersion.Current} --verbosity quiet -- search syntax object-creation",
             bounded.Output);
-        Assert.Contains("--type 'Widget' --fields 'column' --full", bounded.Output);
+        Assert.Contains("--type 'Widget' --fields 'id' 'construct' 'column' --full", bounded.Output);
         Assert.DoesNotContain("--limit", bounded.Output);
     }
 

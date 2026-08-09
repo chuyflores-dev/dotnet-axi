@@ -17,22 +17,16 @@ public sealed class AgentSkillGenerationTests
         Assert.Equal(
             [
                 AgentSkillDocuments.SkillRelativePath,
-                AgentSkillDocuments.CodexReferenceRelativePath,
             ],
             first.Select(static document => document.RelativePath));
 
         var skill = first.Single(document =>
             document.RelativePath == AgentSkillDocuments.SkillRelativePath).Content;
-        var codex = first.Single(document =>
-            document.RelativePath == AgentSkillDocuments.CodexReferenceRelativePath).Content;
 
         AssertPortableMetadata(skill);
-        AssertBounded(skill, maximumLines: 120, maximumUtf8Bytes: 9_000);
-        AssertBounded(codex, maximumLines: 100, maximumUtf8Bytes: 8_000);
+        AssertBounded(skill, maximumLines: 110, maximumUtf8Bytes: 8_000);
         Assert.DoesNotContain('\r', skill);
-        Assert.DoesNotContain('\r', codex);
         Assert.EndsWith("\n", skill);
-        Assert.EndsWith("\n", codex);
 
         var guidance = AgentGuidanceCatalog.Command;
         Assert.Equal(
@@ -46,7 +40,8 @@ public sealed class AgentSkillGenerationTests
         Assert.Contains(guidance.Authority, skill);
         Assert.Contains(guidance.CapabilityCondition, skill);
         Assert.Contains(guidance.Completion, skill);
-        Assert.Contains("references/codex.md", skill);
+        Assert.DoesNotContain("references/", skill);
+        Assert.DoesNotContain("Codex", skill);
         Assert.Contains("## Start with dnx", skill);
         Assert.Contains("Default to one-shot", skill);
         Assert.Contains("do not add a help probe before a known route", skill);
@@ -102,25 +97,6 @@ public sealed class AgentSkillGenerationTests
         Assert.Matches(shortOutputFlagPattern, "Use `-o result.txt`.");
         Assert.DoesNotMatch(shortOutputFlagPattern, skill);
 
-        Assert.Contains("writable workspace root", codex);
-        Assert.Contains("protected Git metadata", codex);
-        Assert.Contains("networked operation as explicit", codex);
-        Assert.Contains("narrow scope", codex);
-        Assert.Contains("workspace-write", codex);
-        Assert.Contains("read-only", codex);
-        Assert.Contains("native Codex subagents", codex);
-        Assert.Contains("owning host or automation boundary", codex);
-        Assert.Contains("denial before `thread.started`", codex);
-        Assert.Contains("not proof that the launcher process exited", codex);
-        Assert.Contains("stop polling an event stream that never began", codex);
-        Assert.Contains("terminate, wait for, and reap that child", codex);
-        Assert.Contains("event absence or silence never authorizes a duplicate", codex);
-        Assert.Contains("Retry at most once", codex);
-        Assert.Contains("retry loop", codex);
-        Assert.Contains(AgentGuidanceCatalog.Codex.SkillsLink, codex);
-        Assert.Contains(AgentGuidanceCatalog.Codex.SandboxingLink, codex);
-        Assert.Contains(AgentGuidanceCatalog.Codex.SubagentsLink, codex);
-        Assert.Contains(AgentGuidanceCatalog.Codex.NonInteractiveLink, codex);
     }
 
     [Fact]
@@ -144,10 +120,6 @@ public sealed class AgentSkillGenerationTests
                     AgentSkillDocuments.SkillRelativePath),
                 "stale\n",
                 new UTF8Encoding(false));
-            File.Delete(Path.Combine(
-                root,
-                AgentSkillDocuments.CodexReferenceRelativePath));
-
             var stale = AgentSkillDocuments.FindStale(root);
 
             Assert.Equal(
@@ -155,9 +127,6 @@ public sealed class AgentSkillGenerationTests
                     new StaleGeneratedDocument(
                         AgentSkillDocuments.SkillRelativePath,
                         GeneratedDocumentState.Different),
-                    new StaleGeneratedDocument(
-                        AgentSkillDocuments.CodexReferenceRelativePath,
-                        GeneratedDocumentState.Missing),
                 ],
                 stale);
         }
@@ -203,7 +172,7 @@ public sealed class AgentSkillGenerationTests
     }
 
     [Fact]
-    public async Task Home_and_structured_help_emit_the_canonical_guidance()
+    public async Task Home_and_structured_help_do_not_repeat_installed_skill_guidance()
     {
         var root = CreateTemporaryDirectory();
         try
@@ -241,30 +210,16 @@ public sealed class AgentSkillGenerationTests
             Assert.Equal(0, helpExitCode);
             Assert.Equal(string.Empty, homeError.ToString());
             Assert.Equal(string.Empty, helpError.ToString());
-            var runtimeGuidance =
-                AgentGuidanceCatalog.ForVersion(ToolVersion.Current);
-            foreach (var item in SummaryText(runtimeGuidance.Summary))
-            {
-                Assert.Contains(item, homeOutput.ToString());
-                Assert.Contains(item, helpOutput.ToString());
-            }
-
-            AssertCompactRuntimeGuidance(homeOutput.ToString());
-            AssertCompactRuntimeGuidance(helpOutput.ToString());
+            Assert.DoesNotContain("guidance:", homeOutput.ToString());
+            Assert.DoesNotContain("guidance:", helpOutput.ToString());
+            Assert.DoesNotContain("next_steps", homeOutput.ToString());
+            Assert.DoesNotContain("next_steps", helpOutput.ToString());
         }
         finally
         {
             Directory.Delete(root, recursive: true);
         }
     }
-
-    private static IEnumerable<string> SummaryText(
-        AgentCommandGuidanceSummary guidance) =>
-    [
-        guidance.Invocation,
-        guidance.Authority,
-        .. guidance.NextSteps,
-    ];
 
     private static void AssertPortableMetadata(string skill)
     {
@@ -317,20 +272,19 @@ public sealed class AgentSkillGenerationTests
         string installation)
     {
         var skillPath = Path.Combine(installation, "SKILL.md");
-        var referencePath = Path.Combine(
-            installation,
-            "references",
-            "codex.md");
         Assert.True(File.Exists(skillPath));
-        Assert.True(File.Exists(referencePath));
         AssertPortableMetadata(File.ReadAllText(skillPath));
         AssertSourceDiscoveryGuidance(File.ReadAllText(skillPath));
         Assert.Equal(
             File.ReadAllBytes(Path.Combine(source, "SKILL.md")),
             File.ReadAllBytes(skillPath));
         Assert.Equal(
-            File.ReadAllBytes(Path.Combine(source, "references", "codex.md")),
-            File.ReadAllBytes(referencePath));
+            ["SKILL.md"],
+            Directory.EnumerateFiles(
+                    installation,
+                    "*",
+                    SearchOption.AllDirectories)
+                .Select(path => Path.GetRelativePath(installation, path)));
     }
 
     private static void AssertSourceDiscoveryGuidance(string content)
@@ -366,31 +320,6 @@ public sealed class AgentSkillGenerationTests
         {
             Assert.DoesNotContain(futureSemanticCommand, content);
         }
-    }
-
-    private static void AssertCompactRuntimeGuidance(string content)
-    {
-        Assert.Contains("guidance:\n  invocation: dnx dnaxi@", content);
-        Assert.Contains("\n  authority:", content);
-        Assert.Contains("\n  next_steps[3]:", content);
-        foreach (var omitted in new[]
-                 {
-                     "boundaries:",
-                     "use_when:",
-                     "skip_when:",
-                     "activation_flow:",
-                     "invocation_flow:",
-                     "capability_flow:",
-                     "source_discovery_flow:",
-                     "safety_flow:",
-                     "completion:",
-                 })
-        {
-            Assert.DoesNotContain(omitted, content);
-        }
-
-        Assert.DoesNotContain("dotnet tool run dnaxi", content);
-        Assert.DoesNotContain("source_discovery_flow", content);
     }
 
     private static string CreateTemporaryDirectory()

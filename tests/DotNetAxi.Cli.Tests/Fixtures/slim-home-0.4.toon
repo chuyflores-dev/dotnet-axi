@@ -1,0 +1,43 @@
+schema: dotnet-axi/v1
+command: home
+status: success
+bin: ~/dnaxi
+description: "Search, analyze, validate, and safely change the current .NET workspace"
+tool: dotnet-axi
+tool_version: <tool-version>
+output_schema: dotnet-axi/v1
+guidance:
+  invocation: dnx dnaxi@<tool-version> --verbosity quiet -- <command>
+  authority: "Treat the invoked version's structured help, version, and reported capabilities as authoritative. Never use a command or option that it does not expose."
+  next_steps[3]: "For .NET file, literal, regular-expression, or stable-syntax discovery, run the matching bounded `search` route through `dnx dnaxi@<tool-version> --verbosity quiet --` when the invoked version reports it.","Invoke known source-discovery routes directly; do not add a help probe before a known route. If its options are unknown, inspect that selected leaf once, for example `dnx dnaxi@<tool-version> --verbosity quiet -- search file --help`, `dnx dnaxi@<tool-version> --verbosity quiet -- search text --help`, or `dnx dnaxi@<tool-version> --verbosity quiet -- search syntax invocation --help`. Use `dnx dnaxi@<tool-version> --verbosity quiet -- search --help` only when the route itself is unknown.","Read an already-known file directly when that is smaller. If the required capability is unavailable, use an available direct tool and report the gap."
+workspace:
+  root: <workspace>
+  project: Root.csproj
+  projects: 1
+  csharp_files: 1
+git:
+  branch: unknown
+  changed_files: unknown
+capabilities:
+  selected_host:
+    availability: missing
+  sdk:
+    availability: missing
+    compatibility: unverified
+  ms_build:
+    availability: missing
+    compatibility: unverified
+  roslyn:
+    availability: missing
+    compatibility: unverified
+  git:
+    availability: missing
+    compatibility: unverified
+  optional_engines: []
+  command_engines: []
+analysis:
+  status: not_loaded
+  compiler_errors: unknown
+suggestions[1]:
+  - command: dnx
+    arguments[5]: dnaxi@<tool-version>,"--verbosity",quiet,"--","--help"

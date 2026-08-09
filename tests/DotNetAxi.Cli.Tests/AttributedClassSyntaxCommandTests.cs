@@ -51,14 +51,14 @@ public sealed class AttributedClassSyntaxCommandTests
         Assert.Equal(0, result.ExitCode);
         Assert.Contains("command: search syntax class", result.Output);
         Assert.Contains("resolution: syntax", result.Output);
-        Assert.Contains("confidence: candidate", result.Output);
+        Assert.DoesNotContain("confidence:", result.Output);
         Assert.Contains("count: 6", result.Output);
         Assert.Contains("total: 6", result.Output);
         Assert.Contains("Attributes.cs", result.Output);
         Assert.Contains("Malformed.cs", result.Output);
-        Assert.Contains("matches[6]{id,file,line,construct}:", result.Output);
-        Assert.Contains(",Attributes.cs,4,class", result.Output);
-        Assert.Contains(",class", result.Output);
+        Assert.Contains("matches[6]{file,line}:", result.Output);
+        Assert.Contains("Attributes.cs,4", result.Output);
+        Assert.DoesNotContain("syntax/v1/", result.Output);
     }
 
     [Fact]
@@ -104,7 +104,7 @@ public sealed class AttributedClassSyntaxCommandTests
 
         var bounded = await workspace.RunAsync(
             "search", "syntax", "class", "--attribute", "Authorize",
-            "--limit", "1", "--fields", "column");
+            "--limit", "1", "--fields", "id", "construct", "column");
 
         Assert.Equal(0, bounded.ExitCode);
         Assert.Contains("count: 1", bounded.Output);
@@ -117,7 +117,7 @@ public sealed class AttributedClassSyntaxCommandTests
         Assert.Contains(
             $"dnx dnaxi@{ToolVersion.Current} --verbosity quiet -- search syntax class",
             bounded.Output);
-        Assert.Contains("--attribute 'Authorize' --fields 'column' --full", bounded.Output);
+        Assert.Contains("--attribute 'Authorize' --fields 'id' 'construct' 'column' --full", bounded.Output);
         Assert.DoesNotContain("--limit", bounded.Output);
     }
 

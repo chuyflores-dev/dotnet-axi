@@ -38,12 +38,21 @@ Every evidence-bearing document additionally includes:
 - `coverage`: `not-applicable`, `partial`, or `complete`.
 - A compact `scope` sufficient to interpret coverage.
 
+The snapshot remains explicit even for complete results so evidence from
+separate calls can be compared for staleness. Standard scope prose is omitted
+when the command and declared selectors already imply the eligible workspace
+portion. Complete coverage omits zero `remaining`, `excluded`, and `failed`
+partitions, and omits `analyzed` when it equals `considered`. Nonzero,
+nondefault, and partial coverage facts remain explicit.
+
 Partial semantic or graph results report projects and frameworks considered,
 analyzed, remaining when known, excluded or failed, and why coverage is
 partial. Complete results name the scope within which completeness is claimed.
 
-Rows include confidence only when it varies per row or is not implied by
-response-level resolution.
+Response confidence is omitted when the evidence contract already implies it:
+verified text evidence and stable syntax candidates. Other confidence remains
+explicit. Rows include confidence only when it varies per row or is not
+implied by the response contract.
 
 Collections use deterministic ordering. Unless a command defines a
 domain-specific ranking, ties resolve by normalized path, one-based line,
@@ -80,8 +89,10 @@ in CI.
 
 ## Schema design
 
-Collection rows default to approximately three or four fields. Additional
-fields are opt-in through `--fields`.
+Collection rows default to the smallest fields needed to answer the common
+query, usually one to three. Opaque IDs, command-fixed kinds, ownership
+summaries, and other detail remain opt-in through `--fields` when the default
+answer does not need them.
 
 Each command declares its available fields in a canonical order and marks its
 compact default set. Requested fields augment those defaults; duplicate names
@@ -90,12 +101,24 @@ Field names are ordinal and case-sensitive. An unknown requested field fails
 with exit `2`, reports `usage.unknown_field`, and lists the valid fields before
 the handler or an executing dependency is created.
 
+Default row projections are convenience views, not a guarantee that every
+available field is present. A caller that depends on an ID or detail field
+requests it explicitly with `--fields`; making a default projection leaner
+within v1 does not remove or rename that field.
+
 For a bounded collection, `count` is the number of rows actually included.
 `total_known` states whether `total` and `omitted` are authoritative;
 `truncated` is always explicit. Truncated results include a complete
 `retrieval_command` using `--full` or a sufficient larger limit. Collection
 helpers inspect at most one row beyond the limit when a backend does not
 provide a total.
+
+Known all-zero diagnostic summaries and empty optional diagnostic collections
+are omitted. For text search, an absent `skipped` section means skip totals are
+known and every skip count is zero; unknown totals, any nonzero skip count, or
+an explicit `skip_details` projection keeps the section. An absent
+`changed_coverage` collection means it has no observations. Result collections
+themselves remain explicit even when empty.
 
 Large text includes a useful preview, total known size, truncation notice, and
 a `--full` or larger-budget escape hatch. Default previews SHOULD generally be
@@ -170,6 +193,12 @@ general manual. It includes executable path using `~`, a one-sentence
 description, workspace path, selected solution/project, cheap project/source
 counts, changed-file count, cheap diagnostic status, and a few contextual
 suggestions.
+
+Home does not repeat tool, schema, or version identity already available from
+the envelope and `--version`. Help and home do not embed Agent Skill procedure;
+the separately installed portable skill owns that guidance. Exact package
+versions remain in executable suggestions and bounded recovery commands so a
+follow-up reproduces the selected tool.
 
 Discovery and mutation responses SHOULD include a few relevant complete
 invocations or templates, preserve fixed scope, use placeholders for values

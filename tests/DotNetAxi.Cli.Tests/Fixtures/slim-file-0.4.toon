@@ -1,0 +1,17 @@
+schema: dotnet-axi/v1
+command: search file
+status: success
+snapshot: ws_cb51f1c061b035f79edeb9658488e93126611103f58bf343e605e4767f58721c
+resolution: text
+coverage: complete
+confidence: verified
+scope:
+  root: <workspace>
+  analyzed_portion: eligible workspace paths
+count: 1
+total_known: true
+total: 1
+omitted: 0
+truncated: false
+files[1]{id,path,kind,owning_project_count}:
+  file/v1/55a288ab7d544b9147a3de28cabfa7b3ec56cc98b999efac157f4f2bcbaba378,Sample.cs,source,1

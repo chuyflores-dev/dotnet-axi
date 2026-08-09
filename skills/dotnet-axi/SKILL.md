@@ -68,7 +68,3 @@ Apply this flow only when the invoked version reports the relevant capability.
 Do not claim completion solely because files changed. When the invoked version exposes validate, use the strongest applicable `dnx dnaxi@0.4.0 --verbosity quiet -- validate` evidence available within the requested scope. Otherwise run the strongest applicable project validation and report the evidence and any gaps.
 
 Report the command, requested scope, result status, resolution, coverage, confidence when applicable, and any remaining blocker or validation gap.
-
-## Load host-specific guidance only when needed
-
-When running under Codex, read [Codex sandbox operation](references/codex.md) before requesting access, operating in a worktree, or starting a noninteractive worker. Other agents must follow their own host controls and must not treat Codex flags as portable requirements.

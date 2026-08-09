@@ -1,0 +1,36 @@
+schema: dotnet-axi/v1
+command: home
+status: success
+bin: ~/dnaxi
+description: "Search, analyze, validate, and safely change the current .NET workspace"
+workspace:
+  root: <workspace>
+  project: Root.csproj
+  projects: 1
+  csharp_files: 1
+git:
+  branch: unknown
+  changed_files: unknown
+capabilities:
+  selected_host:
+    availability: missing
+  sdk:
+    availability: missing
+    compatibility: unverified
+  ms_build:
+    availability: missing
+    compatibility: unverified
+  roslyn:
+    availability: missing
+    compatibility: unverified
+  git:
+    availability: missing
+    compatibility: unverified
+  optional_engines: []
+  command_engines: []
+analysis:
+  status: not_loaded
+  compiler_errors: unknown
+suggestions[1]:
+  - command: dnx
+    arguments[5]: dnaxi@<tool-version>,"--verbosity",quiet,"--","--help"

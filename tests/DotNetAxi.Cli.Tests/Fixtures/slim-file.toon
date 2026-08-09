@@ -1,0 +1,15 @@
+schema: dotnet-axi/v1
+command: search file
+status: success
+snapshot: ws_cb51f1c061b035f79edeb9658488e93126611103f58bf343e605e4767f58721c
+resolution: text
+coverage: complete
+scope:
+  root: <workspace>
+count: 1
+total_known: true
+total: 1
+omitted: 0
+truncated: false
+files[1]{path}:
+  Sample.cs

@@ -418,7 +418,7 @@ internal sealed class FileSearchCommandHandler :
             new OutputField<FileSearchMatch>(
                 "id",
                 static match => match.Id,
-                includedByDefault: true),
+                includedByDefault: false),
             new OutputField<FileSearchMatch>(
                 "path",
                 static match => match.Path,
@@ -426,11 +426,11 @@ internal sealed class FileSearchCommandHandler :
             new OutputField<FileSearchMatch>(
                 "kind",
                 static match => match.Kind,
-                includedByDefault: true),
+                includedByDefault: false),
             new OutputField<FileSearchMatch>(
                 "owning_project_count",
                 static match => match.OwningProjectCount,
-                includedByDefault: true),
+                includedByDefault: false),
             new OutputField<FileSearchMatch>(
                 "owning_projects",
                 static match => match.OwningProjects),

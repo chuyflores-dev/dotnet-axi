@@ -377,9 +377,10 @@ public sealed class HomeViewIntegrationTests
         Assert.Contains(
             "description: \"Search, analyze, validate, and safely change the current .NET workspace\"\n",
             output);
-        Assert.Contains("tool: dotnet-axi\n", output);
-        Assert.Contains($"tool_version: {ToolVersion.Current}\n", output);
-        Assert.Contains("output_schema: dotnet-axi/v1\n", output);
+        Assert.DoesNotContain("\ntool:", output);
+        Assert.DoesNotContain("tool_version:", output);
+        Assert.DoesNotContain("output_schema:", output);
+        Assert.DoesNotContain("guidance:", output);
         Assert.Contains(
             "capabilities:\n  selected_host:\n",
             output);
