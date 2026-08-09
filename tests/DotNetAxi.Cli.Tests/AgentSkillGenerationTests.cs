@@ -50,9 +50,16 @@ public sealed class AgentSkillGenerationTests
         Assert.Contains("## Start with dnx", skill);
         Assert.Contains("Default to one-shot", skill);
         Assert.Contains("do not add a help probe before a known route", skill);
-        Assert.Contains("search file --help", skill);
-        Assert.Contains("search text --help", skill);
-        Assert.Contains("search syntax invocation --help", skill);
+        Assert.DoesNotContain("search file --help", skill);
+        Assert.DoesNotContain("search text --help", skill);
+        Assert.DoesNotContain("search syntax --help", skill);
+        Assert.DoesNotContain("search syntax invocation --help", skill);
+        Assert.Contains(
+            "Inspect only the narrowest relevant help once when no documented route or option applies",
+            skill);
+        Assert.Contains(
+            "return its requested facts directly without a redundant help probe or matched-file reread",
+            skill);
         Assert.DoesNotContain("route or options are unknown", skill);
         Assert.DoesNotContain(
             "Before source discovery, inspect the invoked version's structured help",
@@ -333,11 +340,12 @@ public sealed class AgentSkillGenerationTests
                      "search file '<path-fragment>'",
                      "search text '<literal>'",
                      "search text '<dotnet-regex>' --regex",
-                     "search syntax --help",
-                     "search file --help",
-                     "search text --help",
-                     "search syntax invocation --help",
                      "search syntax invocation --name SaveChangesAsync",
+                     "search syntax class --attribute <attribute>",
+                     "search syntax catch --type <type>",
+                     "search syntax object-creation --type <type>",
+                     "keep only `type_match: exact`",
+                     "do not report `type_match: unresolved` target-typed `new()`",
                      "--path <scope> --limit 20",
                      "built-in engine",
                      "use an available direct tool",

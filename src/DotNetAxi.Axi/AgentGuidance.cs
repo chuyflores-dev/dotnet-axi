@@ -347,7 +347,7 @@ public static class AgentGuidanceCatalog
         activationFlow:
         [
             $"For .NET file, literal, regular-expression, or stable-syntax discovery, run the matching bounded `search` route through `{commandPrefix}` when the invoked version reports it.",
-            $"Invoke known source-discovery routes directly; do not add a help probe before a known route. If its options are unknown, inspect that selected leaf once, for example `{commandPrefix} search file --help`, `{commandPrefix} search text --help`, or `{commandPrefix} search syntax invocation --help`. Use `{commandPrefix} search --help` only when the route itself is unknown.",
+            "Invoke known source-discovery routes directly; do not add a help probe before a known route. Inspect only the narrowest relevant help once when no documented route or option applies.",
             "Read an already-known file directly when that is smaller. If the required capability is unavailable, use an available direct tool and report the gap.",
         ],
         invocationFlow:
@@ -377,7 +377,9 @@ public static class AgentGuidanceCatalog
             $"Find a file by normalized path with `{commandPrefix} search file '<path-fragment>' --path <scope> --limit 20`. If the exact file is already known and a direct read is smaller, read it directly.",
             $"Find literal text with `{commandPrefix} search text '<literal>' --path <scope> --limit 20`.",
             $"Find a .NET regular expression with `{commandPrefix} search text '<dotnet-regex>' --regex --path <scope> --limit 20`; narrow the expression or path when a file times out.",
-            $"Find a known C# syntax shape directly with an exposed stable query, for example `{commandPrefix} search syntax invocation --name SaveChangesAsync --path <scope> --limit 20`. Inspect `{commandPrefix} search syntax --help` once only when the query kind is unknown, or the selected leaf such as `{commandPrefix} search syntax invocation --help` when its options are unknown.",
+            $"Find a known C# syntax shape directly with one of these stable routes: `{commandPrefix} search syntax invocation --name SaveChangesAsync --path <scope> --limit 20`, `{commandPrefix} search syntax class --attribute <attribute> --path <scope> --limit 20`, `{commandPrefix} search syntax object-creation --type <type> --path <scope> --limit 20`, or `{commandPrefix} search syntax catch --type <type> --path <scope> --limit 20`.",
+            "When a request requires object-creation syntax to expose the requested type, keep only `type_match: exact`; do not report `type_match: unresolved` target-typed `new()` as a requested-type match because resolving it requires compiler semantics.",
+            "When a bounded result reports complete coverage, return its requested facts directly without a redundant help probe or matched-file reread.",
             "Treat stable syntax results as syntax candidates, never as compiler-verified symbol or type identity.",
             "Text search may use compatible `rg` acceleration. When that optional engine is absent, incompatible, or unsuitable for the query, `search text` degrades to its built-in engine with the same stable command behavior.",
             "Keep discovery bounded with a narrow `--path` and `--limit`. If output is truncated, follow its `retrieval_command` only when the remaining rows are needed; otherwise use the returned path or match to issue the next narrower file, text, or syntax query instead of dumping broad source.",

@@ -34,7 +34,7 @@ public sealed class CodexAgentBenchmarkAdapterTests
             baselineWorkspace,
             AgentBenchmarkCondition.Baseline));
 
-        Assert.Equal("1.5.0", adapter.Descriptor.Version);
+        Assert.Equal("1.6.0", adapter.Descriptor.Version);
         Assert.Equal(
             await File.ReadAllBytesAsync(Path.Combine(source, "SKILL.md")),
             await File.ReadAllBytesAsync(Path.Combine(
@@ -349,6 +349,35 @@ public sealed class CodexAgentBenchmarkAdapterTests
         Assert.False(valid);
         Assert.Empty(files);
         Assert.Empty(projects);
+    }
+
+    [Fact]
+    public void Command_scope_accepts_shell_wrapped_numbered_repository_read()
+    {
+        using var workspace = new TemporaryWorkspace();
+        var files = new HashSet<string>(StringComparer.Ordinal);
+        var projects = new HashSet<string>(StringComparer.Ordinal);
+
+        var valid = CodexBenchmarkCommandEvidence.ObserveCommandScope(
+            "/bin/zsh -lc '/bin/cat -n src/Discovery/Cases/CatchCases.cs'",
+            workspace.Path,
+            files,
+            projects);
+
+        Assert.True(valid);
+        Assert.Equal(["src/Discovery/Cases/CatchCases.cs"], files);
+        Assert.Empty(projects);
+    }
+
+    [Fact]
+    public void Classification_ignores_executable_names_in_whence_arguments()
+    {
+        var toolClass = CodexBenchmarkCommandEvidence.Classify(
+            "/bin/zsh -lc 'whence -a dnx dotnet python3 node'",
+            "read-only",
+            ["repository-read", "source-search"]);
+
+        Assert.Equal("repository-read", toolClass);
     }
 
     [Fact]

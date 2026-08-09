@@ -279,7 +279,10 @@ file changes, tool outcomes, and portable inspected file/project scope.
 One thread and one turn follow an explicit start, item, and terminal transition
 model; duplicate or out-of-order lifecycle events fail closed. Bare, rooted,
 and quoted repository paths are normalized only after preserving root
-semantics, and recognized paths outside the workspace are unsafe. Malformed,
+semantics, and recognized paths outside the workspace are unsafe. Bounded
+shell wrappers are decoded before command-scope extraction, and command-class
+selection uses the invoked executable rather than executable names appearing
+only as arguments. Malformed,
 duplicate, overflowing, permission-denied, read-only, network-denied, and
 untrusted-scope evidence fails closed while preserving the complete trajectory.
 After timeout, the runner preserves the pre-cleanup snapshot, performs bounded
@@ -506,8 +509,8 @@ package resolution remains local and network-disabled. The CLI is not
 represented as an MCP server, and API-key authentication or API-key artifacts
 are not accepted.
 
-The corrected Codex discovery protocol uses version 2 retained-run and report schemas, version 3 summaries, and Codex adapter version 1.5.
-Reconciliation corrections do not relabel retained adapter evidence; newly prepared series pin harness version 2.1.
+The corrected Codex discovery protocol uses version 2 retained-run and report schemas, version 3 summaries, and Codex adapter version 1.6.
+Reconciliation corrections do not relabel retained adapter evidence; newly prepared series pin harness version 2.2.
 The fixture home restores the sealed raw-tool path after login-shell initialization, and every run revalidates that the login shell resolves `dnx` to the pinned executable before Codex starts.
 The protocol derives normalized and raw-event command classification and inspected scope through the same rules.
 Condition metrics count command executions of the manifest-pinned `dnx
