@@ -57,14 +57,16 @@ public sealed class FileSearchCommandTests
 
             Assert.Equal(0, result.ExitCode);
             Assert.Contains("status: success", result.Output);
+            Assert.DoesNotContain("confidence:", result.Output);
             Assert.Contains("count: 5", result.Output);
             Assert.Contains(
-                "files[5]{id,path,kind,owning_project_count}",
+                "files[5]{path}",
                 result.Output);
-            AssertBefore(result.Output, ",Widget,file,1", ",src/Widget.cs,source,1");
-            AssertBefore(result.Output, ",src/Widget.cs,source,1", ",src/WidgetTests.cs,source,1");
-            AssertBefore(result.Output, ",src/WidgetTests.cs,source,1", ",docs/MyWidget.md,file,1");
-            AssertBefore(result.Output, ",docs/MyWidget.md,file,1", ",src/widget/Other.cs,source,1");
+            Assert.DoesNotContain("file/v1/", result.Output);
+            AssertBefore(result.Output, "\n  Widget", "\n  src/Widget.cs");
+            AssertBefore(result.Output, "\n  src/Widget.cs", "\n  src/WidgetTests.cs");
+            AssertBefore(result.Output, "\n  src/WidgetTests.cs", "\n  docs/MyWidget.md");
+            AssertBefore(result.Output, "\n  docs/MyWidget.md", "\n  src/widget/Other.cs");
         }
         finally
         {
@@ -159,6 +161,9 @@ public sealed class FileSearchCommandTests
                 "--project",
                 "src/Nested/Nested.csproj",
                 "--fields",
+                "id",
+                "kind",
+                "owning_project_count",
                 "owning_projects");
 
             Assert.Equal(0, result.ExitCode);

@@ -3,6 +3,35 @@ namespace DotNetAxi.Cli.Tests;
 public sealed class TextSearchCommandTests
 {
     [Fact]
+    public async Task Successful_default_result_omits_implied_and_empty_diagnostics()
+    {
+        var workspace = CreateWorkspace();
+        try
+        {
+            await File.WriteAllTextAsync(
+                Path.Combine(workspace, "Sample.cs"),
+                "class Sample { // needle\n}");
+
+            var result = await RunAsync(
+                workspace,
+                "search", "text", "needle", "--full");
+
+            Assert.Equal(0, result.ExitCode);
+            Assert.Contains("status: success", result.Output);
+            Assert.Contains("count: 1", result.Output);
+            Assert.Contains("items[1]{file,line,preview}", result.Output);
+            Assert.DoesNotContain("text/v1/", result.Output);
+            Assert.DoesNotContain("confidence:", result.Output);
+            Assert.DoesNotContain("skipped:", result.Output);
+            Assert.DoesNotContain("changed_coverage:", result.Output);
+        }
+        finally
+        {
+            Directory.Delete(workspace, recursive: true);
+        }
+    }
+
+    [Fact]
     public async Task Regex_search_uses_dotnet_patterns_and_command_case_mode()
     {
         var workspace = CreateWorkspace();
@@ -154,8 +183,8 @@ public sealed class TextSearchCommandTests
             await File.WriteAllTextAsync(Path.Combine(workspace, "two.cs"), "needle");
             await File.WriteAllBytesAsync(Path.Combine(workspace, "bad.bin"), [0, 1]);
 
-            var bounded = await RunAsync(workspace, "search", "text", "needle", "--limit", "1", "--fields", "column", "skip_details");
-            var full = await RunAsync(workspace, "search", "text", "needle", "--full", "--fields", "column", "skip_details");
+            var bounded = await RunAsync(workspace, "search", "text", "needle", "--limit", "1", "--fields", "id", "column", "skip_details");
+            var full = await RunAsync(workspace, "search", "text", "needle", "--full", "--fields", "id", "column", "skip_details");
 
             Assert.Equal(0, bounded.ExitCode);
             Assert.Contains("status: partial", bounded.Output);
@@ -163,8 +192,9 @@ public sealed class TextSearchCommandTests
             Assert.Contains(
                 $"dnx dnaxi@{ToolVersion.Current} --verbosity quiet -- search text",
                 bounded.Output);
-            Assert.Contains("--fields 'column' 'skip_details' --full", bounded.Output);
+            Assert.Contains("--fields 'id' 'column' 'skip_details' --full", bounded.Output);
             Assert.DoesNotContain("--limit", bounded.Output);
+            Assert.Contains("text/v1/", bounded.Output);
             Assert.Contains("details:", bounded.Output);
             Assert.Contains("totals_known: false", bounded.Output);
             Assert.Equal(0, full.ExitCode);

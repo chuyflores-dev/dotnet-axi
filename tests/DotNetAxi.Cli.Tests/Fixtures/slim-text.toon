@@ -1,0 +1,16 @@
+schema: dotnet-axi/v1
+command: search text
+status: success
+snapshot: ws_90b848d748687046e1370f28c714d86be81fc604f0857e5e6c4ed8a0a462d079
+resolution: text
+coverage: complete
+scope:
+  root: <workspace>
+matches:
+  count: 1
+  total_known: true
+  total: 1
+  omitted: 0
+  truncated: false
+  items[1]{file,line,preview}:
+    Sample.cs,5,"        Hit(); // needle"

@@ -113,10 +113,6 @@ internal sealed class HomeCommandHandler : ICommandHandler<HomeRequest>
                     _context.CurrentDirectory,
                     _context.HomeDirectory),
                 "Search, analyze, validate, and safely change the current .NET workspace",
-                "dotnet-axi",
-                ToolVersion.Current,
-                OutputSchema.Current,
-                AgentGuidanceCatalog.ForVersion(ToolVersion.Current).Summary,
                 new HomeWorkspacePayload(
                     DisplayPath(
                         workspace.RootPath,
@@ -274,10 +270,6 @@ internal sealed class HomeCommandHandler : ICommandHandler<HomeRequest>
     private sealed record HomePayload(
         string Bin,
         string Description,
-        string Tool,
-        string ToolVersion,
-        string OutputSchema,
-        AgentCommandGuidanceSummary Guidance,
         HomeWorkspacePayload Workspace,
         HomeGitPayload Git,
         CapabilityReport Capabilities,

@@ -1371,11 +1371,6 @@ public sealed class CodexDiscoveryBenchmarkTests
             var candidateInstructions = Write(
                 Path.Combine(skillPath, "SKILL.md"),
                 $"---\nname: dotnet-axi\ndescription: {candidateDescription}\n---\n\nUse dnx dnaxi@{candidateVersion} --source \"$DNAXI_LOCAL_FEED\" --verbosity quiet -- <command> for source discovery.\n");
-            var referencesPath = Directory.CreateDirectory(
-                Path.Combine(skillPath, "references")).FullName;
-            Write(
-                Path.Combine(referencesPath, "codex.md"),
-                "# Codex sandbox operation\n");
             var packageSource = Directory.CreateDirectory(
                 Path.Combine(root, "package-source")).FullName;
             var package = WritePackage(

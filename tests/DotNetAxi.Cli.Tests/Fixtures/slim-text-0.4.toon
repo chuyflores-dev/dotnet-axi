@@ -1,0 +1,25 @@
+schema: dotnet-axi/v1
+command: search text
+status: success
+snapshot: ws_90b848d748687046e1370f28c714d86be81fc604f0857e5e6c4ed8a0a462d079
+resolution: text
+coverage: complete
+confidence: verified
+scope:
+  root: <workspace>
+  analyzed_portion: workspace paths
+matches:
+  count: 1
+  total_known: true
+  total: 1
+  omitted: 0
+  truncated: false
+  items[1]{id,file,line,preview}:
+    text/v1/b5d5dee7fa6113b25afdda220ff5b7026a757e9dd301ef62fcf8edfef32deb1c,Sample.cs,5,"        Hit(); // needle"
+skipped:
+  binary: 0
+  undecodable: 0
+  unsupported_encoding: 0
+  unreadable: 0
+  totals_known: true
+changed_coverage: []

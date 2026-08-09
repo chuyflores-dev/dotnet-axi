@@ -303,22 +303,31 @@ internal sealed class TextSearchCommandHandler : ICommandHandler<TextSearchComma
     }
 
     private static readonly OutputFieldSet<TextSearchMatch> TextSearchFields = new([
-        new("id", static match => match.Id, true), new("file", static match => match.Location.Path, true),
+        new("id", static match => match.Id), new("file", static match => match.Location.Path, true),
         new("line", static match => match.Location.Line, true), new("preview", static match => match.Preview, true),
         new("column", static match => match.Location.Column), new("external", static match => match.Location.IsExternal)]);
 
     private sealed record ChangedCoverage(EvidenceCoverage Coverage, IReadOnlyList<ChangedPathObservation> Observations);
     private sealed record ChangedPathObservation(string Path, string Disposition, string Reason);
-    private sealed record TextSearchPayload(BoundedCollection<IReadOnlyDictionary<string, object?>> Matches, TextSearchSkipPayload Skipped, ChangedScopeResult? Changed, IReadOnlyList<ChangedPathObservation> ChangedCoverage)
+    private sealed record TextSearchPayload(BoundedCollection<IReadOnlyDictionary<string, object?>> Matches, TextSearchSkipPayload? Skipped, ChangedScopeResult? Changed, IReadOnlyList<ChangedPathObservation>? ChangedCoverage)
     {
         public static TextSearchPayload From(TextSearchResult result, BoundedCollection<IReadOnlyDictionary<string, object?>> matches,
             ChangedScopeResult? changed, IReadOnlyList<ChangedPathObservation> coverage, bool includeDetails, string retrievalCommand) => new(matches,
-                TextSearchSkipPayload.From(result, includeDetails, retrievalCommand), changed, coverage);
+                TextSearchSkipPayload.From(result, includeDetails, retrievalCommand), changed, coverage.Count == 0 ? null : coverage);
     }
     private sealed record TextSearchSkipPayload(int Binary, int Undecodable, int UnsupportedEncoding, int Unreadable, bool TotalsKnown, BoundedCollection<TextSearchSkippedFile>? Details)
     {
-        public static TextSearchSkipPayload From(TextSearchResult result, bool details, string command) => new(result.SkippedBinary, result.SkippedUndecodable,
-            result.SkippedUnsupportedEncoding, result.SkippedUnreadable,
-            result.SkipTotalsKnown, details ? BoundedCollection<TextSearchSkippedFile>.FromObserved(result.SkippedFiles, result.SkippedFileTotal, result.SkipTotalsKnown, command) : null);
+        public static TextSearchSkipPayload? From(TextSearchResult result, bool details, string command)
+        {
+            if (!details && result.SkipTotalsKnown && result.SkippedBinary == 0 && result.SkippedUndecodable == 0 &&
+                result.SkippedUnsupportedEncoding == 0 && result.SkippedUnreadable == 0)
+            {
+                return null;
+            }
+
+            return new(result.SkippedBinary, result.SkippedUndecodable,
+                result.SkippedUnsupportedEncoding, result.SkippedUnreadable,
+                result.SkipTotalsKnown, details ? BoundedCollection<TextSearchSkippedFile>.FromObserved(result.SkippedFiles, result.SkippedFileTotal, result.SkipTotalsKnown, command) : null);
+        }
     }
 }

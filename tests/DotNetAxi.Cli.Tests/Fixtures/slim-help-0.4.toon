@@ -1,0 +1,33 @@
+schema: dotnet-axi/v1
+command: help
+status: success
+topic: home
+usage: "dnaxi [options] [command]"
+description: "Deterministic .NET discovery, analysis, validation, and safe modification."
+classification: passive
+guidance:
+  invocation: dnx dnaxi@<tool-version> --verbosity quiet -- <command>
+  authority: "Treat the invoked version's structured help, version, and reported capabilities as authoritative. Never use a command or option that it does not expose."
+  next_steps[3]: "For .NET file, literal, regular-expression, or stable-syntax discovery, run the matching bounded `search` route through `dnx dnaxi@<tool-version> --verbosity quiet --` when the invoked version reports it.","Invoke known source-discovery routes directly; do not add a help probe before a known route. If its options are unknown, inspect that selected leaf once, for example `dnx dnaxi@<tool-version> --verbosity quiet -- search file --help`, `dnx dnaxi@<tool-version> --verbosity quiet -- search text --help`, or `dnx dnaxi@<tool-version> --verbosity quiet -- search syntax invocation --help`. Use `dnx dnaxi@<tool-version> --verbosity quiet -- search --help` only when the route itself is unknown.","Read an already-known file directly when that is smaller. If the required capability is unavailable, use an available direct tool and report the gap."
+arguments: []
+flags[2]:
+  - name: "--help"
+    aliases[4]: "-?","-h",/?,/h
+    required: false
+    minimum_values: 0
+    maximum_values: 0
+    inherited: false
+    description: Show structured help for the selected command.
+  - name: "--version"
+    aliases[1]: "-v"
+    required: false
+    minimum_values: 0
+    maximum_values: 0
+    inherited: false
+    description: Show installed versions and passive compatibility capabilities.
+subcommands[1]{name,description,classification}:
+  search,Search the current workspace.,passive
+examples[3]{command}:
+  dnx dnaxi@<tool-version> --verbosity quiet --
+  dnx dnaxi@<tool-version> --verbosity quiet -- --help
+  dnx dnaxi@<tool-version> --verbosity quiet -- --version

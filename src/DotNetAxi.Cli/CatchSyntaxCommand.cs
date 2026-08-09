@@ -231,10 +231,10 @@ internal sealed class CatchSyntaxCommandHandler :
     private static readonly OutputFieldSet<StructuralCandidate> CatchFields =
         new(
         [
-            new("id", static candidate => candidate.Id, includedByDefault: true),
+            new("id", static candidate => candidate.Id),
             new("file", static candidate => candidate.Range.Start.Path, includedByDefault: true),
             new("line", static candidate => candidate.Range.Start.Line, includedByDefault: true),
-            new("construct", static _ => "catch", includedByDefault: true),
+            new("construct", static _ => "catch"),
             new("column", static candidate => candidate.Range.Start.Column),
             new("end_line", static candidate => candidate.Range.End.Line),
             new("end_column", static candidate => candidate.Range.End.Column),

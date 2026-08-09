@@ -229,10 +229,10 @@ internal sealed class ObjectCreationSyntaxCommandHandler :
     private static readonly OutputFieldSet<StructuralCandidate> ObjectCreationFields =
         new(
         [
-            new("id", static candidate => candidate.Id, includedByDefault: true),
+            new("id", static candidate => candidate.Id),
             new("file", static candidate => candidate.Range.Start.Path, includedByDefault: true),
             new("line", static candidate => candidate.Range.Start.Line, includedByDefault: true),
-            new("construct", static _ => "object-creation", includedByDefault: true),
+            new("construct", static _ => "object-creation"),
             new("type_match", TypeMatch, includedByDefault: true),
             new("column", static candidate => candidate.Range.Start.Column),
             new("end_line", static candidate => candidate.Range.End.Line),

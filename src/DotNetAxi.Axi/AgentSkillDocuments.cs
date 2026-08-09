@@ -20,9 +20,6 @@ public static class AgentSkillDocuments
 {
     public const string SkillRelativePath = "skills/dotnet-axi/SKILL.md";
 
-    public const string CodexReferenceRelativePath =
-        "skills/dotnet-axi/references/codex.md";
-
     private static readonly UTF8Encoding Utf8 = new(
         encoderShouldEmitUTF8Identifier: false,
         throwOnInvalidBytes: true);
@@ -30,16 +27,12 @@ public static class AgentSkillDocuments
     public static IReadOnlyList<GeneratedAgentSkillDocument> Render()
     {
         var guidance = AgentGuidanceCatalog.Command;
-        var codex = AgentGuidanceCatalog.Codex;
 
         return Array.AsReadOnly(
         [
             new GeneratedAgentSkillDocument(
                 SkillRelativePath,
                 RenderSkill(guidance)),
-            new GeneratedAgentSkillDocument(
-                CodexReferenceRelativePath,
-                RenderCodexReference(codex)),
         ]);
     }
 
@@ -160,82 +153,6 @@ public static class AgentSkillDocuments
             guidance.Completion,
             string.Empty,
             guidance.EvidenceReport,
-            string.Empty,
-            "## Load host-specific guidance only when needed",
-            string.Empty,
-            "When running under Codex, read [Codex sandbox operation](references/codex.md) before requesting access, operating in a worktree, or starting a noninteractive worker. Other agents must follow their own host controls and must not treat Codex flags as portable requirements.",
-        ]);
-
-        return JoinLines(lines);
-    }
-
-    private static string RenderCodexReference(CodexAgentGuidance guidance)
-    {
-        var lines = new List<string>
-        {
-            "# Codex sandbox operation",
-            string.Empty,
-            "Read this reference only when dotnet-axi is being used from Codex. The portable workflow remains in `../SKILL.md`.",
-            string.Empty,
-            "## Sandbox and approvals",
-            string.Empty,
-        };
-        AddBullets(lines, guidance.Boundaries);
-
-        lines.AddRange(
-        [
-            string.Empty,
-            $"See [Codex sandboxing]({guidance.SandboxingLink}) and [agent approvals and security]({guidance.ApprovalsLink}).",
-            string.Empty,
-            "## Writable worktree roots",
-            string.Empty,
-        ]);
-        AddBullets(lines, guidance.Worktrees);
-
-        lines.AddRange(
-        [
-            string.Empty,
-            $"See [Codex worktrees]({guidance.WorktreesLink}).",
-            string.Empty,
-            "## Network and protected metadata",
-            string.Empty,
-        ]);
-        AddBullets(lines, guidance.NetworkAndMetadata);
-
-        lines.AddRange(
-        [
-            string.Empty,
-            "## Worker startup boundary",
-            string.Empty,
-        ]);
-        AddBullets(lines, guidance.WorkerStartup);
-
-        lines.AddRange(
-        [
-            string.Empty,
-            $"See [Codex subagents]({guidance.SubagentsLink}).",
-            string.Empty,
-            "## Noninteractive workers",
-            string.Empty,
-        ]);
-        AddBullets(lines, guidance.NonInteractive);
-
-        lines.AddRange(
-        [
-            string.Empty,
-            $"See [Codex non-interactive mode]({guidance.NonInteractiveLink}).",
-            string.Empty,
-            "## Bounded recovery",
-            string.Empty,
-        ]);
-        AddBullets(lines, guidance.Recovery);
-
-        lines.AddRange(
-        [
-            string.Empty,
-            "## Instruction boundaries",
-            string.Empty,
-            $"Keep tool procedure in the skill and durable repository conventions in AGENTS.md. See [Codex skills]({guidance.SkillsLink}) and [repository instructions]({guidance.RepositoryInstructionsLink}).",
         ]);
 
         return JoinLines(lines);

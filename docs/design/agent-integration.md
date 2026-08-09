@@ -106,14 +106,14 @@ explicitly selected. Guidance treats the
 invoked tool's help, version, and capability output as authoritative and never
 assumes that a command exists merely because a newer skill mentions it.
 
-Skill, structured-help, and home-view guidance are generated from one
-canonical command-guidance source, with a CI check that detects stale generated
-content. The committed skill carries the complete workflow and is the source
-installed by Agent Skills tooling; it is distributed independently from the
-NuGet tool package. Structured help and the home view expose only the exact
-invocation, authority, and three activation steps alongside their command or
-workspace content instead of embedding the full skill. Generated skills do not
-contain live workspace state.
+The skill is generated from one canonical command-guidance source, with a CI
+check that detects stale generated content. The committed skill carries the
+complete workflow and is the source installed by Agent Skills tooling; it is
+distributed independently from the NuGet tool package. Structured help and the
+home view do not repeat skill procedure. They retain command or workspace facts
+and provide exact version-pinned invocations only when an actionable suggestion
+or recovery path needs one. Generated skills do not contain live workspace
+state.
 
 Guidance SHOULD say when `dnaxi` is useful and when a direct operation is
 smaller. Agents use it for supported .NET workspace discovery, source
@@ -154,8 +154,8 @@ The calling agent's sandbox and approval policy are external authorities.
 `dotnet-axi`, its setup adapters, and generated guidance MUST NOT widen, bypass, or silently rewrite them.
 `dnaxi` and every process it starts inherit the caller's effective filesystem, process, and network boundaries.
 
-The portable skill keeps agent-neutral command guidance in `SKILL.md` and uses progressive-disclosure references for host-specific operation.
-A generated `references/codex.md` carries Codex-specific guidance and official-source links; another agent does not receive Codex flags as portable requirements.
+The portable skill keeps only agent-neutral command guidance in `SKILL.md`.
+Host-specific operation belongs to the calling agent and is not shipped as a skill reference, so Codex, Claude, Grok, and other hosts apply their own controls without receiving another host's flags as portable requirements.
 Repository `AGENTS.md` remains the place for durable repository conventions, not user-specific permission profiles or a duplicate tool workflow.
 This follows Codex's documented separation between [skills](https://learn.chatgpt.com/docs/build-skills), [repository instructions](https://learn.chatgpt.com/docs/agent-configuration/agents-md), and the host's [sandbox and approval controls](https://learn.chatgpt.com/docs/sandboxing).
 

@@ -5,10 +5,6 @@ topic: inspect
 usage: "dnaxi inspect <target> [options]"
 description: Inspect one registered target.
 classification: executing
-guidance:
-  invocation: dnx dnaxi@<tool-version> --verbosity quiet -- <command>
-  authority: "Treat the invoked version's structured help, version, and reported capabilities as authoritative. Never use a command or option that it does not expose."
-  next_steps[3]: "For .NET file, literal, regular-expression, or stable-syntax discovery, run the matching bounded `search` route through `dnx dnaxi@<tool-version> --verbosity quiet --` when the invoked version reports it.",Invoke known source-discovery routes directly; do not add a help probe before a known route. Inspect only the narrowest relevant help once when no documented route or option applies.,"Read an already-known file directly when that is smaller. If the required capability is unavailable, use an available direct tool and report the gap."
 arguments[1]{name,required,value_type,minimum_values,maximum_values,description}:
   target,true,string,1,1,Stable ID or exact target name.
 flags[4]:

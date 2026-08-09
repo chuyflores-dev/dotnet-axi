@@ -68,27 +68,65 @@ public sealed class ToonResultSerializer
         document["snapshot"] = evidence.Snapshot;
         document["resolution"] = EnumText(evidence.Resolution);
         document["coverage"] = EnumText(evidence.Coverage.Level);
-        document["confidence"] = EnumText(evidence.Confidence);
+        if (!ConfidenceIsImplied(evidence))
+        {
+            document["confidence"] = EnumText(evidence.Confidence);
+        }
 
         var scope = new JsonObject
         {
             ["root"] = evidence.Scope.WorkspaceRoot,
-            ["analyzed_portion"] = evidence.Scope.AnalyzedPortion,
         };
+
+        if (!AnalyzedPortionIsImplied(evidence.Scope.AnalyzedPortion))
+        {
+            scope["analyzed_portion"] = evidence.Scope.AnalyzedPortion;
+        }
 
         AddOptional(scope, "solution", evidence.Scope.Solution);
         AddOptionalArray(scope, "projects", evidence.Scope.Projects);
         AddOptionalArray(scope, "frameworks", evidence.Scope.Frameworks);
         AddOptional(scope, "configuration", evidence.Scope.Configuration);
         AddOptional(scope, "considered", evidence.Coverage.Considered);
-        AddOptional(scope, "analyzed", evidence.Coverage.Analyzed);
-        AddOptional(scope, "remaining", evidence.Coverage.Remaining);
-        AddOptional(scope, "excluded", evidence.Coverage.Excluded);
-        AddOptional(scope, "failed", evidence.Coverage.Failed);
+        if (evidence.Coverage.Level is CoverageLevel.Complete)
+        {
+            if (evidence.Coverage.Analyzed != evidence.Coverage.Considered)
+            {
+                AddOptional(scope, "analyzed", evidence.Coverage.Analyzed);
+            }
+
+            AddPositive(scope, "remaining", evidence.Coverage.Remaining);
+            AddPositive(scope, "excluded", evidence.Coverage.Excluded);
+            AddPositive(scope, "failed", evidence.Coverage.Failed);
+        }
+        else
+        {
+            AddOptional(scope, "analyzed", evidence.Coverage.Analyzed);
+            AddOptional(scope, "remaining", evidence.Coverage.Remaining);
+            AddOptional(scope, "excluded", evidence.Coverage.Excluded);
+            AddOptional(scope, "failed", evidence.Coverage.Failed);
+        }
         AddOptional(scope, "partial_reason", evidence.Coverage.PartialReason);
 
         document["scope"] = scope;
     }
+
+    private static bool ConfidenceIsImplied(Evidence evidence) =>
+        evidence is
+    {
+        Resolution: EvidenceResolution.Text,
+        Confidence: EvidenceConfidence.Verified,
+    }
+    or
+    {
+        Resolution: EvidenceResolution.Syntax,
+        Confidence: EvidenceConfidence.Candidate,
+    };
+
+    private static bool AnalyzedPortionIsImplied(string value) =>
+        value is "workspace paths"
+            or "eligible workspace paths"
+            or "eligible C# workspace paths";
 
     private static void AddPayload(JsonObject document, object? payload)
     {
@@ -189,6 +227,17 @@ public sealed class ToonResultSerializer
         int? value)
     {
         if (value is not null)
+        {
+            target[name] = value.Value;
+        }
+    }
+
+    private static void AddPositive(
+        JsonObject target,
+        string name,
+        int? value)
+    {
+        if (value is > 0)
         {
             target[name] = value.Value;
         }

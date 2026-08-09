@@ -981,12 +981,11 @@ internal static partial class CodexDiscoveryBenchmarkPreparation
         if (!skillFiles.Select(static file => file.Relative).SequenceEqual(
                 [
                     "SKILL.md",
-                    "references/codex.md",
                 ],
                 StringComparer.Ordinal))
         {
             throw new AgentBenchmarkException(
-                "The pinned repository skill must contain only SKILL.md and references/codex.md.");
+                "The pinned repository skill must contain only SKILL.md.");
         }
 
         var skillFile = Path.Combine(product.Skill.Path, "SKILL.md");

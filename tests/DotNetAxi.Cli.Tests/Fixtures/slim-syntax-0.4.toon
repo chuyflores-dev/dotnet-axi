@@ -1,0 +1,22 @@
+schema: dotnet-axi/v1
+command: search syntax invocation
+status: success
+snapshot: ws_abc9c397e2c16cc069677c05083c2a518c771c4058205a8fce0b4026c6b342b0
+resolution: syntax
+coverage: complete
+confidence: candidate
+scope:
+  root: <workspace>
+  analyzed_portion: eligible explicitly selected C# paths
+  considered: 1
+  analyzed: 1
+  remaining: 0
+  excluded: 0
+  failed: 0
+count: 1
+total_known: true
+total: 1
+omitted: 0
+truncated: false
+matches[1]{id,file,line,construct}:
+  syntax/v1/4f30f4c17cb58a60a1c06b1d7a63063e58e12921392d99a9c96463785e44d473,Sample.cs,5,invocation

@@ -32,10 +32,10 @@ public sealed class CatchSyntaxCommandTests
         Assert.Equal(0, all.ExitCode);
         Assert.Contains("command: search syntax catch", all.Output);
         Assert.Contains("resolution: syntax", all.Output);
-        Assert.Contains("confidence: candidate", all.Output);
+        Assert.DoesNotContain("confidence:", all.Output);
         Assert.Contains("count: 5", all.Output);
-        Assert.Contains("matches[5]{id,file,line,construct}:", all.Output);
-        Assert.Contains(",catch", all.Output);
+        Assert.Contains("matches[5]{file,line}:", all.Output);
+        Assert.DoesNotContain("syntax/v1/", all.Output);
         Assert.Equal(0, typed.ExitCode);
         Assert.Contains("count: 3", typed.Output);
         Assert.Contains("total: 3", typed.Output);
@@ -115,7 +115,7 @@ public sealed class CatchSyntaxCommandTests
 
         var bounded = await workspace.RunAsync(
             "search", "syntax", "catch", "--type", "Exception", "--empty",
-            "--limit", "1", "--fields", "column");
+            "--limit", "1", "--fields", "id", "construct", "column");
 
         Assert.Equal(0, bounded.ExitCode);
         Assert.Contains("count: 1", bounded.Output);
@@ -129,7 +129,7 @@ public sealed class CatchSyntaxCommandTests
             $"dnx dnaxi@{ToolVersion.Current} --verbosity quiet -- search syntax catch",
             bounded.Output);
         Assert.Contains(
-            "--type 'Exception' --empty --fields 'column' --full",
+            "--type 'Exception' --empty --fields 'id' 'construct' 'column' --full",
             bounded.Output);
         Assert.DoesNotContain("--limit", bounded.Output);
     }

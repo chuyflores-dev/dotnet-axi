@@ -33,13 +33,16 @@ public sealed class InvocationSyntaxCommandTests
         Assert.Equal(0, result.ExitCode);
         Assert.Contains("command: search syntax invocation", result.Output);
         Assert.Contains("resolution: syntax", result.Output);
-        Assert.Contains("confidence: candidate", result.Output);
+        Assert.DoesNotContain("confidence:", result.Output);
         Assert.Contains("count: 5", result.Output);
         Assert.Contains("total: 5", result.Output);
         Assert.Contains("Calls.cs", result.Output);
         Assert.Contains("Malformed.cs", result.Output);
-        Assert.Contains("matches[5]{id,file,line,construct}:", result.Output);
-        Assert.Contains(",invocation", result.Output);
+        Assert.Contains("matches[5]{file,line}:", result.Output);
+        Assert.DoesNotContain("syntax/v1/", result.Output);
+        Assert.DoesNotContain("remaining: 0", result.Output);
+        Assert.DoesNotContain("excluded: 0", result.Output);
+        Assert.DoesNotContain("failed: 0", result.Output);
     }
 
     [Fact]
@@ -79,7 +82,7 @@ public sealed class InvocationSyntaxCommandTests
 
         var bounded = await workspace.RunAsync(
             "search", "syntax", "invocation", "--name", "Hit",
-            "--limit", "1", "--fields", "column");
+            "--limit", "1", "--fields", "id", "construct", "column");
 
         Assert.Equal(0, bounded.ExitCode);
         Assert.Contains("count: 1", bounded.Output);
@@ -92,7 +95,7 @@ public sealed class InvocationSyntaxCommandTests
         Assert.Contains(
             $"dnx dnaxi@{ToolVersion.Current} --verbosity quiet -- search syntax invocation",
             bounded.Output);
-        Assert.Contains("--name 'Hit' --fields 'column' --full", bounded.Output);
+        Assert.Contains("--name 'Hit' --fields 'id' 'construct' 'column' --full", bounded.Output);
         Assert.DoesNotContain("--limit", bounded.Output);
     }
 
