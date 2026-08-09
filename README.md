@@ -16,35 +16,19 @@ Durable delivery scope lives in
 [stories and epics](https://github.com/chuyflores-dev/dotnet-axi/blob/main/docs/stories/README.md);
 GitHub Issues track live status.
 
-## Run the current 0.3.0 release
+## Run 0.4.0
 
-`dotnet-axi` 0.3.0 requires the .NET 10 SDK. Install it as a global tool:
-
-```bash
-dotnet tool install --global dotnet-axi --version 0.3.0
-dnaxi --version
-```
-
-Or pin it in a repository-local tool manifest:
+`dnaxi` 0.4.0 requires the .NET 10 SDK. The primary path is an exact-version
+one-shot invocation with no persistent tool installation:
 
 ```bash
-# Run this first only when the repository has no tool manifest.
-dotnet new tool-manifest
-dotnet tool install dotnet-axi --version 0.3.0
-dotnet tool run dnaxi -- --version
+dnx dnaxi@0.4.0 --verbosity quiet -- --version
 ```
 
-With .NET 10 or later, run it once without a persistent installation:
-
-```bash
-dnx dotnet-axi@0.3.0 --verbosity quiet -- --version
-```
-
-Version 0.3.0 adds bounded file, literal-text, .NET regular-expression, and
-stable Roslyn syntax discovery to the passive workspace home, structured help,
-and version output shipped in 0.2.0. Treat the installed version's help and
-reported capabilities as authoritative. See the
-[0.3.0 release notes](https://github.com/chuyflores-dev/dotnet-axi/blob/main/docs/releases/0.3.0.md)
+Version 0.4.0 moves the package ID from `dotnet-axi` to `dnaxi` while keeping
+the installed command `dnaxi`. The immutable 0.2.0 and 0.3.0 packages remain
+under the old ID. See the
+[0.4.0 release notes](https://github.com/chuyflores-dev/dotnet-axi/blob/main/docs/releases/0.4.0.md)
 for the exact surface, measured Codex evidence, and known limitations.
 
 ## Source discovery
@@ -52,21 +36,33 @@ for the exact surface, measured Codex evidence, and known limitations.
 Search normalized paths or literal source text without a persistent index:
 
 ```bash
-dnaxi search file 'Handler.cs' --path . --limit 20
-dnaxi search text 'Archive pipeline ready.' --path . --limit 20
+dnx dnaxi@0.4.0 --verbosity quiet -- search file 'Handler.cs' --path . --limit 20
+dnx dnaxi@0.4.0 --verbosity quiet -- search text 'Archive pipeline ready.' --path . --limit 20
 ```
 
 Use .NET regular-expression semantics explicitly, or request a stable syntax
 shape backed by Roslyn:
 
 ```bash
-dnaxi search text 'Handle(?:Audit|Retry)Async' --regex --path . --limit 20
-dnaxi search syntax invocation --name Record --path . --limit 20
+dnx dnaxi@0.4.0 --verbosity quiet -- search text 'Handle(?:Audit|Retry)Async' --regex --path . --limit 20
+dnx dnaxi@0.4.0 --verbosity quiet -- search syntax invocation --name Record --path . --limit 20
 ```
 
 Syntax results are candidates for the requested shape, not compiler-verified
 symbol identity. Use the returned retrieval command only when the bounded
 response omits rows that are needed.
+
+Global and repository-local tool installation remain compatibility paths:
+
+```bash
+dotnet tool install --global dnaxi --version 0.4.0
+dnaxi --version
+
+# Run this first only when the repository has no tool manifest.
+dotnet new tool-manifest
+dotnet tool install dnaxi --version 0.4.0
+dotnet tool run dnaxi -- --version
+```
 
 ## Development
 
