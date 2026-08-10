@@ -215,7 +215,7 @@ public sealed class CodexAgentBenchmarkAdapter : IAgentBenchmarkAdapter
     }
 
     public AgentBenchmarkAdapterDescriptor Descriptor { get; } =
-        new("codex", "1.6.0");
+        new("codex", "1.7.0");
 
     public ValueTask PrepareWorkspaceAsync(
         AgentBenchmarkAdapterInput input,

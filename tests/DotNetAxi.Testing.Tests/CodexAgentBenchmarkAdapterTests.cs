@@ -16,11 +16,6 @@ public sealed class CodexAgentBenchmarkAdapterTests
         await File.WriteAllTextAsync(
             Path.Combine(source, "SKILL.md"),
             "---\nname: dotnet-axi\ndescription: Test skill.\n---\n");
-        var references = Directory.CreateDirectory(
-            Path.Combine(source, "references")).FullName;
-        await File.WriteAllTextAsync(
-            Path.Combine(references, "codex.md"),
-            "# Codex\n");
         var candidateWorkspace = Directory.CreateDirectory(
             Path.Combine(workspace.Path, "candidate")).FullName;
         var baselineWorkspace = Directory.CreateDirectory(
@@ -34,7 +29,7 @@ public sealed class CodexAgentBenchmarkAdapterTests
             baselineWorkspace,
             AgentBenchmarkCondition.Baseline));
 
-        Assert.Equal("1.6.0", adapter.Descriptor.Version);
+        Assert.Equal("1.7.0", adapter.Descriptor.Version);
         Assert.Equal(
             await File.ReadAllBytesAsync(Path.Combine(source, "SKILL.md")),
             await File.ReadAllBytesAsync(Path.Combine(
@@ -43,6 +38,17 @@ public sealed class CodexAgentBenchmarkAdapterTests
                 "skills",
                 "dotnet-axi",
                 "SKILL.md")));
+        Assert.Equal(
+            ["SKILL.md"],
+            Directory.EnumerateFiles(
+                    Path.Combine(
+                        candidateWorkspace,
+                        ".agents",
+                        "skills",
+                        "dotnet-axi"),
+                    "*",
+                    SearchOption.AllDirectories)
+                .Select(Path.GetFileName));
         Assert.False(Directory.Exists(Path.Combine(
             baselineWorkspace,
             ".agents",

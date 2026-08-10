@@ -7,6 +7,15 @@ namespace DotNetAxi.Testing.Tests;
 public sealed class CodexDiscoveryBenchmarkTests
 {
     [Fact]
+    public void Codex_local_probe_timeout_leaves_parallel_ci_headroom()
+    {
+        Assert.Equal(
+            30,
+            CodexDiscoveryBenchmarkPreparation
+                .CodexLocalProbeTimeoutSeconds);
+    }
+
+    [Fact]
     public async Task Preparation_seals_exact_manual_series_without_starting_codex()
     {
         using var fixture = await PreparedFixture.CreateAsync();
@@ -88,7 +97,7 @@ public sealed class CodexDiscoveryBenchmarkTests
         Assert.Equal(
             context.Request.Product.Skill.Path,
             context.CandidateTools.SkillDirectoryPath);
-        Assert.Equal("1.6.0", context.Adapter.Descriptor.Version);
+        Assert.Equal("1.7.0", context.Adapter.Descriptor.Version);
 
         var preparationPath = Path.Combine(fixture.Root, "preparation.json");
         await CodexDiscoveryBenchmarkPreparation.WriteCreateNewAsync(
@@ -112,6 +121,57 @@ public sealed class CodexDiscoveryBenchmarkTests
 
         Assert.Contains(
             "no paid benchmark run may start",
+            exception.Message,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Preparation_rejects_a_missing_bounded_skill_reader()
+    {
+        using var fixture = await PreparedFixture.CreateAsync(
+            includeBoundedReader: false);
+
+        var exception = await Assert.ThrowsAsync<AgentBenchmarkException>(() =>
+            CodexDiscoveryBenchmarkPreparation.PrepareAsync(
+                    fixture.RequestPath)
+                .AsTask());
+
+        Assert.Contains(
+            "bounded skill reader",
+            exception.Message,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Preparation_rejects_an_unusable_bounded_skill_reader()
+    {
+        using var fixture = await PreparedFixture.CreateAsync(
+            boundedReaderSucceeds: false);
+
+        var exception = await Assert.ThrowsAsync<AgentBenchmarkException>(() =>
+            CodexDiscoveryBenchmarkPreparation.PrepareAsync(
+                    fixture.RequestPath)
+                .AsTask());
+
+        Assert.Contains(
+            "bounded skill reader",
+            exception.Message,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Preparation_rejects_the_previous_harness_identity()
+    {
+        using var fixture = await PreparedFixture.CreateAsync(
+            harnessVersion: "2.2.0");
+
+        var exception = await Assert.ThrowsAsync<AgentBenchmarkException>(() =>
+            CodexDiscoveryBenchmarkPreparation.PrepareAsync(
+                    fixture.RequestPath)
+                .AsTask());
+
+        Assert.Contains(
+            "approved harness identity",
             exception.Message,
             StringComparison.Ordinal);
     }
@@ -460,6 +520,67 @@ public sealed class CodexDiscoveryBenchmarkTests
             "/tmp/feed",
             "DNAXI_LOCAL_FEED",
             "search.syntax.attributed-class"));
+    }
+
+    [Fact]
+    public void Pinned_dnx_activation_accepts_leading_environment_assignments()
+    {
+        Assert.True(CodexBenchmarkCommandEvidence.IsPinnedDnxInvocation(
+            "DOTNET_CLI_HOME=\"/tmp/dotnet home\" NUGET_PACKAGES=/tmp/packages dnx dnaxi@0.4.0 --source \"$DNAXI_LOCAL_FEED\" --verbosity quiet -- search text 'Handle.*Async' --regex --path .",
+            "dnaxi",
+            "0.4.0",
+            "/tmp/feed",
+            "DNAXI_LOCAL_FEED",
+            "search.text.regex",
+            "/tmp/raw-tools/dnx"));
+        Assert.False(CodexBenchmarkCommandEvidence.IsPinnedDnxInvocation(
+            "'DOTNET_CLI_HOME=/tmp/dotnet' dnx dnaxi@0.4.0 --source \"$DNAXI_LOCAL_FEED\" --verbosity quiet -- search text marker --regex",
+            "dnaxi",
+            "0.4.0",
+            "/tmp/feed",
+            "DNAXI_LOCAL_FEED",
+            "search.text.regex",
+            "/tmp/raw-tools/dnx"));
+        Assert.False(CodexBenchmarkCommandEvidence.IsPinnedDnxInvocation(
+            "pwsh -Command \"DOTNET_CLI_HOME=/tmp/dotnet dnx dnaxi@0.4.0 --source '$DNAXI_LOCAL_FEED' --verbosity quiet -- search text marker --regex\"",
+            "dnaxi",
+            "0.4.0",
+            "/tmp/feed",
+            "DNAXI_LOCAL_FEED",
+            "search.text.regex",
+            "/tmp/raw-tools/dnx"));
+        Assert.False(CodexBenchmarkCommandEvidence.IsPinnedDnxInvocation(
+            "PATH=/tmp/shadow dnx dnaxi@0.4.0 --source \"$DNAXI_LOCAL_FEED\" --verbosity quiet -- search text marker --regex",
+            "dnaxi",
+            "0.4.0",
+            "/tmp/feed",
+            "DNAXI_LOCAL_FEED",
+            "search.text.regex",
+            "/tmp/raw-tools/dnx"));
+        Assert.False(CodexBenchmarkCommandEvidence.IsPinnedDnxInvocation(
+            "1INVALID=value dnx dnaxi@0.4.0 --source \"$DNAXI_LOCAL_FEED\" --verbosity quiet -- search text marker --regex",
+            "dnaxi",
+            "0.4.0",
+            "/tmp/feed",
+            "DNAXI_LOCAL_FEED",
+            "search.text.regex",
+            "/tmp/raw-tools/dnx"));
+        Assert.False(CodexBenchmarkCommandEvidence.IsPinnedDnxInvocation(
+            "DOTNET_CLI_HOME=/tmp/dotnet\u00A0dnx dnaxi@0.4.0 --source \"$DNAXI_LOCAL_FEED\" --verbosity quiet -- search text marker --regex",
+            "dnaxi",
+            "0.4.0",
+            "/tmp/feed",
+            "DNAXI_LOCAL_FEED",
+            "search.text.regex",
+            "/tmp/raw-tools/dnx"));
+        Assert.False(CodexBenchmarkCommandEvidence.IsPinnedDnxInvocation(
+            "\u00A0dnx dnaxi@0.4.0 --source \"$DNAXI_LOCAL_FEED\" --verbosity quiet -- search text marker --regex",
+            "dnaxi",
+            "0.4.0",
+            "/tmp/feed",
+            "DNAXI_LOCAL_FEED",
+            "search.text.regex",
+            "/tmp/raw-tools/dnx"));
     }
 
     [Theory]
@@ -1318,7 +1439,10 @@ public sealed class CodexDiscoveryBenchmarkTests
             bool descriptionCarriesInvocation = true,
             bool dnxProbeSucceeds = true,
             string? dnxProbeOutputMode = null,
-            string candidateVersion = "0.4.0")
+            string candidateVersion = "0.4.0",
+            bool includeBoundedReader = true,
+            bool boundedReaderSucceeds = true,
+            string harnessVersion = "2.3.0")
         {
             var root = Path.Combine(
                 Path.GetTempPath(),
@@ -1340,6 +1464,14 @@ public sealed class CodexDiscoveryBenchmarkTests
                 rawToolsPath,
                 dnxProbeSucceeds,
                 dnxProbeOutputMode);
+            if (includeBoundedReader)
+            {
+                var reader = InstallProcessProbe(rawToolsPath, "sed");
+                if (!boundedReaderSucceeds)
+                {
+                    File.WriteAllText(reader, "not an executable reader");
+                }
+            }
             if (persistentDnaxiOnPath)
             {
                 WriteExecutable(
@@ -1489,7 +1621,7 @@ public sealed class CodexDiscoveryBenchmarkTests
                 20260806,
                 1,
                 10,
-                "1.0.0",
+                harnessVersion,
                 new string('a', 40),
                 new string('b', 40),
                 new CodexDiscoveryConditionPin(
@@ -1689,7 +1821,8 @@ public sealed class CodexDiscoveryBenchmarkTests
                         $"{applicationName}{extension}"),
                     Path.Combine(
                         destinationDirectory,
-                        $"{applicationName}{extension}"));
+                        $"{applicationName}{extension}"),
+                    overwrite: true);
             }
 
             if (!OperatingSystem.IsWindows())

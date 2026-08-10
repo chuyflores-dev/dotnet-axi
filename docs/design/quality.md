@@ -509,10 +509,21 @@ package resolution remains local and network-disabled. The CLI is not
 represented as an MCP server, and API-key authentication or API-key artifacts
 are not accepted.
 
-The corrected Codex discovery protocol uses version 2 retained-run and report schemas, version 3 summaries, and Codex adapter version 1.6.
-Reconciliation corrections do not relabel retained adapter evidence; newly prepared series pin harness version 2.2.
-The fixture home restores the sealed raw-tool path after login-shell initialization, and every run revalidates that the login shell resolves `dnx` to the pinned executable before Codex starts.
-The protocol derives normalized and raw-event command classification and inspected scope through the same rules.
+The corrected Codex discovery protocol uses version 2 retained-run and report
+schemas, version 3 summaries, and Codex adapter version 1.7. Reconciliation
+corrections do not relabel retained adapter evidence; newly prepared series pin
+harness version 2.3.
+
+The shared sealed raw-tool path contains both the pinned `dnx` executable and
+an executable `sed` reader. Preparation runs the bounded `sed -n 1,110p` form
+against the complete candidate `SKILL.md` and fails before paid execution when
+the reader is absent, cannot run, or does not reproduce the pinned skill. The
+network-free local Codex probes use a 30-second deadline so runtime cold starts
+under parallel CI remain bounded without inheriting the paid-run budget. The
+fixture home restores this sealed path after login-shell initialization, and
+every run revalidates that the login shell resolves `dnx` to the pinned
+executable before Codex starts. The protocol derives normalized and raw-event
+command classification and inspected scope through the same rules.
 Condition metrics count command executions of the manifest-pinned `dnx
 <package-id>@<version>` identity only when the command also carries the pinned
 local source and quiet verbosity before the tool delimiter. Successful
@@ -527,6 +538,14 @@ nonblank `--attribute` value. A complete comparison with zero candidate
 invocations is labeled `zero-activation`; a discovery task with no successful
 activated candidate run is labeled `activation-gap`. Either blocks the release
 and cannot support an improvement claim.
+
+Activation reconciliation accepts one or more valid leading POSIX environment
+assignments before the invoked `dnx` executable, including quoted or escaped
+values. A leading `PATH` assignment remains invalid because it can substitute
+an unpinned executable. Quoted assignment names, malformed names, unquoted
+Unicode whitespace that POSIX shells retain within a word, and POSIX
+assignment syntax inside a PowerShell wrapper do not move the executable
+boundary.
 
 The version 3 summary also pins and identifies the retained `0.3.0` summary.
 That historical result remains failed and incomparable and is neither pooled
