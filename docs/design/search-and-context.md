@@ -182,17 +182,33 @@ declared verifier rejects `--verify` with an actionable structured error.
 dnaxi search symbol <query>
 ```
 
-Matching SHOULD rank exact fully qualified names, exact identifiers,
-case-insensitive exact matches, prefixes, camel-case/token matches, substrings,
-and optionally documentation/declaration text.
+Declaration search parses the shared eligible C# path set without creating a
+compilation or evaluating a project. It includes namespaces, named types,
+delegates, methods, constructors, destructors, properties, indexers, events,
+fields, enum members, operators, and conversion operators. Overloads and
+partial declarations remain separate candidates.
 
-The command MUST support `--kind`, `--namespace`, `--project`, `--path`,
-`--accessibility`, `--include-tests`, and `--include-generated` where
-applicable. It MUST identify candidate declarations before loading semantic
-projects.
+Matching ranks an ordinal exact fully qualified name, ordinal exact
+identifier, case-insensitive exact name, identifier prefix, camel-case or
+token match, and identifier substring in that order. Fuzzy matching applies to
+the declared identifier rather than its containing type or namespace so a
+type-name query does not flood results with all of that type's members. Ties
+follow the shared deterministic result ordering.
 
-Default rows SHOULD include only ID, kind, name, and location. Additional
-fields are requested through `--fields`.
+The command supports repeatable `--kind` and `--accessibility` filters.
+`--namespace` includes the exact namespace and descendants. `--project`
+selects a passively discovered ownership candidate and scopes traversal to its
+directory; it does not evaluate project items. `--path` and
+`--include-generated` use the shared traversal policy. Tests are excluded by
+default and `--include-tests` restores declarations whose nearest passive
+project owners are all test-named projects; a shared file with a production
+owner remains eligible. These classifications are syntax and path candidates,
+not semantic claims.
+
+Default rows include kind, name, file, and line. Candidate ID, namespace,
+fully qualified name, signature, accessibility, ownership, test/generated
+classification, complete range, external-path marker, and rank remain opt-in
+through `--fields`.
 
 ### Stateless entity identity
 

@@ -100,13 +100,15 @@ public sealed record WorkspaceTraversalPath
     public WorkspaceTraversalPath(
         string fullPath,
         string relativePath,
-        bool isExternal)
+        bool isExternal,
+        bool isGenerated = false)
     {
         FullPath = ContractGuards.RequiredText(fullPath, nameof(fullPath));
         RelativePath = ContractGuards.RequiredText(
             relativePath,
             nameof(relativePath));
         IsExternal = isExternal;
+        IsGenerated = isGenerated;
     }
 
     public string FullPath { get; }
@@ -114,6 +116,12 @@ public sealed record WorkspaceTraversalPath
     public string RelativePath { get; }
 
     public bool IsExternal { get; }
+
+    /// <summary>
+    /// Whether the shared traversal policy classified this source as
+    /// generated. Consumers must not independently reclassify the path.
+    /// </summary>
+    public bool IsGenerated { get; }
 }
 
 /// <summary>
