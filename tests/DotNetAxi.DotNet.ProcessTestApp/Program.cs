@@ -28,6 +28,11 @@ if (Path.GetFileNameWithoutExtension(Environment.ProcessPath) == "dnx")
     return DnxDiscoveryProbe(args, AppContext.BaseDirectory);
 }
 
+if (Path.GetFileNameWithoutExtension(Environment.ProcessPath) == "sed")
+{
+    return BoundedSedProbe(args);
+}
+
 return args.FirstOrDefault() switch
 {
     "echo" => Echo(args[1..]),
@@ -79,6 +84,20 @@ static int OptionalDependencyShim(IReadOnlyList<string> values)
         out var exitCode)
             ? exitCode
             : 74;
+}
+
+static int BoundedSedProbe(IReadOnlyList<string> values)
+{
+    if (values.Count != 3
+        || !string.Equals(values[0], "-n", StringComparison.Ordinal)
+        || !string.Equals(values[1], "1,110p", StringComparison.Ordinal)
+        || !File.Exists(values[2]))
+    {
+        return 64;
+    }
+
+    Console.Write(File.ReadAllText(values[2]));
+    return 0;
 }
 
 static bool IsOptionalDependencyShim()

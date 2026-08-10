@@ -36,12 +36,16 @@ internal static partial class CodexDiscoveryBenchmarkPreparation
     internal const string PackageId = "dnaxi";
     internal const string PackageVersion = "0.4.0";
     internal const string ProductSchema = "dotnet-axi/v1";
+    internal const string HarnessVersion = "2.3.0";
     internal const string PackageSourceEnvironmentVariable =
         "DNAXI_LOCAL_FEED";
     internal const string ExactCandidateInvocation =
         "dnx " + PackageId + "@" + PackageVersion + " --source \"$"
         + PackageSourceEnvironmentVariable
         + "\" --verbosity quiet -- <command>";
+    internal const string BoundedSkillReaderCommand = "sed";
+    internal const int BoundedSkillReaderMaximumLines = 110;
+    internal const int CodexLocalProbeTimeoutSeconds = 30;
     internal const string PriorSummarySchema =
         "dotnet-axi/codex-discovery-summary/v1";
     internal const int RunsPerTask = 5;
@@ -191,6 +195,10 @@ internal static partial class CodexDiscoveryBenchmarkPreparation
             cancellationToken);
         await ValidateSeparatedProductArtifactsAsync(
             request.Product,
+            cancellationToken);
+        await ValidateBoundedSkillReaderAsync(
+            request,
+            baselineTools,
             cancellationToken);
         await ValidateFilePinAsync(
             request.Baseline.Instructions,
@@ -691,6 +699,15 @@ internal static partial class CodexDiscoveryBenchmarkPreparation
                 "The request does not pin the exact manual dnx-first 0.4.0 Codex discovery series contract.");
         }
 
+        if (!string.Equals(
+                request.HarnessVersion,
+                HarnessVersion,
+                StringComparison.Ordinal))
+        {
+            throw new AgentBenchmarkException(
+                "The request does not pin the approved harness identity for corrected skill activation reconciliation.");
+        }
+
         ValidatePinShape(request.CodexExecutable, "Codex executable");
         ValidatePinShape(request.DnxExecutable, "dnx executable");
         ValidatePinShape(request.Settings, "settings");
@@ -919,6 +936,81 @@ internal static partial class CodexDiscoveryBenchmarkPreparation
             .Any(extension => File.Exists(Path.Combine(
                 directory,
                 $"{command}{extension}")));
+    }
+
+    private static async ValueTask ValidateBoundedSkillReaderAsync(
+        CodexDiscoveryBenchmarkRequest request,
+        CodexDiscoveryToolConfiguration tools,
+        CancellationToken cancellationToken)
+    {
+        var rawToolDirectory = tools.ExecutableSearchPathEntries[0].Path;
+        var readerPath = ResolveExecutableCommand(
+            rawToolDirectory,
+            BoundedSkillReaderCommand);
+        if (readerPath is null)
+        {
+            throw new AgentBenchmarkException(
+                "The shared sealed raw-tool path must contain the pinned bounded skill reader 'sed'.");
+        }
+
+        var skillPath = Path.Combine(request.Product.Skill.Path, "SKILL.md");
+        var result = await new ProcessRunner().RunAsync(
+            new ProcessRunRequest(
+                readerPath,
+                request.Product.Skill.Path,
+                [
+                    "-n",
+                    $"1,{BoundedSkillReaderMaximumLines}p",
+                    skillPath,
+                ],
+                CreateCodexProbeEnvironment(request),
+                new ProcessOutputLimits(16 * 1024, 4 * 1024),
+                TimeSpan.FromSeconds(10)),
+            cancellationToken);
+        var expected = await File.ReadAllTextAsync(
+            skillPath,
+            cancellationToken);
+        if (result.Lifecycle is not ProcessLifecycle.Completed
+            || result.Outcome is not ProcessRunOutcome.Completed
+            || result.Exit?.ExitCode != 0
+            || result.StandardOutput.LimitExceeded
+            || result.StandardError.LimitExceeded
+            || !string.Equals(
+                result.StandardOutput.Text,
+                expected,
+                StringComparison.Ordinal)
+            || !string.IsNullOrEmpty(result.StandardError.Text))
+        {
+            throw new AgentBenchmarkException(
+                "The pinned bounded skill reader could not load the complete portable SKILL.md before paid execution.");
+        }
+    }
+
+    private static string? ResolveExecutableCommand(
+        string directory,
+        string command)
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            var path = Path.Combine(directory, command);
+            return IsExecutableFile(path) ? path : null;
+        }
+
+        var pathExtensions = Environment.GetEnvironmentVariable("PATHEXT")
+            ?? ".COM;.EXE;.BAT;.CMD";
+        foreach (var extension in pathExtensions.Split(
+                     Path.PathSeparator,
+                     StringSplitOptions.RemoveEmptyEntries
+                     | StringSplitOptions.TrimEntries))
+        {
+            var path = Path.Combine(directory, $"{command}{extension}");
+            if (IsExecutableFile(path))
+            {
+                return path;
+            }
+        }
+
+        return null;
     }
 
     private static bool IsExecutableFile(string path)
@@ -1589,7 +1681,7 @@ internal static partial class CodexDiscoveryBenchmarkPreparation
                 arguments,
                 environment,
                 new ProcessOutputLimits(1024 * 1024, 64 * 1024),
-                TimeSpan.FromSeconds(10)),
+                TimeSpan.FromSeconds(CodexLocalProbeTimeoutSeconds)),
             cancellationToken);
         if (result.Lifecycle is not ProcessLifecycle.Completed
             || result.Outcome is not ProcessRunOutcome.Completed

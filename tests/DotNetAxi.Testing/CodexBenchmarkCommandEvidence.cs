@@ -50,10 +50,43 @@ internal static partial class CodexBenchmarkCommandEvidence
         ArgumentException.ThrowIfNullOrWhiteSpace(packageId);
         ArgumentException.ThrowIfNullOrWhiteSpace(packageVersion);
         var escapeCharacter = GetControlEscapeCharacter(command);
+        var usesPosixDirectAssignmentGrammar =
+            UsesPosixDirectAssignmentGrammar(command);
+        if (usesPosixDirectAssignmentGrammar
+            && ContainsUnquotedNonPosixWhitespace(
+                command,
+                escapeCharacter))
+        {
+            return false;
+        }
+
         var invocation = StripSupportedRedirections(UnwrapShell(command));
+        if (usesPosixDirectAssignmentGrammar
+            && ContainsUnquotedNonPosixWhitespace(
+                invocation,
+                escapeCharacter))
+        {
+            return false;
+        }
+
         if (ContainsUnquotedControlOperator(
                 invocation,
                 escapeCharacter))
+        {
+            return false;
+        }
+
+        var assignmentNames = Array.Empty<string>();
+        if (usesPosixDirectAssignmentGrammar)
+        {
+            invocation = StripLeadingPosixEnvironmentAssignments(
+                invocation,
+                out assignmentNames);
+        }
+
+        if (assignmentNames.Contains(
+                "PATH",
+                StringComparer.OrdinalIgnoreCase))
         {
             return false;
         }
@@ -566,8 +599,7 @@ internal static partial class CodexBenchmarkCommandEvidence
         {
             index++;
             while (index < tokens.Count
-                   && tokens[index].Contains('=')
-                   && !tokens[index].StartsWith("=", StringComparison.Ordinal))
+                   && EnvironmentAssignmentRegex().IsMatch(tokens[index]))
             {
                 index++;
             }
@@ -575,6 +607,175 @@ internal static partial class CodexBenchmarkCommandEvidence
 
         return index < tokens.Count ? index : -1;
     }
+
+    private static bool UsesPosixDirectAssignmentGrammar(string command)
+    {
+        var trimmed = command.Trim();
+        var wrapper = ShellWrapperRegex().Match(trimmed);
+        if (wrapper.Success)
+        {
+            var shell = wrapper.Groups["shell"].Value;
+            return !string.Equals(
+                       shell,
+                       "pwsh",
+                       StringComparison.OrdinalIgnoreCase)
+                   && !string.Equals(
+                       shell,
+                       "powershell",
+                       StringComparison.OrdinalIgnoreCase);
+        }
+
+        return CodexPosixShellDisplayRegex().IsMatch(trimmed)
+               || !OperatingSystem.IsWindows();
+    }
+
+    private static string StripLeadingPosixEnvironmentAssignments(
+        string invocation,
+        out string[] assignmentNames)
+    {
+        var names = new List<string>();
+        var offset = 0;
+        while (offset < invocation.Length
+               && IsPosixShellSeparator(invocation[offset]))
+        {
+            offset++;
+        }
+
+        var executableOffset = offset;
+        while (TryReadPosixEnvironmentAssignment(
+                   invocation,
+                   executableOffset,
+                   out var end,
+                   out var name))
+        {
+            names.Add(name);
+            executableOffset = end;
+            while (executableOffset < invocation.Length
+                   && IsPosixShellSeparator(invocation[executableOffset]))
+            {
+                executableOffset++;
+            }
+        }
+
+        assignmentNames = names.ToArray();
+        return names.Count == 0
+            ? invocation
+            : invocation[executableOffset..];
+    }
+
+    private static bool TryReadPosixEnvironmentAssignment(
+        string value,
+        int offset,
+        out int end,
+        out string name)
+    {
+        end = offset;
+        name = string.Empty;
+        if (offset >= value.Length
+            || !(value[offset] is '_' || char.IsAsciiLetter(value[offset])))
+        {
+            return false;
+        }
+
+        var index = offset + 1;
+        while (index < value.Length
+               && (value[index] is '_'
+                   || char.IsAsciiLetterOrDigit(value[index])))
+        {
+            index++;
+        }
+
+        if (index >= value.Length || value[index] != '=')
+        {
+            return false;
+        }
+
+        name = value[offset..index];
+        index++;
+        var quote = '\0';
+        var escaped = false;
+        while (index < value.Length)
+        {
+            var character = value[index];
+            if (escaped)
+            {
+                escaped = false;
+                index++;
+                continue;
+            }
+
+            if (quote == '\0' && IsPosixShellSeparator(character))
+            {
+                break;
+            }
+
+            if (quote != '\'' && character == '\\')
+            {
+                escaped = true;
+                index++;
+                continue;
+            }
+
+            if (character is '\'' or '"')
+            {
+                quote = quote == '\0'
+                    ? character
+                    : quote == character ? '\0' : quote;
+            }
+
+            index++;
+        }
+
+        if (quote != '\0' || escaped)
+        {
+            return false;
+        }
+
+        end = index;
+        return true;
+    }
+
+    private static bool ContainsUnquotedNonPosixWhitespace(
+        string value,
+        char? escapeCharacter)
+    {
+        var quote = '\0';
+        var escaped = false;
+        foreach (var character in value)
+        {
+            if (escaped)
+            {
+                escaped = false;
+                continue;
+            }
+
+            if (quote != '\'' && character == escapeCharacter)
+            {
+                escaped = true;
+                continue;
+            }
+
+            if (character is '\'' or '"')
+            {
+                quote = quote == '\0'
+                    ? character
+                    : quote == character ? '\0' : quote;
+                continue;
+            }
+
+            if (quote == '\0'
+                && char.IsWhiteSpace(character)
+                && !IsPosixShellSeparator(character))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool IsPosixShellSeparator(char value) =>
+        value is ' ' or '\t' or '\n';
 
     private static bool IsExecutableNamed(string command, string name)
     {
@@ -771,6 +972,11 @@ internal static partial class CodexBenchmarkCommandEvidence
 
     [GeneratedRegex("^[A-Za-z]:[\\\\/]")]
     private static partial Regex DriveRootRegex();
+
+    [GeneratedRegex(
+        "^[A-Za-z_][A-Za-z0-9_]*=.*$",
+        RegexOptions.CultureInvariant)]
+    private static partial Regex EnvironmentAssignmentRegex();
 
     [GeneratedRegex(
         "(?:^|[\\s;'\"|&()])(?:rg|grep|find|fd)(?=$|[\\s;'\"|&()])|(?:^|[\\s;'\"|&()])dnaxi\\s+search(?=$|[\\s;'\"|&()])|(?:^|[\\s;'\"|&()])dnx\\s+\\S+[^\\r\\n;|&]*\\s--\\s+search(?=$|[\\s;'\"|&()])",
