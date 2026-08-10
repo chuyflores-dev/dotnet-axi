@@ -108,12 +108,21 @@ public sealed record SymbolDeclarationMatch(
     string Signature,
     StructuralSourceRange Range,
     IReadOnlyList<string> OwningProjects,
+    IReadOnlyList<SymbolDeclarationVariant> Variants,
     bool IsTest,
     bool IsGenerated,
     int Rank)
 {
     public int OwningProjectCount => OwningProjects.Count;
+
+    public int VariantCount => Variants.Count;
 }
+
+public sealed record SymbolDeclarationVariant(
+    string Project,
+    string? Configuration,
+    string? Framework,
+    string Meaning);
 
 public sealed record SymbolDeclarationSearchResult(
     IReadOnlyList<SymbolDeclarationMatch> Matches,
@@ -214,6 +223,27 @@ public sealed class SymbolDeclarationSearcher
                 .Distinct(StringComparer.Ordinal)
                 .Order(StringComparer.Ordinal)
                 .ToArray());
+            var compilerVariants = _ownership
+                .GetCompilerVariants(path)
+                .DistinctBy(static variant => (
+                    variant.Project,
+                    variant.Configuration,
+                    variant.Framework,
+                    variant.ContextFingerprint))
+                .OrderBy(static variant => variant.Project, StringComparer.Ordinal)
+                .ThenBy(static variant => variant.Configuration, StringComparer.Ordinal)
+                .ThenBy(static variant => variant.Framework, StringComparer.Ordinal)
+                .ThenBy(
+                    static variant => variant.ContextFingerprint,
+                    StringComparer.Ordinal)
+                .ToArray();
+            if (compilerVariants.Any(variant =>
+                    !owners.Contains(variant.Project, StringComparer.Ordinal)))
+            {
+                throw new InvalidOperationException(
+                    "Compiler variants must belong to an owning project.");
+            }
+
             var isTest = IsTestPath(path.RelativePath, owners);
             var isGenerated = path.IsGenerated;
 
@@ -222,6 +252,23 @@ public sealed class SymbolDeclarationSearcher
             StructuralCandidateIdentity.Append(snapshot, isGenerated ? "generated" : "source");
             StructuralCandidateIdentity.Append(snapshot, contentHash);
             AppendMany(snapshot, owners);
+            StructuralCandidateIdentity.Append(
+                snapshot,
+                compilerVariants.Length.ToString(
+                    System.Globalization.CultureInfo.InvariantCulture));
+            foreach (var variant in compilerVariants)
+            {
+                StructuralCandidateIdentity.Append(snapshot, variant.Project);
+                StructuralCandidateIdentity.Append(
+                    snapshot,
+                    variant.Configuration ?? string.Empty);
+                StructuralCandidateIdentity.Append(
+                    snapshot,
+                    variant.Framework ?? string.Empty);
+                StructuralCandidateIdentity.Append(
+                    snapshot,
+                    variant.ContextFingerprint);
+            }
 
             var source = SourceText.From(
                 bytes,
@@ -275,8 +322,7 @@ public sealed class SymbolDeclarationSearcher
                         lineSpan.End.Line,
                         lineSpan.End.Character,
                         path.IsExternal));
-                matches.Add(new SymbolDeclarationMatch(
-                    SymbolEntityIdentity.Create(
+                var id = SymbolEntityIdentity.Create(
                         declaration.Name,
                         declaration.Kind,
                         declaration.FullyQualifiedName,
@@ -285,7 +331,17 @@ public sealed class SymbolDeclarationSearcher
                         declaration.Node.SpanStart,
                         declaration.Node.Span.Length,
                         path.RelativePath,
-                        path.IsExternal),
+                        path.IsExternal,
+                        compilerVariants);
+                var variants = Array.AsReadOnly(compilerVariants
+                    .Select(variant => new SymbolDeclarationVariant(
+                        variant.Project,
+                        variant.Configuration,
+                        variant.Framework,
+                        "unresolved"))
+                    .ToArray());
+                matches.Add(new SymbolDeclarationMatch(
+                    id,
                     declaration.Kind,
                     declaration.Name,
                     declaration.FullyQualifiedName,
@@ -294,6 +350,7 @@ public sealed class SymbolDeclarationSearcher
                     declaration.Signature,
                     range,
                     owners,
+                    variants,
                     isTest,
                     isGenerated,
                     rank.Value));

@@ -231,7 +231,9 @@ collapse variants whose compiler meaning differs.
 The exact opaque ID encoding is an implementation choice as long as these
 identity and stale-resolution guarantees hold.
 
-The syntax declaration implementation emits `symbol/v1` identities. Each ID
+The identity-hardening implementation emits `symbol/v2` identities because
+compiler-variant context changes the stable fingerprint contract introduced by
+the earlier `symbol/v1` slice. Each ID
 contains separate opaque stable-declaration and source-location fingerprints.
 The location fingerprint distinguishes byte-identical declarations in
 different files. Resolution first prefers the exact complete ID; after an
@@ -239,8 +241,22 @@ otherwise unchanged source file moves, it may use the stable fingerprint only
 when that identifies exactly one current candidate. Multiple candidates remain
 explicitly ambiguous and are never reported as resolved. Resolution scans the
 supplied workspace traversal and does not read or require retained tool state.
-Stale diagnostics and owner/configuration variants remain the responsibility
-of the following identity-hardening story.
+If neither exact nor unique stable resolution succeeds, the result is stale. It
+returns `evidence.stale_id`, deterministic replacement candidates discovered
+from the encoded declaration name, and a concrete full symbol-search query; it
+never promotes one replacement implicitly.
+
+The stable declaration fingerprint also covers the ordered compiler-variant
+contexts supplied for the source. A variant context includes its owning
+project, optional configuration and target framework, and an opaque context
+fingerprint. Project, configuration, framework, or direct project-file changes
+therefore make an earlier ID stale even when the declaration text is unchanged.
+One logical declaration row exposes every context through opt-in
+`variant_count` and `variants` fields. These passive rows carry
+`meaning: unresolved`: they identify owner/configuration/framework candidates
+for the source file but do not claim that the default syntax parse proves the
+declaration exists or has the same meaning in each context. Semantic
+verification must resolve those rows later and must not select one implicitly.
 
 ## Show and outline
 

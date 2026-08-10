@@ -34,6 +34,8 @@ internal sealed record SymbolSearchCommandRequest(
         "signature",
         "owning_project_count",
         "owning_projects",
+        "variant_count",
+        "variants",
         "test",
         "generated",
         "external",
@@ -206,6 +208,7 @@ internal sealed class SymbolSearchCommandHandler :
             new WorkspacePathTraverser(),
             projectDirectory);
         var ownership = new WorkspaceProjectOwnershipResolver(
+            workspace.RootPath,
             workspace.Projects.Select(static project => project.Path));
         var result = await new SymbolDeclarationSearcher(traverser, ownership)
             .SearchAsync(
@@ -375,11 +378,23 @@ internal sealed class SymbolSearchCommandHandler :
         new("signature", static match => match.Signature),
         new("owning_project_count", static match => match.OwningProjectCount),
         new("owning_projects", static match => match.OwningProjects),
+        new("variant_count", static match => match.VariantCount),
+        new("variants", static match => match.Variants.Select(Variant).ToArray()),
         new("test", static match => match.IsTest),
         new("generated", static match => match.IsGenerated),
         new("external", static match => match.Range.Start.IsExternal),
         new("rank", static match => match.Rank),
     ]);
+
+    private static IReadOnlyDictionary<string, object?> Variant(
+        SymbolDeclarationVariant variant) =>
+        new Dictionary<string, object?>
+        {
+            ["project"] = variant.Project,
+            ["configuration"] = variant.Configuration,
+            ["framework"] = variant.Framework,
+            ["meaning"] = variant.Meaning,
+        };
 
     private sealed record SymbolSearchPayload(
         int Count,

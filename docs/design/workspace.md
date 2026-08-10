@@ -130,6 +130,16 @@ Mutation planning MUST use complete framework coverage.
 An explicit framework not supported by a selected project MUST produce a
 structured usage error instead of silently falling back.
 
+Before semantic project evaluation, passive declaration discovery may expose
+candidate compiler variants from literal `Configurations`, `TargetFramework`,
+and `TargetFrameworks` values in the owning project file. It hashes the complete
+project-file bytes into the variant context, performs no restore or MSBuild
+execution, and emits an additional unspecified candidate whenever any declared
+configuration or framework value is absent or partly unevaluated. It does not
+drop that unknown portion merely because another literal value is available.
+Evaluated semantic commands remain authoritative for declaration meaning,
+supported framework selection, and complete coverage.
+
 ## Project and language support
 
 The MVP MUST guarantee semantic analysis for SDK-style C# projects loadable by

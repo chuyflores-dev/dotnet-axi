@@ -6,7 +6,7 @@ namespace DotNetAxi.Structural;
 
 internal static class SymbolEntityIdentity
 {
-    private const string Prefix = "symbol/v1/";
+    private const string Prefix = "symbol/v2/";
 
     public static string Create(
         string name,
@@ -17,11 +17,13 @@ internal static class SymbolEntityIdentity
         int spanStart,
         int spanLength,
         string relativePath,
-        bool isExternal)
+        bool isExternal,
+        IReadOnlyList<FileCompilerVariant> variants)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
+        ArgumentNullException.ThrowIfNull(variants);
         using var stableHash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
-        StructuralCandidateIdentity.Append(stableHash, "dotnet-axi/symbol-entity-stable/v1");
+        StructuralCandidateIdentity.Append(stableHash, "dotnet-axi/symbol-entity-stable/v2");
         StructuralCandidateIdentity.Append(stableHash, kind);
         StructuralCandidateIdentity.Append(stableHash, fullyQualifiedName);
         StructuralCandidateIdentity.Append(stableHash, signature);
@@ -30,8 +32,26 @@ internal static class SymbolEntityIdentity
             System.Globalization.CultureInfo.InvariantCulture));
         StructuralCandidateIdentity.Append(stableHash, spanLength.ToString(
             System.Globalization.CultureInfo.InvariantCulture));
+        StructuralCandidateIdentity.Append(
+            stableHash,
+            variants.Count.ToString(
+                System.Globalization.CultureInfo.InvariantCulture));
+        foreach (var variant in variants)
+        {
+            StructuralCandidateIdentity.Append(stableHash, variant.Project);
+            StructuralCandidateIdentity.Append(
+                stableHash,
+                variant.Configuration ?? string.Empty);
+            StructuralCandidateIdentity.Append(
+                stableHash,
+                variant.Framework ?? string.Empty);
+            StructuralCandidateIdentity.Append(
+                stableHash,
+                variant.ContextFingerprint);
+        }
+
         using var locationHash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
-        StructuralCandidateIdentity.Append(locationHash, "dotnet-axi/symbol-entity-location/v1");
+        StructuralCandidateIdentity.Append(locationHash, "dotnet-axi/symbol-entity-location/v2");
         StructuralCandidateIdentity.Append(
             locationHash,
             relativePath.Replace('\\', '/'));
@@ -130,21 +150,43 @@ public sealed record SymbolEntityResolution
 {
     public SymbolEntityResolution(
         string id,
-        IEnumerable<SymbolDeclarationMatch> matches)
+        IEnumerable<SymbolDeclarationMatch> matches,
+        IEnumerable<SymbolDeclarationMatch>? replacementCandidates = null,
+        string? errorCode = null,
+        string? query = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(id);
         ArgumentNullException.ThrowIfNull(matches);
         Id = id;
         Matches = Array.AsReadOnly(matches.ToArray());
+        ReplacementCandidates = Array.AsReadOnly(
+            replacementCandidates?.ToArray() ?? []);
+        ErrorCode = errorCode;
+        Query = query;
+        if ((errorCode is null) != (query is null)
+            || (errorCode is null && ReplacementCandidates.Count > 0)
+            || (errorCode is not null && Matches.Count > 0))
+        {
+            throw new ArgumentException(
+                "Stale symbol resolution must carry only an error, query, and replacement candidates.");
+        }
     }
 
     public string Id { get; }
 
     public IReadOnlyList<SymbolDeclarationMatch> Matches { get; }
 
-    public bool Resolved => Matches.Count == 1;
+    public IReadOnlyList<SymbolDeclarationMatch> ReplacementCandidates { get; }
 
-    public bool Ambiguous => Matches.Count > 1;
+    public string? ErrorCode { get; }
+
+    public string? Query { get; }
+
+    public bool Stale => ErrorCode is not null;
+
+    public bool Resolved => !Stale && Matches.Count == 1;
+
+    public bool Ambiguous => !Stale && Matches.Count > 1;
 }
 
 /// <summary>
@@ -171,7 +213,7 @@ public sealed class SymbolEntityResolver
         if (!SymbolEntityIdentity.TryParse(id, out var identity))
         {
             throw new ArgumentException(
-                "The symbol entity ID is not a supported canonical symbol/v1 identity.",
+                "The symbol entity ID is not a supported canonical symbol/v2 identity.",
                 nameof(id));
         }
 
@@ -199,8 +241,25 @@ public sealed class SymbolEntityResolver
         var exactMatches = stableMatches
             .Where(match => match.Id.Equals(id, StringComparison.Ordinal))
             .ToArray();
+        var matches = exactMatches.Length > 0 ? exactMatches : stableMatches;
+        if (matches.Length > 0)
+        {
+            return new SymbolEntityResolution(id, matches);
+        }
+
         return new SymbolEntityResolution(
             id,
-            exactMatches.Length > 0 ? exactMatches : stableMatches);
+            [],
+            result.Matches,
+            "evidence.stale_id",
+            ReplacementQuery(identity.LookupName));
     }
+
+    private static string ReplacementQuery(string name) =>
+        "dnaxi search symbol "
+        + Quote(name)
+        + " --fields id signature owning_projects variant_count variants --full";
+
+    private static string Quote(string value) =>
+        "'" + value.Replace("'", "'\\''", StringComparison.Ordinal) + "'";
 }
