@@ -88,13 +88,12 @@ The skill teaches supported agents to invoke the exact `dnaxi` release through
 Create and verify a disposable local package without publishing it:
 
 ```bash
-dotnet pack src/DotNetAxi.Cli/DotNetAxi.Cli.csproj \
-  --configuration Release \
-  --output artifacts/packages \
-  -p:DotNetAxiBuildVersion=0.4.0-alpha.1
+pwsh ./eng/pack-local-candidate.ps1 \
+  -Version 0.4.0-alpha.1 \
+  -PackageRoot artifacts/packages/local
 
 pwsh ./eng/verify-tool-package.ps1 \
-  -PackageDirectory artifacts/packages
+  -PackageDirectory artifacts/packages/local/0.4.0-alpha.1
 
 # Pack and run exact stable and prerelease versions through dnx only.
 pwsh ./eng/verify-dnx-version-matrix.ps1
@@ -105,7 +104,7 @@ persistent installation:
 
 ```bash
 dnx dnaxi@0.4.0-alpha.1 \
-  --source ./artifacts/packages \
+  --source ./artifacts/packages/local/0.4.0-alpha.1 \
   --verbosity quiet \
   -- --version
 ```

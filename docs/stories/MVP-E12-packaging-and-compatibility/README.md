@@ -72,6 +72,7 @@ accelerators are outside the MVP.
 - [MVP-E12-S34 — Make dnx the canonical package invocation](MVP-E12-S34-dnx-first-package-identity.md)
 - [MVP-E12-S35 — Prepare the 0.10.0 release candidate](MVP-E12-S35-prepare-0.10.0-release-candidate.md)
 - [MVP-E12-S36 — Publish and verify 0.10.0](MVP-E12-S36-publish-0.10.0.md)
+- [MVP-E12-S37 — Serialize local candidate packaging](MVP-E12-S37-local-candidate-packaging.md)
 
 ## Complete when
 

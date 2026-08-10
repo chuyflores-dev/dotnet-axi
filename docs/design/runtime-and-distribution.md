@@ -341,6 +341,16 @@ archives, and install or execute them from isolated temporary stores. This is
 continuous verification, not publication, and follows the release-policy
 credential boundary.
 
+Local developer candidates use a persistent lock file in a dedicated package
+root. Lock ownership is the exclusive open handle, not file existence; the
+lock path remains after ownership is released and is never unlinked. Each
+candidate version is packed once into its own immutable child directory, which
+contains exactly one tool package and one symbol package. This keeps repeated
+candidate builds isolated while preserving the existing single-pair package
+verification contract. Packaging uses a unique sibling staging directory; only
+a validated package pair is moved to the final version path, and a failed pack
+cleans its owned staging directory without reserving the version.
+
 Self-update behavior is not fixed by the MVP design; normal .NET tool update
 mechanisms remain sufficient.
 
