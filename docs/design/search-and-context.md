@@ -208,7 +208,8 @@ not semantic claims.
 Default rows include kind, name, file, and line. Candidate ID, namespace,
 fully qualified name, signature, accessibility, ownership, test/generated
 classification, complete range, external-path marker, and rank remain opt-in
-through `--fields`.
+through `--fields`. Every internal declaration result still carries its entity
+ID; only the compact CLI projection requires the caller to request it.
 
 ### Stateless entity identity
 
@@ -229,6 +230,17 @@ collapse variants whose compiler meaning differs.
 
 The exact opaque ID encoding is an implementation choice as long as these
 identity and stale-resolution guarantees hold.
+
+The syntax declaration implementation emits `symbol/v1` identities. Each ID
+contains separate opaque stable-declaration and source-location fingerprints.
+The location fingerprint distinguishes byte-identical declarations in
+different files. Resolution first prefers the exact complete ID; after an
+otherwise unchanged source file moves, it may use the stable fingerprint only
+when that identifies exactly one current candidate. Multiple candidates remain
+explicitly ambiguous and are never reported as resolved. Resolution scans the
+supplied workspace traversal and does not read or require retained tool state.
+Stale diagnostics and owner/configuration variants remain the responsibility
+of the following identity-hardening story.
 
 ## Show and outline
 

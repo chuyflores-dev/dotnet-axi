@@ -1,6 +1,30 @@
 using System.CommandLine;
 using DotNetAxi.Cli;
 using DotNetAxi.Contracts;
+using DotNetAxi.Structural;
+using DotNetAxi.Workspaces;
+
+if (args is ["resolve-symbol", var workspaceRoot, var entityId])
+{
+    var workspace = new WorkspaceDiscoverer().Discover(workspaceRoot);
+    var resolver = new SymbolEntityResolver(
+        new WorkspacePathTraverser(),
+        new WorkspaceProjectOwnershipResolver(
+            workspace.Projects.Select(static project => project.Path)));
+    var resolution = await resolver.ResolveAsync(
+        entityId,
+        new WorkspaceTraversalRequest(
+            workspace.RootPath,
+            currentDirectory: workspace.CurrentDirectory));
+    Console.WriteLine($"resolved: {resolution.Resolved.ToString().ToLowerInvariant()}");
+    Console.WriteLine($"ambiguous: {resolution.Ambiguous.ToString().ToLowerInvariant()}");
+    foreach (var match in resolution.Matches)
+    {
+        Console.WriteLine($"match: {match.Id} {match.Range.Start.Path}");
+    }
+
+    return resolution.Resolved ? 0 : 1;
+}
 
 var passiveBoundaryMarker = Environment.GetEnvironmentVariable(
     "DNAXI_PASSIVE_BOUNDARY_PROCESS_MARKER");

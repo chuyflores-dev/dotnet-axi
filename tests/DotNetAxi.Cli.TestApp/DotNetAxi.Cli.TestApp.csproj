@@ -14,5 +14,7 @@
   <ItemGroup>
     <ProjectReference Include="../../src/DotNetAxi.Cli/DotNetAxi.Cli.csproj" />
     <ProjectReference Include="../../src/DotNetAxi.Contracts/DotNetAxi.Contracts.csproj" />
+    <ProjectReference Include="../../src/DotNetAxi.Structural/DotNetAxi.Structural.csproj" />
+    <ProjectReference Include="../../src/DotNetAxi.Workspaces/DotNetAxi.Workspaces.csproj" />
   </ItemGroup>
 </Project>
