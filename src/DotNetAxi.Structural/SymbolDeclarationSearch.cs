@@ -1,4 +1,3 @@
-using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 using DotNetAxi.Contracts;
@@ -277,7 +276,16 @@ public sealed class SymbolDeclarationSearcher
                         lineSpan.End.Character,
                         path.IsExternal));
                 matches.Add(new SymbolDeclarationMatch(
-                    CandidateId(declaration, path, contentHash),
+                    SymbolEntityIdentity.Create(
+                        declaration.Name,
+                        declaration.Kind,
+                        declaration.FullyQualifiedName,
+                        declaration.Signature,
+                        contentHash,
+                        declaration.Node.SpanStart,
+                        declaration.Node.Span.Length,
+                        path.RelativePath,
+                        path.IsExternal),
                     declaration.Kind,
                     declaration.Name,
                     declaration.FullyQualifiedName,
@@ -578,24 +586,6 @@ public sealed class SymbolDeclarationSearcher
         token.Equals("test", StringComparison.OrdinalIgnoreCase)
         || token.Equals("tests", StringComparison.OrdinalIgnoreCase)
         || token.EndsWith("Tests", StringComparison.OrdinalIgnoreCase);
-
-    private static string CandidateId(
-        Declaration declaration,
-        WorkspaceTraversalPath path,
-        string contentHash)
-    {
-        using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
-        StructuralCandidateIdentity.Append(hash, "dotnet-axi/symbol-candidate/v1");
-        StructuralCandidateIdentity.Append(hash, declaration.Kind);
-        StructuralCandidateIdentity.Append(hash, declaration.FullyQualifiedName);
-        StructuralCandidateIdentity.Append(hash, declaration.Signature);
-        StructuralCandidateIdentity.Append(hash, path.RelativePath);
-        StructuralCandidateIdentity.Append(hash, path.IsExternal ? "external" : "workspace");
-        StructuralCandidateIdentity.Append(hash, contentHash);
-        StructuralCandidateIdentity.Append(hash, declaration.Node.SpanStart.ToString(CultureInfo.InvariantCulture));
-        StructuralCandidateIdentity.Append(hash, declaration.Node.Span.Length.ToString(CultureInfo.InvariantCulture));
-        return "symbol-candidate/v1/" + Convert.ToHexStringLower(hash.GetHashAndReset());
-    }
 
     private static void AppendMany(IncrementalHash hash, IEnumerable<string> values)
     {

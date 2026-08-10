@@ -115,6 +115,53 @@ public sealed class SymbolSearchCommandTests
         Assert.DoesNotContain("query:", result.Output);
     }
 
+    [Fact]
+    public async Task Entity_id_is_stable_across_fresh_processes_state_deletion_and_file_move()
+    {
+        using var workspace = new TestWorkspace();
+        await workspace.WriteAsync("App.csproj", "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+        await workspace.WriteAsync(
+            "before/Service.cs",
+            "namespace Demo; public class Service { }");
+
+        var first = await workspace.RunAsync(
+            "search", "symbol", "Service", "--fields", "id", "--full");
+        var firstId = EntityId(first.Output);
+        var stateDirectory = Path.Combine(workspace.Root, ".dnaxi");
+        Directory.CreateDirectory(stateDirectory);
+        await File.WriteAllTextAsync(
+            Path.Combine(stateDirectory, "discarded-state"),
+            "identity must not read this");
+        Directory.Delete(stateDirectory, recursive: true);
+        var fresh = await workspace.RunAsync(
+            "search", "symbol", "Service", "--fields", "id", "--full");
+        Assert.Equal(firstId, EntityId(fresh.Output));
+        Directory.CreateDirectory(Path.Combine(workspace.Root, "after"));
+        File.Move(
+            Path.Combine(workspace.Root, "before", "Service.cs"),
+            Path.Combine(workspace.Root, "after", "Service.cs"));
+
+        var resolution = await workspace.ResolveInFreshProcessAsync(firstId);
+
+        Assert.Equal(0, first.ExitCode);
+        Assert.Equal(0, fresh.ExitCode);
+        Assert.Equal(0, resolution.ExitCode);
+        Assert.Contains("resolved: true", resolution.Output);
+        Assert.Contains("ambiguous: false", resolution.Output);
+        Assert.Contains("after/Service.cs", resolution.Output);
+        Assert.False(Directory.Exists(stateDirectory));
+    }
+
+    private static string EntityId(string output)
+    {
+        var match = System.Text.RegularExpressions.Regex.Match(
+            output,
+            @"symbol/v1/[A-Za-z0-9_-]+/[a-f0-9]{64}/[a-f0-9]{64}",
+            System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+        Assert.True(match.Success, $"Expected a versioned symbol entity ID in: {output}");
+        return match.Value;
+    }
+
     [Theory]
     [InlineData("search", "symbol")]
     [InlineData("search", "symbol", "")]
@@ -182,6 +229,48 @@ public sealed class SymbolSearchCommandTests
             await process.WaitForExitAsync();
             Assert.True(string.IsNullOrEmpty(error), $"Expected empty stderr, got: {error}");
             return (process.ExitCode, output);
+        }
+
+        public async Task<(int ExitCode, string Output)> ResolveInFreshProcessAsync(
+            string id)
+        {
+            var start = new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = Environment.GetEnvironmentVariable("DOTNET_HOST_PATH") ?? "dotnet",
+                WorkingDirectory = Root,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+            };
+            start.ArgumentList.Add(TestApplicationPath());
+            start.ArgumentList.Add("resolve-symbol");
+            start.ArgumentList.Add(Root);
+            start.ArgumentList.Add(id);
+            using var process = System.Diagnostics.Process.Start(start)!;
+            var output = await process.StandardOutput.ReadToEndAsync();
+            var error = await process.StandardError.ReadToEndAsync();
+            await process.WaitForExitAsync();
+            Assert.True(string.IsNullOrEmpty(error), $"Expected empty stderr, got: {error}");
+            return (process.ExitCode, output);
+        }
+
+        private static string TestApplicationPath()
+        {
+#if DEBUG
+            const string configuration = "Debug";
+#else
+            const string configuration = "Release";
+#endif
+            return Path.Combine(
+                Path.GetFullPath(Path.Combine(
+                    AppContext.BaseDirectory,
+                    "..", "..", "..", "..", "..")),
+                "tests",
+                "DotNetAxi.Cli.TestApp",
+                "bin",
+                configuration,
+                "net10.0",
+                "DotNetAxi.Cli.TestApp.dll");
         }
 
         public void Dispose()
