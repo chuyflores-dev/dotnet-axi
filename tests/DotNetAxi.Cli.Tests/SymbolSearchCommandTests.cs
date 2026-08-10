@@ -74,6 +74,31 @@ public sealed class SymbolSearchCommandTests
     }
 
     [Fact]
+    public async Task Symbol_search_exposes_distinct_project_framework_variants()
+    {
+        using var workspace = new TestWorkspace();
+        await workspace.WriteAsync(
+            "App.csproj",
+            "<Project Sdk=\"Microsoft.NET.Sdk\"><PropertyGroup><TargetFrameworks>net8.0;net10.0</TargetFrameworks></PropertyGroup></Project>");
+        await workspace.WriteAsync(
+            "Shared.cs",
+            "namespace Demo; public class Shared { }");
+
+        var result = await workspace.RunAsync(
+            "search", "symbol", "Shared",
+            "--fields", "id", "variant_count", "variants",
+            "--full");
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Contains("variant_count: 2", result.Output);
+        Assert.Contains("net10.0", result.Output);
+        Assert.Contains("net8.0", result.Output);
+        Assert.Contains("meaning", result.Output);
+        Assert.Contains("unresolved", result.Output);
+        Assert.DoesNotContain("symbol-variant/", result.Output);
+    }
+
+    [Fact]
     public async Task Symbol_search_bounds_results_and_emits_a_complete_retrieval_command()
     {
         using var workspace = new TestWorkspace();
@@ -152,11 +177,64 @@ public sealed class SymbolSearchCommandTests
         Assert.False(Directory.Exists(stateDirectory));
     }
 
+    [Fact]
+    public async Task Changed_entity_id_fails_stale_with_replacements_and_query()
+    {
+        using var workspace = new TestWorkspace();
+        await workspace.WriteAsync(
+            "App.csproj",
+            "<Project Sdk=\"Microsoft.NET.Sdk\"><PropertyGroup><TargetFramework>net10.0</TargetFramework></PropertyGroup></Project>");
+        await workspace.WriteAsync(
+            "Service.cs",
+            "namespace Demo; public class Service { public void Save(int value) { } }");
+        var first = await workspace.RunAsync(
+            "search", "symbol", "Save", "--fields", "id", "--full");
+        var firstId = EntityId(first.Output);
+        await workspace.WriteAsync(
+            "Service.cs",
+            "namespace Demo; public class Service { public void Save(string value) { } }");
+
+        var resolution = await workspace.ResolveInFreshProcessAsync(firstId);
+
+        Assert.Equal(1, resolution.ExitCode);
+        Assert.Contains("stale: true", resolution.Output);
+        Assert.Contains("error: evidence.stale_id", resolution.Output);
+        Assert.Contains(
+            "query: dnaxi search symbol 'Save' --fields id signature owning_projects variant_count variants --full",
+            resolution.Output);
+        Assert.Contains("replacement: Save(string)", resolution.Output);
+    }
+
+    [Fact]
+    public async Task Changed_target_framework_fails_entity_id_stale()
+    {
+        using var workspace = new TestWorkspace();
+        await workspace.WriteAsync(
+            "App.csproj",
+            "<Project Sdk=\"Microsoft.NET.Sdk\"><PropertyGroup><TargetFramework>net8.0</TargetFramework></PropertyGroup></Project>");
+        await workspace.WriteAsync(
+            "Service.cs",
+            "namespace Demo; public class Service { }");
+        var first = await workspace.RunAsync(
+            "search", "symbol", "Service", "--fields", "id", "--full");
+        var firstId = EntityId(first.Output);
+        await workspace.WriteAsync(
+            "App.csproj",
+            "<Project Sdk=\"Microsoft.NET.Sdk\"><PropertyGroup><TargetFramework>net10.0</TargetFramework></PropertyGroup></Project>");
+
+        var resolution = await workspace.ResolveInFreshProcessAsync(firstId);
+
+        Assert.Equal(1, resolution.ExitCode);
+        Assert.Contains("stale: true", resolution.Output);
+        Assert.Contains("error: evidence.stale_id", resolution.Output);
+        Assert.Contains("replacement: Service", resolution.Output);
+    }
+
     private static string EntityId(string output)
     {
         var match = System.Text.RegularExpressions.Regex.Match(
             output,
-            @"symbol/v1/[A-Za-z0-9_-]+/[a-f0-9]{64}/[a-f0-9]{64}",
+            @"symbol/v2/[A-Za-z0-9_-]+/[a-f0-9]{64}/[a-f0-9]{64}",
             System.Text.RegularExpressions.RegexOptions.CultureInvariant);
         Assert.True(match.Success, $"Expected a versioned symbol entity ID in: {output}");
         return match.Value;

@@ -10,6 +10,7 @@ if (args is ["resolve-symbol", var workspaceRoot, var entityId])
     var resolver = new SymbolEntityResolver(
         new WorkspacePathTraverser(),
         new WorkspaceProjectOwnershipResolver(
+            workspace.RootPath,
             workspace.Projects.Select(static project => project.Path)));
     var resolution = await resolver.ResolveAsync(
         entityId,
@@ -18,9 +19,22 @@ if (args is ["resolve-symbol", var workspaceRoot, var entityId])
             currentDirectory: workspace.CurrentDirectory));
     Console.WriteLine($"resolved: {resolution.Resolved.ToString().ToLowerInvariant()}");
     Console.WriteLine($"ambiguous: {resolution.Ambiguous.ToString().ToLowerInvariant()}");
+    Console.WriteLine($"stale: {resolution.Stale.ToString().ToLowerInvariant()}");
+    if (resolution.ErrorCode is not null)
+    {
+        Console.WriteLine($"error: {resolution.ErrorCode}");
+        Console.WriteLine($"query: {resolution.Query}");
+    }
+
     foreach (var match in resolution.Matches)
     {
         Console.WriteLine($"match: {match.Id} {match.Range.Start.Path}");
+    }
+
+    foreach (var replacement in resolution.ReplacementCandidates)
+    {
+        Console.WriteLine(
+            $"replacement: {replacement.Signature} {replacement.Id} {replacement.Range.Start.Path}");
     }
 
     return resolution.Resolved ? 0 : 1;

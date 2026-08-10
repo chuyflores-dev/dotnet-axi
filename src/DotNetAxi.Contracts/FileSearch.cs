@@ -150,6 +150,50 @@ public sealed record FileSearchResult
 public interface IFileOwnershipResolver
 {
     IReadOnlyList<string> GetOwningProjects(WorkspaceTraversalPath path);
+
+    IReadOnlyList<FileCompilerVariant> GetCompilerVariants(
+        WorkspaceTraversalPath path) =>
+        Array.AsReadOnly(
+            GetOwningProjects(path)
+                .Select(static project => new FileCompilerVariant(
+                    project,
+                    configuration: null,
+                    framework: null,
+                    contextFingerprint: project))
+                .ToArray());
+}
+
+/// <summary>
+/// Identifies one compiler context in which a traversed source file can be
+/// included. The context fingerprint is opaque input used only to prevent
+/// identity reuse after relevant project context changes.
+/// </summary>
+public sealed record FileCompilerVariant
+{
+    public FileCompilerVariant(
+        string project,
+        string? configuration,
+        string? framework,
+        string contextFingerprint)
+    {
+        Project = ContractGuards.RequiredText(project, nameof(project))
+            .Replace('\\', '/');
+        Configuration = ContractGuards.OptionalText(
+            configuration,
+            nameof(configuration));
+        Framework = ContractGuards.OptionalText(framework, nameof(framework));
+        ContextFingerprint = ContractGuards.RequiredText(
+            contextFingerprint,
+            nameof(contextFingerprint));
+    }
+
+    public string Project { get; }
+
+    public string? Configuration { get; }
+
+    public string? Framework { get; }
+
+    public string ContextFingerprint { get; }
 }
 
 public interface IFileSearcher

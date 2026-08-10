@@ -24,7 +24,7 @@ public sealed class SymbolEntityIdentityTests
         Assert.Equal(2, partials.Matches.Select(match => match.Id).Distinct().Count());
         Assert.All(
             overloads.Matches.Concat(partials.Matches),
-            match => Assert.StartsWith("symbol/v1/", match.Id));
+            match => Assert.StartsWith("symbol/v2/", match.Id));
     }
 
     [Fact]
@@ -114,7 +114,184 @@ public sealed class SymbolEntityIdentityTests
         Assert.Equal(2, ambiguous.Matches.Count);
     }
 
+    [Fact]
+    public async Task Changed_signature_and_overloads_return_stale_replacements_and_query()
+    {
+        using var workspace = new TestWorkspace();
+        var source = await workspace.WriteAsync(
+            "Service.cs",
+            "namespace Demo; class Service { public void Save(int value) { } }");
+        var paths = new[] { Path(source, "Service.cs") };
+        var original = Assert.Single((await Searcher(paths).SearchAsync(
+            Request(workspace.Root, "Save"))).Matches);
+        await workspace.WriteAsync(
+            "Service.cs",
+            "namespace Demo; class Service { public void Save() { } public void Save(string value) { } }");
+
+        var resolution = await Resolver(paths).ResolveAsync(
+            original.Id,
+            new WorkspaceTraversalRequest(workspace.Root));
+
+        Assert.True(resolution.Stale);
+        Assert.Equal("evidence.stale_id", resolution.ErrorCode);
+        Assert.Empty(resolution.Matches);
+        Assert.Equal(
+            ["Save()", "Save(string)"],
+            resolution.ReplacementCandidates.Select(
+                static replacement => replacement.Signature));
+        Assert.Equal(
+            "dnaxi search symbol 'Save' --fields id signature owning_projects variant_count variants --full",
+            resolution.Query);
+    }
+
+    [Theory]
+    [InlineData("src/A/A.csproj", "Debug", "net8.0", "src/B/B.csproj", "Debug", "net8.0")]
+    [InlineData("src/A/A.csproj", "Debug", "net8.0", "src/A/A.csproj", "Release", "net8.0")]
+    [InlineData("src/A/A.csproj", "Debug", "net8.0", "src/A/A.csproj", "Debug", "net10.0")]
+    public async Task Project_configuration_and_framework_changes_make_identity_stale(
+        string beforeProject,
+        string beforeConfiguration,
+        string beforeFramework,
+        string afterProject,
+        string afterConfiguration,
+        string afterFramework)
+    {
+        using var workspace = new TestWorkspace();
+        var source = await workspace.WriteAsync(
+            "Shared.cs",
+            "namespace Demo; class Shared { }");
+        var paths = new[] { Path(source, "Shared.cs") };
+        var beforeOwnership = new VariantOwnershipResolver(
+            new FileCompilerVariant(
+                beforeProject,
+                beforeConfiguration,
+                beforeFramework,
+                "shared-context"));
+        var original = Assert.Single((await Searcher(
+            paths,
+            beforeOwnership).SearchAsync(
+                Request(workspace.Root, "Shared"))).Matches);
+        var afterOwnership = new VariantOwnershipResolver(
+            new FileCompilerVariant(
+                afterProject,
+                afterConfiguration,
+                afterFramework,
+                "shared-context"));
+
+        var resolution = await new SymbolEntityResolver(
+            new StubTraverser(paths),
+            afterOwnership).ResolveAsync(
+                original.Id,
+                new WorkspaceTraversalRequest(workspace.Root));
+
+        Assert.True(resolution.Stale);
+        var replacement = Assert.Single(resolution.ReplacementCandidates);
+        Assert.NotEqual(original.Id, replacement.Id);
+        var variant = Assert.Single(replacement.Variants);
+        Assert.Equal(afterProject, variant.Project);
+        Assert.Equal(afterConfiguration, variant.Configuration);
+        Assert.Equal(afterFramework, variant.Framework);
+        Assert.Equal("unresolved", variant.Meaning);
+    }
+
+    [Fact]
+    public async Task One_logical_declaration_exposes_distinct_framework_variants()
+    {
+        using var workspace = new TestWorkspace();
+        var source = await workspace.WriteAsync(
+            "Shared.cs",
+            "namespace Demo; class Shared { }");
+        var ownership = new VariantOwnershipResolver(
+            new FileCompilerVariant(
+                "src/App/App.csproj",
+                "Debug",
+                "net8.0",
+                "net8-context"),
+            new FileCompilerVariant(
+                "src/App/App.csproj",
+                "Debug",
+                "net10.0",
+                "net10-context"));
+
+        var match = Assert.Single((await Searcher(
+            [Path(source, "Shared.cs")],
+            ownership).SearchAsync(
+                Request(workspace.Root, "Shared"))).Matches);
+
+        Assert.Equal(2, match.VariantCount);
+        Assert.Equal(
+            ["net10.0", "net8.0"],
+            match.Variants.Select(static variant => variant.Framework));
+        Assert.All(
+            match.Variants,
+            static variant => Assert.Equal("unresolved", variant.Meaning));
+    }
+
+    [Fact]
+    public async Task Conditional_compilation_variants_do_not_claim_default_parse_meaning()
+    {
+        using var workspace = new TestWorkspace();
+        var source = await workspace.WriteAsync(
+            "Conditional.cs",
+            """
+            class Conditional
+            {
+            #if NET8_0
+                void Save(int value) { }
+            #else
+                void Save(string value) { }
+            #endif
+            }
+            """);
+        var ownership = new VariantOwnershipResolver(
+            new FileCompilerVariant(
+                "App.csproj",
+                configuration: null,
+                framework: "net8.0",
+                contextFingerprint: "shared-context"),
+            new FileCompilerVariant(
+                "App.csproj",
+                configuration: null,
+                framework: "net10.0",
+                contextFingerprint: "shared-context"));
+
+        var match = Assert.Single((await Searcher(
+            [Path(source, "Conditional.cs")],
+            ownership).SearchAsync(
+                Request(workspace.Root, "Save"))).Matches);
+
+        Assert.Equal("Save(string)", match.Signature);
+        Assert.Equal(2, match.VariantCount);
+        Assert.All(
+            match.Variants,
+            static variant => Assert.Equal("unresolved", variant.Meaning));
+    }
+
+    [Fact]
+    public async Task Previous_identity_version_is_rejected_not_reclassified_stale()
+    {
+        using var workspace = new TestWorkspace();
+        var resolver = Resolver([]);
+        var legacyId = "symbol/v1/U2F2ZQ/"
+                       + new string('a', 64)
+                       + "/"
+                       + new string('b', 64);
+
+        var exception = await Assert.ThrowsAsync<ArgumentException>(() =>
+            resolver.ResolveAsync(
+                    legacyId,
+                    new WorkspaceTraversalRequest(workspace.Root))
+                .AsTask());
+
+        Assert.Contains("symbol/v2", exception.Message, StringComparison.Ordinal);
+    }
+
     private static SymbolDeclarationSearcher Searcher(
+        IReadOnlyList<WorkspaceTraversalPath> paths,
+        IFileOwnershipResolver? ownership = null) =>
+        new(new StubTraverser(paths), ownership ?? NoOwnershipResolver.Instance);
+
+    private static SymbolEntityResolver Resolver(
         IReadOnlyList<WorkspaceTraversalPath> paths) =>
         new(new StubTraverser(paths), NoOwnershipResolver.Instance);
 
@@ -141,6 +318,20 @@ public sealed class SymbolEntityIdentityTests
         public static NoOwnershipResolver Instance { get; } = new();
 
         public IReadOnlyList<string> GetOwningProjects(WorkspaceTraversalPath path) => [];
+    }
+
+    private sealed class VariantOwnershipResolver(
+        params FileCompilerVariant[] variants) : IFileOwnershipResolver
+    {
+        public IReadOnlyList<string> GetOwningProjects(
+            WorkspaceTraversalPath path) =>
+            variants.Select(static variant => variant.Project)
+                .Distinct(StringComparer.Ordinal)
+                .Order(StringComparer.Ordinal)
+                .ToArray();
+
+        public IReadOnlyList<FileCompilerVariant> GetCompilerVariants(
+            WorkspaceTraversalPath path) => variants;
     }
 
     private sealed class TestWorkspace : IDisposable
