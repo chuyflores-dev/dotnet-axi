@@ -247,17 +247,27 @@ public sealed class WorkspacePathTraverser : IWorkspacePathTraverser
             || configuredExclusions.Any(pattern =>
                 pattern.Matches(policyPath ?? path.RelativePath))
             || (!IsExplicitBuildOutput(file.FullName, path, explicitScopes)
-                && IsBuildOutput(policyPath ?? path.RelativePath))
-            || (!includeGenerated
-                && IsGenerated(
-                    file,
-                    policyPath ?? path.RelativePath,
-                    generatedPatterns)))
+                && IsBuildOutput(policyPath ?? path.RelativePath)))
         {
             return;
         }
 
-        paths.TryAdd(path.RelativePath, path);
+        var isGenerated = IsGenerated(
+            file,
+            policyPath ?? path.RelativePath,
+            generatedPatterns);
+        if (!includeGenerated && isGenerated)
+        {
+            return;
+        }
+
+        paths.TryAdd(
+            path.RelativePath,
+            new WorkspaceTraversalPath(
+                path.FullPath,
+                path.RelativePath,
+                path.IsExternal,
+                isGenerated));
     }
 
     private static IReadOnlyList<ExplicitScope> ResolveExplicitScopes(

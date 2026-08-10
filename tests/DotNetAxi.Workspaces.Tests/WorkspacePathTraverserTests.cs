@@ -124,6 +124,26 @@ public sealed class WorkspacePathTraverserTests
     }
 
     [Fact]
+    public async Task Included_paths_preserve_shared_generated_classification()
+    {
+        await using var fixture = await _fixtures.CreateAsync(ManifestPath());
+        var paths = _traverser.Traverse(new WorkspaceTraversalRequest(
+            fixture.WorkspacePath,
+            new TraversalConfiguration(
+                generatedPathPatterns: ["generated/PatternGenerated.cs"]),
+            includeGenerated: true));
+
+        Assert.True(paths.Single(path => path.RelativePath
+            == "generated/HeaderGenerated.cs").IsGenerated);
+        Assert.True(paths.Single(path => path.RelativePath
+            == "generated/PatternGenerated.cs").IsGenerated);
+        Assert.True(paths.Single(path => path.RelativePath
+            == "generated/Suffix.g.cs").IsGenerated);
+        Assert.False(paths.Single(path => path.RelativePath
+            == "src/Included.cs").IsGenerated);
+    }
+
+    [Fact]
     public async Task Directory_links_are_not_followed()
     {
         await using var fixture = await _fixtures.CreateAsync(ManifestPath());

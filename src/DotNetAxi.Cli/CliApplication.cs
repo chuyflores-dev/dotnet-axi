@@ -82,7 +82,7 @@ internal static class CliApplication
             [
                 "dnaxi search file Program",
                 "dnaxi search text TODO",
-                "dnaxi search syntax invocation --name SaveChangesAsync",
+                "dnaxi search symbol Widget",
             ]);
 
         var fileCommand = new Command("file", "Find files by normalized workspace-relative path.");
@@ -174,6 +174,76 @@ internal static class CliApplication
                 result.GetValue(baseReference),
                 result.GetValue(head)),
             static () => new TextSearchCommandHandler(),
+            host.ResponseWriter);
+
+        var symbolCommand = new Command(
+            "symbol",
+            "Find and rank C# declaration candidates without loading a compilation.");
+        var symbolQuery = new Argument<string>("query");
+        var symbolKinds = new Option<string[]>("--kind")
+        {
+            AllowMultipleArgumentsPerToken = false,
+            Description = "Limit results to one or more declaration kinds.",
+        };
+        var symbolNamespace = new Option<string?>("--namespace")
+        {
+            Description = "Limit results to a namespace and its descendants.",
+        };
+        var symbolProject = new Option<string?>("--project")
+        {
+            Description = "Limit results to one passively discovered project owner.",
+        };
+        var symbolPaths = new Option<string[]>("--path")
+        {
+            AllowMultipleArgumentsPerToken = false,
+        };
+        var symbolAccessibilities = new Option<string[]>("--accessibility")
+        {
+            AllowMultipleArgumentsPerToken = false,
+            Description = "Limit results to one or more syntactic accessibility values.",
+        };
+        var symbolIncludeTests = new Option<bool>("--include-tests");
+        var symbolIncludeGenerated = new Option<bool>("--include-generated");
+        var symbolLimit = new Option<int>("--limit")
+        {
+            DefaultValueFactory = static _ => 100,
+        };
+        var symbolFull = new Option<bool>("--full");
+        var symbolFields = new Option<string[]>("--fields")
+        {
+            AllowMultipleArgumentsPerToken = true,
+        };
+        symbolCommand.Arguments.Add(symbolQuery);
+        symbolCommand.Options.Add(symbolKinds);
+        symbolCommand.Options.Add(symbolNamespace);
+        symbolCommand.Options.Add(symbolProject);
+        symbolCommand.Options.Add(symbolPaths);
+        symbolCommand.Options.Add(symbolAccessibilities);
+        symbolCommand.Options.Add(symbolIncludeTests);
+        symbolCommand.Options.Add(symbolIncludeGenerated);
+        symbolCommand.Options.Add(symbolLimit);
+        symbolCommand.Options.Add(symbolFull);
+        symbolCommand.Options.Add(symbolFields);
+        host.RegisterCommand(searchCommand, symbolCommand, OperationPolicy.Passive,
+            [
+                "dnaxi search symbol Widget",
+                "dnaxi search symbol Save --kind method --project src/App/App.csproj",
+            ]);
+        symbolCommand.BindHandler(
+            result => SymbolSearchCommandRequest.Create(
+                result.GetValue(symbolQuery)!,
+                result.GetValue(symbolKinds) ?? [],
+                result.GetValue(symbolNamespace),
+                result.GetValue(symbolProject),
+                result.GetValue(symbolPaths) ?? [],
+                result.GetValue(symbolAccessibilities) ?? [],
+                result.GetValue(symbolIncludeTests),
+                result.GetValue(symbolIncludeGenerated),
+                result.GetValue(symbolLimit),
+                result.Tokens.Any(token => token.Value == "--limit"),
+                result.GetValue(symbolFull),
+                result.GetValue(symbolFields) ?? []),
+            static () => new SymbolSearchCommandHandler(),
             host.ResponseWriter);
 
         var syntaxCommand = new Command(

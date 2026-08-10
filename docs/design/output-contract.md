@@ -337,9 +337,16 @@ status: success
 snapshot: ws_7c2f5a1d
 resolution: syntax
 coverage: complete
-query: LegacyPaymentRule
+scope:
+  root: /repo
+  analyzed_portion: eligible C# declaration paths
+  considered: 1
 count: 0
-matches[0]:
+total_known: true
+total: 0
+omitted: 0
+truncated: false
+matches: []
 ```
 
 Exit code: `0`.
@@ -353,13 +360,18 @@ status: failed
 error:
   code: usage.unknown_flag
   message: Unknown flag `--stat` for `search symbol`
-valid_flags[6]{name}:
-  "--kind"
-  "--project"
-  "--path"
-  "--include-tests"
-  "--include-generated"
+valid_flags[11]{name}:
+  "--accessibility"
+  "--fields"
+  "--full"
   "--help"
+  "--include-generated"
+  "--include-tests"
+  "--kind"
+  "--limit"
+  "--namespace"
+  "--path"
+  "--project"
 ```
 
 Exit code: `2`.
