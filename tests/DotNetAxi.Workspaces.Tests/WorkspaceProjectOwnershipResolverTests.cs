@@ -141,4 +141,44 @@ public sealed class WorkspaceProjectOwnershipResolverTests
             Directory.Delete(root, recursive: true);
         }
     }
+
+    [Fact]
+    public async Task Linked_source_identity_uses_the_workspace_path_comparer()
+    {
+        var root = Path.Combine(
+            Path.GetTempPath(),
+            "dotnet-axi-owner-path-comparer-tests",
+            Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(Path.Combine(root, "project"));
+        try
+        {
+            await File.WriteAllTextAsync(
+                Path.Combine(root, "project", "App.csproj"),
+                "<Project Sdk=\"Microsoft.NET.Sdk\"><ItemGroup><Compile Include=\"../Shared.cs\" /></ItemGroup></Project>");
+            var resolver = new WorkspaceProjectOwnershipResolver(
+                root,
+                ["project/App.csproj"]);
+            var owners = resolver.GetOwningProjects(
+                new WorkspaceTraversalPath(
+                    Path.Combine(root, "shared.cs"),
+                    "shared.cs",
+                    isExternal: false));
+
+            Assert.Equal(
+                OperatingSystem.IsWindows(),
+                WorkspacePathIdentity.Comparer.Equals("Shared.cs", "shared.cs"));
+            if (OperatingSystem.IsWindows())
+            {
+                Assert.Equal(["project/App.csproj"], owners);
+            }
+            else
+            {
+                Assert.Empty(owners);
+            }
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
 }

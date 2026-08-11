@@ -36,7 +36,7 @@ public sealed class WorkspaceProjectOwnershipResolver : IFileOwnershipResolver
         return Array.AsReadOnly(
             projectPaths
                 .Select(NormalizeProjectPath)
-                .Distinct(StringComparer.Ordinal)
+                .Distinct(WorkspacePathIdentity.Comparer)
                 .Order(StringComparer.Ordinal)
                 .Select(path => new ProjectScope(
                     path,
@@ -122,7 +122,9 @@ public sealed class WorkspaceProjectOwnershipResolver : IFileOwnershipResolver
 
     private static bool Contains(string directory, string path) =>
         directory.Length == 0
-        || path.StartsWith(directory + "/", StringComparison.Ordinal);
+        || path.StartsWith(
+            directory + "/",
+            WorkspacePathIdentity.Comparison);
 
     private static IReadOnlyList<FileCompilerVariant> ProjectVariants(
         string? workspaceRoot,
@@ -183,7 +185,7 @@ public sealed class WorkspaceProjectOwnershipResolver : IFileOwnershipResolver
     {
         if (workspaceRoot is null)
         {
-            return new HashSet<string>(StringComparer.Ordinal);
+            return new HashSet<string>(WorkspacePathIdentity.Comparer);
         }
 
         var projectPath = Path.GetFullPath(
@@ -218,14 +220,14 @@ public sealed class WorkspaceProjectOwnershipResolver : IFileOwnershipResolver
                 .Where(path => IsWithin(workspaceRoot, path))
                 .Select(path => Path.GetRelativePath(workspaceRoot, path)
                     .Replace('\\', '/'))
-                .ToHashSet(StringComparer.Ordinal);
+                .ToHashSet(WorkspacePathIdentity.Comparer);
         }
         catch (Exception exception) when (exception is IOException
             or UnauthorizedAccessException
             or XmlException
             or ArgumentException)
         {
-            return new HashSet<string>(StringComparer.Ordinal);
+            return new HashSet<string>(WorkspacePathIdentity.Comparer);
         }
     }
 

@@ -7,12 +7,16 @@ namespace DotNetAxi.Cli;
 
 internal sealed record SymbolShowCommandRequest(
     string Id,
-    IReadOnlyList<string> Paths,
+    SymbolWorkspaceScopeRequest Scope,
     int MaxCharacters)
 {
     public static SymbolShowCommandRequest Create(
         string id,
+        string? solution,
+        string? project,
         IReadOnlyList<string> paths,
+        bool includeTests,
+        bool includeGenerated,
         int maxCharacters)
     {
         if (!SymbolEntityResolver.IsSupportedId(id))
@@ -23,14 +27,6 @@ internal sealed record SymbolShowCommandRequest(
                 "Run `dnaxi search symbol <name> --fields 'id,signature' --full` first.");
         }
 
-        if (paths.Any(string.IsNullOrWhiteSpace))
-        {
-            throw new CommandUsageException(
-                "usage.symbol_path",
-                "A --path value cannot be blank.",
-                "Provide one or more non-blank paths.");
-        }
-
         if (maxCharacters < 0)
         {
             throw new CommandUsageException(
@@ -39,7 +35,16 @@ internal sealed record SymbolShowCommandRequest(
                 "Use a non-negative --max-chars value.");
         }
 
-        return new SymbolShowCommandRequest(id, paths, maxCharacters);
+        return new SymbolShowCommandRequest(
+            id,
+            SymbolWorkspaceScopeRequest.Create(
+                solution,
+                project,
+                paths,
+                includeTests,
+                includeGenerated,
+                "usage.symbol_path"),
+            maxCharacters);
     }
 }
 
@@ -54,23 +59,22 @@ internal sealed class SymbolShowCommandHandler :
         cancellationToken.ThrowIfCancellationRequested();
 
         var workspace = new WorkspaceDiscoverer().Discover(Directory.GetCurrentDirectory());
-        var traversal = new WorkspaceTraversalRequest(
-            workspace.RootPath,
-            explicitPaths: request.Paths,
-            currentDirectory: workspace.CurrentDirectory);
+        var scope = SymbolWorkspaceScopeResolver.Resolve(workspace, request.Scope);
         var resolver = new SymbolEntityResolver(
-            new WorkspacePathTraverser(),
-            new WorkspaceProjectOwnershipResolver(
-                workspace.RootPath,
-                workspace.Projects.Select(static project => project.Path)));
+            scope.Traverser,
+            scope.Ownership);
         var resolution = await resolver
-            .ResolveAsync(request.Id, traversal, cancellationToken)
+            .ResolveAsync(
+                request.Id,
+                scope.Traversal,
+                scope.DeclarationScope,
+                cancellationToken)
             .ConfigureAwait(false);
-        var evidence = EvidenceFor(workspace.RootPath, request.Paths, resolution);
+        var evidence = EvidenceFor(scope, resolution);
 
         if (resolution.Stale)
         {
-            var query = SearchQuery(resolution.LookupName, request.Paths);
+            var query = SearchQuery(resolution.LookupName, scope);
             return Failure(
                 resolution.ErrorCode!,
                 "The symbol ID no longer identifies a current declaration.",
@@ -82,7 +86,7 @@ internal sealed class SymbolShowCommandHandler :
 
         if (resolution.Ambiguous)
         {
-            var query = SearchQuery(resolution.LookupName, request.Paths);
+            var query = SearchQuery(resolution.LookupName, scope);
             return Failure(
                 "evidence.ambiguous_id",
                 "The symbol ID resolves to multiple current declarations.",
@@ -108,7 +112,7 @@ internal sealed class SymbolShowCommandHandler :
         var retrievalCommand = CanonicalInvocation.OneShot(
             "dnaxi show symbol "
             + Quote(request.Id)
-            + PathArguments(request.Paths)
+            + scope.CanonicalArguments()
             + " --max-chars "
             + completeBudget.ToString(
                 System.Globalization.CultureInfo.InvariantCulture));
@@ -176,8 +180,7 @@ internal sealed class SymbolShowCommandHandler :
     }
 
     private static Evidence EvidenceFor(
-        string workspaceRoot,
-        IReadOnlyList<string> paths,
+        ResolvedSymbolWorkspaceScope scope,
         SymbolEntityResolution resolution) =>
         new(
             resolution.Snapshot,
@@ -190,11 +193,7 @@ internal sealed class SymbolShowCommandHandler :
                 excluded: 0,
                 failed: 0),
             EvidenceConfidence.Candidate,
-            new EvidenceScope(
-                workspaceRoot,
-                paths.Count == 0
-                    ? "eligible C# declaration paths"
-                    : "eligible explicitly selected C# declaration paths"));
+            scope.EvidenceScope);
 
     private static SymbolCandidatePayload Candidate(SymbolDeclarationMatch match) =>
         new(
@@ -217,14 +216,11 @@ internal sealed class SymbolShowCommandHandler :
 
     private static string SearchQuery(
         string name,
-        IReadOnlyList<string> paths) =>
+        ResolvedSymbolWorkspaceScope scope) =>
         "dnaxi search symbol "
         + Quote(name)
-        + PathArguments(paths)
+        + scope.CanonicalArguments()
         + " --fields 'id,signature,owning_projects,variant_count,variants' --full";
-
-    private static string PathArguments(IReadOnlyList<string> paths) =>
-        string.Concat(paths.Select(path => " --path " + Quote(path)));
 
     private static string Quote(string value) =>
         "'" + value.Replace("'", "'\\''", StringComparison.Ordinal) + "'";

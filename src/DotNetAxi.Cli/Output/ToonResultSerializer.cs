@@ -87,6 +87,13 @@ public sealed class ToonResultSerializer
         AddOptionalArray(scope, "projects", evidence.Scope.Projects);
         AddOptionalArray(scope, "frameworks", evidence.Scope.Frameworks);
         AddOptional(scope, "configuration", evidence.Scope.Configuration);
+        AddOptionalArray(scope, "paths", evidence.Scope.Paths);
+        if (evidence.Scope.Eligibility is not null)
+        {
+            scope["eligibility"] = JsonSerializer.SerializeToNode(
+                evidence.Scope.Eligibility,
+                PayloadOptions);
+        }
         AddOptional(scope, "considered", evidence.Coverage.Considered);
         if (evidence.Coverage.Level is CoverageLevel.Complete)
         {

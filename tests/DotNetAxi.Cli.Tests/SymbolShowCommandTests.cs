@@ -135,7 +135,9 @@ public sealed class SymbolShowCommandTests
         Assert.Equal(1, result.ExitCode);
         Assert.Contains("status: failed", result.Output);
         Assert.Contains("code: evidence.stale_id", result.Output);
-        Assert.Contains("dnaxi search symbol 'Save' --fields 'id,signature", result.Output);
+        Assert.Contains(
+            "dnaxi search symbol 'Save' --project 'App.csproj' --fields 'id,signature",
+            result.Output);
         Assert.Contains("Save(string)", result.Output);
     }
 
@@ -168,13 +170,17 @@ public sealed class SymbolShowCommandTests
         Assert.Contains("truncated: true", result.Output);
 
         const string expectedQuery =
-            "dnaxi search symbol 'Widget' --fields 'id,signature,owning_projects,variant_count,variants' --full";
+            "dnaxi search symbol 'Widget' --project 'App.csproj' --fields 'id,signature,owning_projects,variant_count,variants' --full";
         var query = ToonString(result.Output, "query");
         var correction = ToonString(result.Output, "correction");
         var retrieval = ToonString(result.Output, "retrieval_command");
         var expectedRetrieval =
             $"dnx dnaxi@{ToolVersion.Current} --verbosity quiet -- "
             + "search symbol 'Widget' --fields 'id,signature,owning_projects,variant_count,variants' --full";
+        expectedRetrieval = expectedRetrieval.Replace(
+            "search symbol 'Widget'",
+            "search symbol 'Widget' --project 'App.csproj'",
+            StringComparison.Ordinal);
 
         Assert.Equal(expectedQuery, query.Value);
         Assert.Equal(expectedQuery, correction.Value);
@@ -191,6 +197,8 @@ public sealed class SymbolShowCommandTests
                 "search",
                 "symbol",
                 "Widget",
+                "--project",
+                "App.csproj",
                 "--fields",
                 "id,signature,owning_projects,variant_count,variants",
                 "--full",

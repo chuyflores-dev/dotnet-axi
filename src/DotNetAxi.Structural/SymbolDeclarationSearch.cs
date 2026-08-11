@@ -8,6 +8,36 @@ using Microsoft.CodeAnalysis.Text;
 
 namespace DotNetAxi.Structural;
 
+public sealed record SymbolDeclarationScope
+{
+    public SymbolDeclarationScope(
+        string? solution,
+        IEnumerable<string>? projects,
+        IEnumerable<string>? paths,
+        bool includeTests,
+        bool includeGenerated)
+    {
+        Solution = solution;
+        Projects = Array.AsReadOnly((projects ?? [])
+            .Distinct(StringComparer.Ordinal)
+            .Order(StringComparer.Ordinal)
+            .ToArray());
+        Paths = Array.AsReadOnly((paths ?? []).ToArray());
+        IncludeTests = includeTests;
+        IncludeGenerated = includeGenerated;
+    }
+
+    public string? Solution { get; }
+
+    public IReadOnlyList<string> Projects { get; }
+
+    public IReadOnlyList<string> Paths { get; }
+
+    public bool IncludeTests { get; }
+
+    public bool IncludeGenerated { get; }
+}
+
 public sealed record SymbolDeclarationSearchRequest
 {
     public SymbolDeclarationSearchRequest(
@@ -17,7 +47,8 @@ public sealed record SymbolDeclarationSearchRequest
         string? namespaceFilter = null,
         string? project = null,
         IEnumerable<string>? accessibilities = null,
-        bool includeTests = false)
+        bool includeTests = false,
+        SymbolDeclarationScope? scope = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(query);
         if (query.Contains('\0', StringComparison.Ordinal))
@@ -34,7 +65,22 @@ public sealed record SymbolDeclarationSearchRequest
             accessibilities,
             SymbolDeclarationSearcher.AvailableAccessibilities,
             nameof(accessibilities));
+        if (scope is not null
+            && (scope.IncludeTests != includeTests
+                || scope.IncludeGenerated != (traversal.IncludeGenerated == true)))
+        {
+            throw new ArgumentException(
+                "The structural scope eligibility must match the traversal and declaration request.",
+                nameof(scope));
+        }
+
         IncludeTests = includeTests;
+        Scope = scope ?? new SymbolDeclarationScope(
+            solution: null,
+            projects: project is null ? null : [project],
+            paths: traversal.ExplicitPaths,
+            includeTests,
+            traversal.IncludeGenerated == true);
     }
 
     public string Query { get; }
@@ -50,6 +96,8 @@ public sealed record SymbolDeclarationSearchRequest
     public IReadOnlyList<string> Accessibilities { get; }
 
     public bool IncludeTests { get; }
+
+    public SymbolDeclarationScope Scope { get; }
 
     private static IReadOnlyList<string> CopyFilters(
         IEnumerable<string>? values,
@@ -216,7 +264,11 @@ public sealed class SymbolDeclarationSearcher
         StructuralCandidateIdentity.Append(snapshot, request.Namespace ?? string.Empty);
         StructuralCandidateIdentity.Append(snapshot, request.Project ?? string.Empty);
         AppendMany(snapshot, request.Accessibilities);
-        StructuralCandidateIdentity.Append(snapshot, request.IncludeTests ? "tests" : "no-tests");
+        StructuralCandidateIdentity.Append(snapshot, request.Scope.Solution ?? string.Empty);
+        AppendMany(snapshot, request.Scope.Projects);
+        AppendMany(snapshot, request.Scope.Paths);
+        StructuralCandidateIdentity.Append(snapshot, request.Scope.IncludeTests ? "tests" : "no-tests");
+        StructuralCandidateIdentity.Append(snapshot, request.Scope.IncludeGenerated ? "generated" : "no-generated");
 
         var observations = new List<RoslynSyntaxFileObservation>(paths.Length);
         var matches = new List<SymbolDeclarationMatch>();
@@ -313,7 +365,7 @@ public sealed class SymbolDeclarationSearcher
                         && !request.Accessibilities.Contains(
                             declaration.Accessibility,
                             StringComparer.Ordinal))
-                    || (!request.IncludeTests && isTest))
+                    || (!request.Scope.IncludeTests && isTest))
                 {
                     continue;
                 }

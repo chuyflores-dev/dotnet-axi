@@ -46,6 +46,9 @@ public sealed class SymbolSearchCommandTests
         await workspace.WriteAsync(
             "tests/App.Tests/ServiceTests.cs",
             "namespace Product.Tests; public class ServiceTests { public void Save() { } }");
+        await workspace.WriteAsync(
+            "Workspace.slnx",
+            "<Solution><Project Path=\"src/App/App.csproj\" /><Project Path=\"tests/App.Tests/App.Tests.csproj\" /></Solution>");
 
         var production = await workspace.RunAsync(
             "search", "symbol", "Service",
@@ -57,6 +60,7 @@ public sealed class SymbolSearchCommandTests
             "--full");
         var expanded = await workspace.RunAsync(
             "search", "symbol", "Service",
+            "--solution", "Workspace.slnx",
             "--include-tests", "--include-generated", "--full");
 
         Assert.Equal(0, production.ExitCode);

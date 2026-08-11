@@ -35,7 +35,10 @@ public static class CommandHandlerBinding
             {
                 var result = CommandResult<UsagePayload>.Failed(
                     CommandName.From(parseResult),
-                    [new ResultError(exception.Code, exception.Message, exception.Correction)]);
+                    [new ResultError(exception.Code, exception.Message, exception.Correction)],
+                    exception.CandidatePaths.Count == 0
+                        ? null
+                        : new UsagePayload(exception.CandidatePaths));
                 return await responseWriter
                     .WriteAsync(result, CliExitCode.Usage, cancellationToken)
                     .ConfigureAwait(false);
@@ -43,5 +46,5 @@ public static class CommandHandlerBinding
         });
     }
 
-    private sealed record UsagePayload;
+    private sealed record UsagePayload(IReadOnlyList<string> CandidatePaths);
 }
