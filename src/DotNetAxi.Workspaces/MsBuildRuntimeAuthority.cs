@@ -5,6 +5,42 @@ using Microsoft.Build.Locator;
 
 namespace DotNetAxi.Workspaces;
 
+public sealed record MsBuildRuntimeRegistrationResult(
+    MsBuildRuntimeIdentity? Runtime,
+    string? FailureCode)
+{
+    public bool IsAvailable => Runtime is not null && FailureCode is null;
+}
+
+/// <summary>
+/// Selects the workspace SDK and registers its MSBuild runtime exactly once
+/// for Roslyn and graph consumers in the current process.
+/// </summary>
+public sealed class MsBuildRuntimeRegistrationService
+{
+    private readonly IMsBuildRuntimeAuthority _authority;
+
+    public MsBuildRuntimeRegistrationService(IDotNetHostResolver hostResolver)
+    {
+        ArgumentNullException.ThrowIfNull(hostResolver);
+        _authority = new MsBuildRuntimeAuthority(
+            new DotNetSdkSelector(hostResolver));
+    }
+
+    public MsBuildRuntimeRegistrationResult Register(
+        string workspaceRoot,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(workspaceRoot);
+        var result = _authority.ResolveAndRegister(
+            workspaceRoot,
+            cancellationToken);
+        return new MsBuildRuntimeRegistrationResult(
+            result.Runtime,
+            result.Failure?.AuthorityCode);
+    }
+}
+
 internal sealed record DotNetSdkSelection(
     SelectedDotNetSdk? Sdk,
     string? FailureCode)

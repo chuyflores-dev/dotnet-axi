@@ -41,7 +41,8 @@ public sealed class WorkspaceProjectOwnershipResolver : IFileOwnershipResolver
                 .Select(path => new ProjectScope(
                     path,
                     DirectoryPath(path),
-                    ProjectVariants(workspaceRoot, path)))
+                    ProjectVariants(workspaceRoot, path),
+                    LinkedSources(workspaceRoot, path)))
                 .ToArray());
     }
 
@@ -56,9 +57,8 @@ public sealed class WorkspaceProjectOwnershipResolver : IFileOwnershipResolver
 
         return Array.AsReadOnly(
             _projects
-                .Where(project => Contains(
-                    project.Directory,
-                    path.RelativePath))
+                .Where(project => Contains(project.Directory, path.RelativePath)
+                    || project.LinkedSources.Contains(path.RelativePath))
                 .Select(static project => project.Path)
                 .ToArray());
     }
@@ -74,9 +74,8 @@ public sealed class WorkspaceProjectOwnershipResolver : IFileOwnershipResolver
 
         return Array.AsReadOnly(
             _projects
-                .Where(project => Contains(
-                    project.Directory,
-                    path.RelativePath))
+                .Where(project => Contains(project.Directory, path.RelativePath)
+                    || project.LinkedSources.Contains(path.RelativePath))
                 .SelectMany(static project => project.Variants)
                 .OrderBy(static variant => variant.Project, StringComparer.Ordinal)
                 .ThenBy(static variant => variant.Configuration, StringComparer.Ordinal)
@@ -178,6 +177,58 @@ public sealed class WorkspaceProjectOwnershipResolver : IFileOwnershipResolver
                 .ToArray());
     }
 
+    private static IReadOnlySet<string> LinkedSources(
+        string? workspaceRoot,
+        string project)
+    {
+        if (workspaceRoot is null)
+        {
+            return new HashSet<string>(StringComparer.Ordinal);
+        }
+
+        var projectPath = Path.GetFullPath(
+            project.Replace('/', Path.DirectorySeparatorChar),
+            workspaceRoot);
+        try
+        {
+            using var stream = File.OpenRead(projectPath);
+            using var reader = XmlReader.Create(
+                stream,
+                new XmlReaderSettings
+                {
+                    DtdProcessing = DtdProcessing.Prohibit,
+                    XmlResolver = null,
+                });
+            var document = XDocument.Load(reader, LoadOptions.None);
+            var projectDirectory = Path.GetDirectoryName(projectPath)!;
+            return document.Descendants()
+                .Where(static element => element.Name.LocalName.Equals(
+                    "Compile",
+                    StringComparison.OrdinalIgnoreCase))
+                .Select(static element => element.Attribute("Include")?.Value.Trim())
+                .OfType<string>()
+                .Where(static include => include.Length > 0
+                    && !IsUnevaluated(include)
+                    && include.IndexOfAny(['*', '?']) < 0)
+                .Select(include => Path.GetFullPath(
+                    include
+                        .Replace('\\', Path.DirectorySeparatorChar)
+                        .Replace('/', Path.DirectorySeparatorChar),
+                    projectDirectory))
+                .Where(path => IsWithin(workspaceRoot, path))
+                .Select(path => Path.GetRelativePath(workspaceRoot, path)
+                    .Replace('\\', '/'))
+                .ToHashSet(StringComparer.Ordinal);
+        }
+        catch (Exception exception) when (exception is IOException
+            or UnauthorizedAccessException
+            or XmlException
+            or ArgumentException)
+        {
+            return new HashSet<string>(StringComparer.Ordinal);
+        }
+    }
+
     private static IReadOnlyList<string?> Expand(
         PassivePropertyValues properties)
     {
@@ -245,10 +296,24 @@ public sealed class WorkspaceProjectOwnershipResolver : IFileOwnershipResolver
         || value.Contains("@(", StringComparison.Ordinal)
         || value.Contains("%(", StringComparison.Ordinal);
 
+    private static bool IsWithin(string root, string path)
+    {
+        var relative = Path.GetRelativePath(root, path);
+        return !Path.IsPathFullyQualified(relative)
+            && relative != ".."
+            && !relative.StartsWith(
+                ".." + Path.DirectorySeparatorChar,
+                StringComparison.Ordinal)
+            && !relative.StartsWith(
+                ".." + Path.AltDirectorySeparatorChar,
+                StringComparison.Ordinal);
+    }
+
     private sealed record ProjectScope(
         string Path,
         string Directory,
-        IReadOnlyList<FileCompilerVariant> Variants);
+        IReadOnlyList<FileCompilerVariant> Variants,
+        IReadOnlySet<string> LinkedSources);
 
     private sealed record ProjectVariantProperties(
         PassivePropertyValues Configurations,

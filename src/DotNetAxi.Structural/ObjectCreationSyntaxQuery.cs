@@ -8,7 +8,7 @@ namespace DotNetAxi.Structural;
 /// Finds explicit object and array creations by terminal syntactic type name,
 /// while retaining target-typed object creations as unresolved candidates.
 /// </summary>
-public sealed class ObjectCreationSyntaxQuery : IRoslynSyntaxQuery
+public sealed class ObjectCreationSyntaxQuery : ISemanticallyVerifiableSyntaxQuery
 {
     public ObjectCreationSyntaxQuery(string type)
     {
@@ -30,6 +30,10 @@ public sealed class ObjectCreationSyntaxQuery : IRoslynSyntaxQuery
     public string Kind => "object-creation";
 
     public string Identity { get; }
+
+    public SemanticSyntaxVerifier Verifier => new(
+        SemanticSyntaxVerifierKind.ObjectCreation,
+        Type);
 
     public IEnumerable<SyntaxNode> FindCandidates(
         CompilationUnitSyntax root,

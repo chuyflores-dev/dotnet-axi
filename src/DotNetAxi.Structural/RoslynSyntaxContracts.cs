@@ -24,6 +24,59 @@ public interface IRoslynSyntaxQuery
         CancellationToken cancellationToken = default);
 }
 
+/// <summary>
+/// Marks a stable tool-owned syntax query as having exactly one declared
+/// compiler interpretation. Queries without this contract cannot request
+/// semantic verification.
+/// </summary>
+public interface ISemanticallyVerifiableSyntaxQuery : IRoslynSyntaxQuery
+{
+    SemanticSyntaxVerifier Verifier { get; }
+}
+
+public enum SemanticSyntaxVerifierKind
+{
+    Invocation,
+    AttributedClass,
+    ObjectCreation,
+    CatchClause,
+}
+
+public sealed record SemanticSyntaxVerifier
+{
+    public SemanticSyntaxVerifier(
+        SemanticSyntaxVerifierKind kind,
+        string? requestedName)
+    {
+        if (!Enum.IsDefined(kind))
+        {
+            throw new ArgumentOutOfRangeException(nameof(kind));
+        }
+
+        if (kind is not SemanticSyntaxVerifierKind.CatchClause
+            && string.IsNullOrWhiteSpace(requestedName))
+        {
+            throw new ArgumentException(
+                "This semantic verifier requires a requested name.",
+                nameof(requestedName));
+        }
+
+        if (requestedName?.Contains('\0', StringComparison.Ordinal) == true)
+        {
+            throw new ArgumentException(
+                "A semantic verifier name cannot contain a null character.",
+                nameof(requestedName));
+        }
+
+        Kind = kind;
+        RequestedName = requestedName;
+    }
+
+    public SemanticSyntaxVerifierKind Kind { get; }
+
+    public string? RequestedName { get; }
+}
+
 public sealed record RoslynSyntaxQueryRequest
 {
     public RoslynSyntaxQueryRequest(WorkspaceTraversalRequest traversal)
@@ -82,6 +135,23 @@ public sealed record StructuralCandidate
     public StructuralSourceRange Range { get; }
 
     public string Text { get; }
+
+    public bool MatchesIdentity(
+        string contentHash,
+        int spanStart,
+        int spanLength,
+        string text) =>
+        Id.Equals(
+            StructuralCandidateIdentity.Create(
+                QueryKind,
+                QueryIdentity,
+                RequiredText(contentHash, nameof(contentHash)),
+                Range.Start.Path,
+                Range.Start.IsExternal,
+                spanStart,
+                spanLength,
+                text ?? throw new ArgumentNullException(nameof(text))),
+            StringComparison.Ordinal);
 
     private static string RequiredText(string value, string parameterName)
     {

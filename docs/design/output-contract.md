@@ -309,23 +309,30 @@ schema: dotnet-axi/v1
 command: search syntax invocation
 status: partial
 snapshot: ws_7c2f5a1d
+classification: executing
 resolution: semantic
 coverage: partial
 scope:
-  projects_considered: 8
-  projects_analyzed: 6
-  projects_remaining: 2
-  partial_reason: Two projects could not restore without network access
-discovered: 5
-verified: 2
-rejected: 2
-unresolved: 1
-matches[2]{id,kind,name,location}:
-  sym_8k2m,method,DbContext.SaveChangesAsync,"src/Orders/OrderRepository.cs:84"
-  sym_5p7q,method,DbContext.SaveChangesAsync,"src/Payments/PaymentRepository.cs:112"
-suggestions[1]:
-  - command: dnaxi
-    arguments[1]: restore
+  root: ~/src/credit-platform
+  analyzed_portion: owning project and framework variants for discovered syntax candidates
+  projects[1]: src/Orders/Orders.csproj
+  frameworks[2]: net8.0,net10.0
+considered: 2
+analyzed: 1
+failed: 1
+partial_reason: metadata.missing
+discovered: 1
+verified: 1
+rejected: 0
+unresolved: 0
+count: 1
+candidates[1]:
+  - file: src/Orders/OrderRepository.cs
+    line: 84
+    status: verified
+    variants[2]{configuration,framework,project,reason,status,symbol}:
+      Debug,net8.0,src/Orders/Orders.csproj,null,verified,Microsoft.EntityFrameworkCore.DbContext.SaveChangesAsync()
+      Debug,net10.0,src/Orders/Orders.csproj,metadata.missing,unresolved,null
 ```
 
 ### Explicit empty result

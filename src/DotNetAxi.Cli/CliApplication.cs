@@ -270,6 +270,10 @@ internal static class CliApplication
             DefaultValueFactory = static _ => 100,
         };
         var invocationFull = new Option<bool>("--full");
+        var invocationVerify = new Option<bool>("--verify")
+        {
+            Description = "Verify candidates with compiler semantics in each owner/framework scope; executes repository design-time build targets.",
+        };
         var invocationFields = new Option<string[]>("--fields")
         {
             AllowMultipleArgumentsPerToken = true,
@@ -282,13 +286,21 @@ internal static class CliApplication
         invocationCommand.Options.Add(invocationIncludeGenerated);
         invocationCommand.Options.Add(invocationLimit);
         invocationCommand.Options.Add(invocationFull);
+        invocationCommand.Options.Add(invocationVerify);
         invocationCommand.Options.Add(invocationFields);
         invocationCommand.Options.Add(invocationPath);
-        host.RegisterCommand(syntaxCommand, invocationCommand, OperationPolicy.Passive,
+        var invocationOperation = host.RegisterCommand(
+            syntaxCommand,
+            invocationCommand,
+            OperationPolicy.Passive,
             [
                 "dnaxi search syntax invocation --name SaveChangesAsync",
                 "dnaxi search syntax invocation --name Map --path src --include-generated",
             ]);
+        host.RegisterOptionPolicy(
+            invocationOperation,
+            invocationVerify,
+            OperationPolicy.ExecutingInspection);
         invocationCommand.BindHandler(
             result => InvocationSyntaxCommandRequest.Create(
                 result.GetValue(invocationName)!,
@@ -296,6 +308,7 @@ internal static class CliApplication
                 result.GetValue(invocationLimit),
                 result.Tokens.Any(token => token.Value == "--limit"),
                 result.GetValue(invocationFull),
+                result.GetValue(invocationVerify),
                 result.GetValue(invocationFields) ?? [],
                 result.GetValue(invocationPath) ?? []),
             static () => new InvocationSyntaxCommandHandler(),
@@ -316,6 +329,10 @@ internal static class CliApplication
             DefaultValueFactory = static _ => 100,
         };
         var classFull = new Option<bool>("--full");
+        var classVerify = new Option<bool>("--verify")
+        {
+            Description = "Verify candidates with compiler semantics in each owner/framework scope; executes repository design-time build targets.",
+        };
         var classFields = new Option<string[]>("--fields")
         {
             AllowMultipleArgumentsPerToken = true,
@@ -328,13 +345,21 @@ internal static class CliApplication
         attributedClassCommand.Options.Add(classIncludeGenerated);
         attributedClassCommand.Options.Add(classLimit);
         attributedClassCommand.Options.Add(classFull);
+        attributedClassCommand.Options.Add(classVerify);
         attributedClassCommand.Options.Add(classFields);
         attributedClassCommand.Options.Add(classPath);
-        host.RegisterCommand(syntaxCommand, attributedClassCommand, OperationPolicy.Passive,
+        var classOperation = host.RegisterCommand(
+            syntaxCommand,
+            attributedClassCommand,
+            OperationPolicy.Passive,
             [
                 "dnaxi search syntax class --attribute Authorize",
                 "dnaxi search syntax class --attribute Obsolete --path src --include-generated",
             ]);
+        host.RegisterOptionPolicy(
+            classOperation,
+            classVerify,
+            OperationPolicy.ExecutingInspection);
         attributedClassCommand.BindHandler(
             result => AttributedClassSyntaxCommandRequest.Create(
                 result.GetValue(classAttribute)!,
@@ -342,6 +367,7 @@ internal static class CliApplication
                 result.GetValue(classLimit),
                 result.Tokens.Any(token => token.Value == "--limit"),
                 result.GetValue(classFull),
+                result.GetValue(classVerify),
                 result.GetValue(classFields) ?? [],
                 result.GetValue(classPath) ?? []),
             static () => new AttributedClassSyntaxCommandHandler(),
@@ -362,6 +388,10 @@ internal static class CliApplication
             DefaultValueFactory = static _ => 100,
         };
         var objectCreationFull = new Option<bool>("--full");
+        var objectCreationVerify = new Option<bool>("--verify")
+        {
+            Description = "Verify candidates with compiler semantics in each owner/framework scope; executes repository design-time build targets.",
+        };
         var objectCreationFields = new Option<string[]>("--fields")
         {
             AllowMultipleArgumentsPerToken = true,
@@ -374,13 +404,21 @@ internal static class CliApplication
         objectCreationCommand.Options.Add(objectCreationIncludeGenerated);
         objectCreationCommand.Options.Add(objectCreationLimit);
         objectCreationCommand.Options.Add(objectCreationFull);
+        objectCreationCommand.Options.Add(objectCreationVerify);
         objectCreationCommand.Options.Add(objectCreationFields);
         objectCreationCommand.Options.Add(objectCreationPath);
-        host.RegisterCommand(syntaxCommand, objectCreationCommand, OperationPolicy.Passive,
+        var objectCreationOperation = host.RegisterCommand(
+            syntaxCommand,
+            objectCreationCommand,
+            OperationPolicy.Passive,
             [
                 "dnaxi search syntax object-creation --type HttpClient",
                 "dnaxi search syntax object-creation --type Widget --path src --include-generated",
             ]);
+        host.RegisterOptionPolicy(
+            objectCreationOperation,
+            objectCreationVerify,
+            OperationPolicy.ExecutingInspection);
         objectCreationCommand.BindHandler(
             result => ObjectCreationSyntaxCommandRequest.Create(
                 result.GetValue(objectCreationType)!,
@@ -388,6 +426,7 @@ internal static class CliApplication
                 result.GetValue(objectCreationLimit),
                 result.Tokens.Any(token => token.Value == "--limit"),
                 result.GetValue(objectCreationFull),
+                result.GetValue(objectCreationVerify),
                 result.GetValue(objectCreationFields) ?? [],
                 result.GetValue(objectCreationPath) ?? []),
             static () => new ObjectCreationSyntaxCommandHandler(),
@@ -411,6 +450,10 @@ internal static class CliApplication
             DefaultValueFactory = static _ => 100,
         };
         var catchFull = new Option<bool>("--full");
+        var catchVerify = new Option<bool>("--verify")
+        {
+            Description = "Verify candidates with compiler semantics in each owner/framework scope; executes repository design-time build targets.",
+        };
         var catchFields = new Option<string[]>("--fields")
         {
             AllowMultipleArgumentsPerToken = true,
@@ -424,13 +467,21 @@ internal static class CliApplication
         catchCommand.Options.Add(catchIncludeGenerated);
         catchCommand.Options.Add(catchLimit);
         catchCommand.Options.Add(catchFull);
+        catchCommand.Options.Add(catchVerify);
         catchCommand.Options.Add(catchFields);
         catchCommand.Options.Add(catchPath);
-        host.RegisterCommand(syntaxCommand, catchCommand, OperationPolicy.Passive,
+        var catchOperation = host.RegisterCommand(
+            syntaxCommand,
+            catchCommand,
+            OperationPolicy.Passive,
             [
                 "dnaxi search syntax catch",
                 "dnaxi search syntax catch --type Exception --empty --path src",
             ]);
+        host.RegisterOptionPolicy(
+            catchOperation,
+            catchVerify,
+            OperationPolicy.ExecutingInspection);
         catchCommand.BindHandler(
             result => CatchSyntaxCommandRequest.Create(
                 result.GetValue(catchType),
@@ -439,6 +490,7 @@ internal static class CliApplication
                 result.GetValue(catchLimit),
                 result.Tokens.Any(token => token.Value == "--limit"),
                 result.GetValue(catchFull),
+                result.GetValue(catchVerify),
                 result.GetValue(catchFields) ?? [],
                 result.GetValue(catchPath) ?? []),
             static () => new CatchSyntaxCommandHandler(),

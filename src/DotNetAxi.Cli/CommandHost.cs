@@ -54,6 +54,15 @@ public sealed class CommandHost
         IEnumerable<string> examples) =>
         _operations.Add(parent, command, policy, examples);
 
+    public void RegisterOptionPolicy(
+        CommandOperation operation,
+        Option<bool> option,
+        OperationPolicy policy) =>
+        _operations.AddOptionPolicy(operation, option, policy);
+
+    public OperationPolicy ResolvePolicy(ParseResult parseResult) =>
+        _operations.Resolve(parseResult);
+
     public ParseResult Parse(IReadOnlyList<string> args)
     {
         ArgumentNullException.ThrowIfNull(args);

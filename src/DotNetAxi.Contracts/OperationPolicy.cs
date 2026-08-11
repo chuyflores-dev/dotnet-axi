@@ -75,6 +75,15 @@ public sealed record OperationPolicy
         mayWriteUserState: false,
         mayWriteSource: false);
 
+    public static OperationPolicy ExecutingInspection { get; } = new(
+        OperationClassification.Executing,
+        mayAccessNetwork: false,
+        mayExecuteRepositoryCode: true,
+        mayWriteArtifacts: true,
+        mayWriteMetadata: false,
+        mayWriteUserState: false,
+        mayWriteSource: false);
+
     public OperationClassification Classification { get; }
 
     public bool MayAccessNetwork { get; }

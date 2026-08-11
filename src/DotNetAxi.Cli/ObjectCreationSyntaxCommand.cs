@@ -11,6 +11,7 @@ internal sealed record ObjectCreationSyntaxCommandRequest(
     int Limit,
     bool LimitSpecified,
     bool Full,
+    bool Verify,
     IReadOnlyList<string> Fields,
     IReadOnlyList<string> Paths)
 {
@@ -33,6 +34,7 @@ internal sealed record ObjectCreationSyntaxCommandRequest(
         int limit,
         bool limitSpecified,
         bool full,
+        bool verify,
         IReadOnlyList<string> fields,
         IReadOnlyList<string> paths)
     {
@@ -59,6 +61,7 @@ internal sealed record ObjectCreationSyntaxCommandRequest(
             limit,
             limitSpecified,
             full,
+            verify,
             fields,
             paths);
     }
@@ -89,14 +92,30 @@ internal sealed class ObjectCreationSyntaxCommandHandler :
             explicitPaths: request.Paths,
             includeGenerated: request.IncludeGenerated,
             currentDirectory: workspace.CurrentDirectory);
+        var query = new ObjectCreationSyntaxQuery(request.Type);
         var result = await new RoslynSyntaxEngine(new WorkspacePathTraverser())
             .QueryAsync(
                 new RoslynSyntaxQueryRequest(traversal),
-                new ObjectCreationSyntaxQuery(request.Type),
+                query,
                 cancellationToken)
             .ConfigureAwait(false);
 
         var retrievalCommand = RetrievalCommand(request);
+        if (request.Verify)
+        {
+            return await SemanticSyntaxVerificationCommand.ExecuteAsync(
+                    "search syntax object-creation",
+                    workspace,
+                    result,
+                    query,
+                    fields,
+                    request.Full,
+                    request.Limit,
+                    retrievalCommand,
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+
         var includedCandidates = request.Full
             ? result.Candidates
             : result.Candidates.Take(request.Limit);
@@ -185,6 +204,11 @@ internal sealed class ObjectCreationSyntaxCommandHandler :
         if (request.IncludeGenerated)
         {
             arguments.Add("--include-generated");
+        }
+
+        if (request.Verify)
+        {
+            arguments.Add("--verify");
         }
 
         foreach (var path in request.Paths)

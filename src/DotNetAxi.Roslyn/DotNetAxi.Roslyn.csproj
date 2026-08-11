@@ -1,5 +1,15 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <ItemGroup>
+    <PackageReference Include="Microsoft.Build.Framework" ExcludeAssets="runtime" PrivateAssets="all" />
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" />
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Workspaces" />
+    <PackageReference Include="Microsoft.CodeAnalysis.Workspaces.MSBuild" />
+    <PackageReference Include="Microsoft.NET.StringTools" ExcludeAssets="runtime" PrivateAssets="all" />
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="../DotNetAxi.Contracts/DotNetAxi.Contracts.csproj" />
+    <ProjectReference Include="../DotNetAxi.DotNet/DotNetAxi.DotNet.csproj" />
+    <ProjectReference Include="../DotNetAxi.Structural/DotNetAxi.Structural.csproj" />
+    <ProjectReference Include="../DotNetAxi.Workspaces/DotNetAxi.Workspaces.csproj" />
   </ItemGroup>
 </Project>
