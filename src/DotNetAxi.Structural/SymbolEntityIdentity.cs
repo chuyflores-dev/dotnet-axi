@@ -299,7 +299,7 @@ public sealed class SymbolEntityResolver
     private static string ReplacementQuery(string name) =>
         "dnaxi search symbol "
         + Quote(name)
-        + " --fields id signature owning_projects variant_count variants --full";
+        + " --fields 'id,signature,owning_projects,variant_count,variants' --full";
 
     private static string Quote(string value) =>
         "'" + value.Replace("'", "'\\''", StringComparison.Ordinal) + "'";

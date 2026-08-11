@@ -116,7 +116,7 @@ public sealed class SymbolSearchCommandTests
         Assert.Contains("matches[1]{id,kind,name,file,line,rank}:", result.Output);
         Assert.Contains("retrieval_command:", result.Output);
         Assert.Contains("search symbol 'Match'", result.Output);
-        Assert.Contains("--fields 'id' 'rank' --full", result.Output);
+        Assert.Contains("--fields 'id,rank' --full", result.Output);
         Assert.DoesNotContain("--limit", result.Output);
     }
 
@@ -200,7 +200,7 @@ public sealed class SymbolSearchCommandTests
         Assert.Contains("stale: true", resolution.Output);
         Assert.Contains("error: evidence.stale_id", resolution.Output);
         Assert.Contains(
-            "query: dnaxi search symbol 'Save' --fields id signature owning_projects variant_count variants --full",
+            "dnaxi search symbol 'Save' --fields 'id,signature,owning_projects,variant_count,variants' --full",
             resolution.Output);
         Assert.Contains("replacement: Save(string)", resolution.Output);
     }

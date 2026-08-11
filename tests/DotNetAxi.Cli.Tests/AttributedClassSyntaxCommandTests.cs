@@ -117,7 +117,7 @@ public sealed class AttributedClassSyntaxCommandTests
         Assert.Contains(
             $"dnx dnaxi@{ToolVersion.Current} --verbosity quiet -- search syntax class",
             bounded.Output);
-        Assert.Contains("--attribute 'Authorize' --fields 'id' 'construct' 'column' --full", bounded.Output);
+        Assert.Contains("--attribute 'Authorize' --fields 'id,construct,column' --full", bounded.Output);
         Assert.DoesNotContain("--limit", bounded.Output);
     }
 

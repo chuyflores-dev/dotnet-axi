@@ -135,7 +135,7 @@ public sealed class SymbolShowCommandTests
         Assert.Equal(1, result.ExitCode);
         Assert.Contains("status: failed", result.Output);
         Assert.Contains("code: evidence.stale_id", result.Output);
-        Assert.Contains("query: dnaxi search symbol 'Save'", result.Output);
+        Assert.Contains("dnaxi search symbol 'Save' --fields 'id,signature", result.Output);
         Assert.Contains("Save(string)", result.Output);
     }
 
@@ -151,18 +151,77 @@ public sealed class SymbolShowCommandTests
         var search = await workspace.RunAsync(
             "search", "symbol", "Demo.Widget", "--fields", "id", "--full");
         var id = Assert.Single(EntityIds(search.Output));
-        await workspace.WriteAsync("b/Widget.cs", declaration);
-        await workspace.WriteAsync("c/Widget.cs", declaration);
+        for (var index = 0; index < 11; index++)
+        {
+            await workspace.WriteAsync($"moved/Widget{index}.cs", declaration);
+        }
+
         File.Delete(Path.Combine(workspace.Root, "a", "Widget.cs"));
 
         var result = await workspace.RunAsync("show", "symbol", id);
 
         Assert.Equal(1, result.ExitCode);
         Assert.Contains("code: evidence.ambiguous_id", result.Output);
-        Assert.Contains("candidate_count: 2", result.Output);
-        Assert.Contains("b/Widget.cs", result.Output);
-        Assert.Contains("c/Widget.cs", result.Output);
-        Assert.Contains("query: dnaxi search symbol 'Widget'", result.Output);
+        Assert.Contains("candidate_count: 10", result.Output);
+        Assert.Contains("total: 11", result.Output);
+        Assert.Contains("omitted: 1", result.Output);
+        Assert.Contains("truncated: true", result.Output);
+
+        const string expectedQuery =
+            "dnaxi search symbol 'Widget' --fields 'id,signature,owning_projects,variant_count,variants' --full";
+        var query = ToonString(result.Output, "query");
+        var correction = ToonString(result.Output, "correction");
+        var retrieval = ToonString(result.Output, "retrieval_command");
+        var expectedRetrieval =
+            $"dnx dnaxi@{ToolVersion.Current} --verbosity quiet -- "
+            + "search symbol 'Widget' --fields 'id,signature,owning_projects,variant_count,variants' --full";
+
+        Assert.Equal(expectedQuery, query.Value);
+        Assert.Equal(expectedQuery, correction.Value);
+        Assert.Equal(expectedRetrieval, retrieval.Value);
+        Assert.Equal($"\"{expectedQuery}\"", query.Encoded);
+        Assert.Equal($"\"{expectedQuery}\"", correction.Encoded);
+        Assert.Equal($"\"{expectedRetrieval}\"", retrieval.Encoded);
+
+        var queryTokens = ParseCanonicalArguments(query.Value);
+        var retrievalTokens = ParseCanonicalArguments(retrieval.Value);
+        Assert.Equal("dnaxi", queryTokens[0]);
+        Assert.Equal(
+            [
+                "search",
+                "symbol",
+                "Widget",
+                "--fields",
+                "id,signature,owning_projects,variant_count,variants",
+                "--full",
+            ],
+            queryTokens[1..]);
+        Assert.Equal(
+            ["dnx", $"dnaxi@{ToolVersion.Current}", "--verbosity", "quiet", "--"],
+            retrievalTokens[..5]);
+        Assert.Equal(queryTokens[1..], retrievalTokens[5..]);
+
+        // A shell normally replaces only the `dnaxi` executable token. The test
+        // does the same with the built CLI assembly and preserves every emitted
+        // argument value and its order through ProcessStartInfo.ArgumentList.
+        var replay = await workspace.RunAsync(queryTokens[1..]);
+
+        Assert.Equal(0, replay.ExitCode);
+        Assert.Contains("count: 11", replay.Output);
+        Assert.Contains("matches[11]:", replay.Output);
+        Assert.Equal(
+            [
+                "id",
+                "kind",
+                "name",
+                "file",
+                "line",
+                "signature",
+                "owning_projects",
+                "variant_count",
+                "variants",
+            ],
+            FirstMatchFields(replay.Output));
     }
 
     [Fact]
@@ -226,6 +285,54 @@ public sealed class SymbolShowCommandTests
             .Select(static match => match.Value)
             .Distinct(StringComparer.Ordinal)
             .ToArray();
+
+    private static (string Encoded, string Value) ToonString(
+        string output,
+        string name)
+    {
+        var prefix = name + ": ";
+        var encoded = output
+            .Split('\n', StringSplitOptions.RemoveEmptyEntries)
+            .Select(static line => line.TrimStart())
+            .Single(line => line.StartsWith(prefix, StringComparison.Ordinal))[prefix.Length..];
+        Assert.StartsWith("\"", encoded);
+        Assert.EndsWith("\"", encoded);
+        var value = System.Text.Json.JsonSerializer.Deserialize<string>(encoded);
+        return (encoded, Assert.IsType<string>(value));
+    }
+
+    private static string[] ParseCanonicalArguments(string command) =>
+        System.Text.RegularExpressions.Regex.Matches(
+                command,
+                @"'(?:'\\''|[^'])*'|[^\s]+",
+                System.Text.RegularExpressions.RegexOptions.CultureInvariant)
+            .Select(match => match.Value.StartsWith("'", StringComparison.Ordinal)
+                ? match.Value[1..^1].Replace("'\\''", "'", StringComparison.Ordinal)
+                : match.Value)
+            .ToArray();
+
+    private static IReadOnlyList<string> FirstMatchFields(string output)
+    {
+        var firstStart = output.IndexOf("\n  - id:", StringComparison.Ordinal);
+        Assert.True(firstStart >= 0, $"Expected a structured match row in: {output}");
+        var nextStart = output.IndexOf(
+            "\n  - id:",
+            firstStart + 1,
+            StringComparison.Ordinal);
+        var firstMatch = nextStart < 0
+            ? output[firstStart..]
+            : output[firstStart..nextStart];
+        return
+        [
+            "id",
+            .. System.Text.RegularExpressions.Regex.Matches(
+                    firstMatch,
+                    @"^    (?<field>[a-z_]+)(?:\[|:)",
+                    System.Text.RegularExpressions.RegexOptions.Multiline
+                        | System.Text.RegularExpressions.RegexOptions.CultureInvariant)
+                .Select(match => match.Groups["field"].Value),
+        ];
+    }
 
     private sealed class TestWorkspace : IDisposable
     {

@@ -20,10 +20,12 @@ internal sealed record TextSearchCommandRequest(
         IReadOnlyList<string> paths, string? project, bool changed, string? @base,
         string? head)
     {
+        fields = OutputFieldSelection.Parse(fields);
+
         if (fields.Any(string.IsNullOrWhiteSpace))
         {
             throw new CommandUsageException("usage.text_field", "A --fields value cannot be blank.",
-                $"Use `--fields` with one or more of: {string.Join(", ", AvailableFields)}.");
+                UsageErrorResult.FieldCatalogCorrection(AvailableFields));
         }
 
         var unknown = fields.Where(field => !AvailableFields.Contains(field, StringComparer.Ordinal))
@@ -279,7 +281,7 @@ internal sealed class TextSearchCommandHandler : ICommandHandler<TextSearchComma
         if (request.Changed) arguments.Add("--changed");
         if (request.Base is not null) { arguments.Add("--base"); arguments.Add(Quote(request.Base)); }
         if (request.Head is not null) { arguments.Add("--head"); arguments.Add(Quote(request.Head)); }
-        if (request.Fields.Count > 0) { arguments.Add("--fields"); arguments.AddRange(request.Fields.Select(Quote)); }
+        if (request.Fields.Count > 0) { arguments.Add("--fields"); arguments.Add(Quote(OutputFieldSelection.CanonicalValue(request.Fields))); }
         arguments.Add("--full");
         return CanonicalInvocation.OneShot(string.Join(' ', arguments));
     }

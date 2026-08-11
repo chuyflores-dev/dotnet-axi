@@ -181,7 +181,9 @@ public sealed class OutlineCommandTests
         Assert.Contains(
             "--path 'tests' --include-tests --include-generated",
             result.Output);
-        Assert.Contains("--fields id signature", result.Output);
+        Assert.Contains(
+            "--fields 'id,signature,owning_projects,variant_count,variants'",
+            result.Output);
     }
 
     [Theory]

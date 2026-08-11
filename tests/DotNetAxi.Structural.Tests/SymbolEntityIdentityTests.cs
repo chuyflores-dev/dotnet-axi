@@ -143,7 +143,7 @@ public sealed class SymbolEntityIdentityTests
             resolution.ReplacementCandidates.Select(
                 static replacement => replacement.Signature));
         Assert.Equal(
-            "dnaxi search symbol 'Save' --fields id signature owning_projects variant_count variants --full",
+            "dnaxi search symbol 'Save' --fields 'id,signature,owning_projects,variant_count,variants' --full",
             resolution.Query);
     }
 
