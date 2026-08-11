@@ -161,6 +161,12 @@ internal sealed class DocumentShowCommandHandler :
         }
 
         document = finalDocument;
+        var outlineCommandPath = document.IsExternal
+            ? request.Path
+            : new WorkspacePathResolver(
+                workspace.RootPath,
+                workspace.CurrentDirectory)
+                .ToInputPath(document.RelativePath);
         var payload = new DocumentShowPayload(
             FileEntityIdentity.Create(document),
             document.RelativePath,
@@ -178,9 +184,10 @@ internal sealed class DocumentShowCommandHandler :
             read.OmittedCharacters,
             read.Truncated,
             read.Truncated ? RetrievalCommand(request) : null,
-            new DocumentOutlineReference(
+            OutlineReference(
                 document.RelativePath,
-                Available: false));
+                outlineCommandPath,
+                isGenerated));
         var evidence = new Evidence(
             snapshot,
             EvidenceResolution.Text,
@@ -442,6 +449,25 @@ internal sealed class DocumentShowCommandHandler :
         return $"Run `{invocation}` to include it explicitly.";
     }
 
+    private static DocumentOutlineReference OutlineReference(
+        string path,
+        string commandPath,
+        bool generated)
+    {
+        var available = Path.GetExtension(path).Equals(
+            ".cs",
+            StringComparison.OrdinalIgnoreCase);
+        return new DocumentOutlineReference(
+            path,
+            available,
+            available
+                ? CanonicalInvocation.OneShot(
+                    "dnaxi outline "
+                    + Quote(commandPath)
+                    + (generated ? " --include-generated" : string.Empty))
+                : null);
+    }
+
     private static string Quote(string value) =>
         "'" + value.Replace("'", "'\\''", StringComparison.Ordinal) + "'";
 
@@ -466,5 +492,6 @@ internal sealed class DocumentShowCommandHandler :
 
     private sealed record DocumentOutlineReference(
         string Path,
-        bool Available);
+        bool Available,
+        string? Command);
 }

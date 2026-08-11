@@ -348,13 +348,41 @@ and unreadable documents return structured failures without leaking partial
 content. Before reporting verified evidence, a second fixed-buffer pass rejects
 concurrent content changes and reproduces the original `v1` raw-byte snapshot
 derivation without retaining the document. Source syntax need not parse
-successfully for the document text to be shown. Until the `outline` command
-ships, the outline reference preserves the normalized document path and reports
-that the capability is unavailable instead of advertising a command that cannot
-execute.
+successfully for the document text to be shown. The outline reference preserves
+the normalized document path. Eligible C# documents report the capability as
+available and include a concrete `dnaxi outline <path>` command; other document
+types keep it unavailable. Generated-document references preserve explicit
+generated-source inclusion.
 
 `outline` returns imports, namespace, types, members, signatures, and relevant
-attributes through Roslyn syntax.
+attributes through Roslyn syntax. It accepts one explicit C# document path or
+one canonical `symbol/v2` identity. Symbol targets accept repeated `--path`
+values to preserve an explicit declaration-search scope; document targets do
+not reinterpret those scope paths.
+
+The output is a flat source-ordered sequence whose `depth` reconstructs syntax
+nesting without duplicating parent declarations. Each item reports a stable
+`syntax/v1` identity, kind, applicable name, body-free signature, declaration
+attribute lists, depth, and one-based source range. Namespace children, nested
+and partial types, enum members, fields, events, properties, methods, operators,
+delegates, imports, global attributes, and top-level statements remain
+distinguishable. Signatures omit executable bodies and initializers; property
+and event accessor shape remains visible.
+
+Document targets reuse strict document decoding, generated/external policy,
+file identity, ownership, and raw-byte snapshot evidence from `show document`.
+Symbol targets reuse stateless entity resolution and return only the resolved
+declaration plus its syntax children, with the selected declaration at depth
+zero. Stale and ambiguous IDs retain the existing bounded replacement
+corrections.
+
+Outline collection defaults to 100 items. `--limit` selects another bound and
+`--full` returns every item; the two options cannot be combined. Truncation
+reports the known total, omitted count, and a complete scope-preserving full
+command. Recoverable malformed C# still returns available syntax structure and
+a diagnostic count. Outline evidence remains syntax resolution with candidate
+confidence and never requires a compilation, project evaluation, or an
+optional external engine.
 
 ## Bounded context
 
