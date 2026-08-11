@@ -1,0 +1,18 @@
+schema: dotnet-axi/v1
+command: context symbol
+status: success
+budget_mode: explicit
+maximum_characters: 5
+sections[2]{name,order,value,included_characters,total_known,total_characters,complete}:
+  declaration,0,A😀,2,true,2,true
+  owner,1,xyz,3,true,3,true
+included_characters: 5
+total_known: true
+total_characters: 9
+omitted_characters: 4
+omitted_sections[1]: document
+approximate_tokens:
+  minimum: 1
+  maximum: 3
+truncated: true
+retrieval_command: Run `dnaxi context symbol Example.Widget --max-chars 9`

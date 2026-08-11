@@ -365,6 +365,17 @@ dnaxi context symbol <symbol> \
 ```
 
 The command MUST enforce an explicit or configured output budget.
+Budget resolution uses `--full` first, an explicit character limit second, a
+configured limit third, and the built-in default last. `--full` is unbounded
+and is mutually exclusive with an explicit character limit. A larger-budget
+request is an explicit rerun whose limit is sufficient for the known total.
+
+Section costs count Unicode scalar values in the representation that the
+caller will emit. Sections are ordered first by their declared priority and
+then by ordinal name. The budgeter includes only whole sections: an exact fit
+is included, an oversized section is omitted, and later sections that fit may
+still be included. This makes selection independent of input enumeration,
+culture, and repeated-call order.
 
 The `0.5.0` slice composes declaration, owner, document, and outline evidence.
 Relationship sections such as references, callers, and callees become
@@ -376,10 +387,19 @@ When truncated, it reports actual included size, total known size, omitted
 sections, and a complete `--full` or larger-budget command. Repeated calls
 against an unchanged snapshot use deterministic ordering.
 
+The total and omitted character count are present only when every section
+reports a known total. An included but incomplete section is named among the
+omitted sections. When a known total can satisfy a budget-only truncation, the
+recovery command uses that total as a larger explicit budget; otherwise it
+uses the concrete full command. Every truncated result requires one of those
+recovery commands.
+
 Context bundles preserve source locations, symbol identities, resolution,
 workspace snapshot, and relationship provenance so an agent can distinguish
 tool evidence from its own inference. They SHOULD report actual character
-count and an approximate token range.
+count and an approximate token range. The reusable budgeter estimates the
+range as `ceil(included characters / 6)` through
+`ceil(included characters / 2)`; an empty result reports zero through zero.
 
 The same declaration or source span SHOULD NOT be repeated through multiple
 relationships. Shared evidence SHOULD be emitted once and referenced by stable
