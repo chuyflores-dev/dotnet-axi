@@ -82,7 +82,7 @@ public sealed class InvocationSyntaxCommandTests
 
         var bounded = await workspace.RunAsync(
             "search", "syntax", "invocation", "--name", "Hit",
-            "--limit", "1", "--fields", "id", "construct", "column");
+            "--limit", "1", "--fields", "id, construct,column");
 
         Assert.Equal(0, bounded.ExitCode);
         Assert.Contains("count: 1", bounded.Output);
@@ -95,7 +95,7 @@ public sealed class InvocationSyntaxCommandTests
         Assert.Contains(
             $"dnx dnaxi@{ToolVersion.Current} --verbosity quiet -- search syntax invocation",
             bounded.Output);
-        Assert.Contains("--name 'Hit' --fields 'id' 'construct' 'column' --full", bounded.Output);
+        Assert.Contains("--name 'Hit' --fields 'id,construct,column' --full", bounded.Output);
         Assert.DoesNotContain("--limit", bounded.Output);
     }
 
@@ -129,6 +129,9 @@ public sealed class InvocationSyntaxCommandTests
         Assert.Contains("exact ordinal terminal invocation identifier", output.ToString());
         Assert.Contains("--include-generated", output.ToString());
         Assert.Contains("--path", output.ToString());
+        Assert.Contains(
+            "Compact: --fields id,external. Repeated: --fields id --fields external. Multi-value: --fields id external.",
+            output.ToString());
     }
 
     [Theory]
@@ -137,7 +140,7 @@ public sealed class InvocationSyntaxCommandTests
     [InlineData("search", "syntax", "invocation", "--name", "Hit", "--limit", "-1")]
     [InlineData("search", "syntax", "invocation", "--name", "Hit", "--full", "--limit", "1")]
     [InlineData("search", "syntax", "invocation", "--name", "Hit", "--path", "")]
-    [InlineData("search", "syntax", "invocation", "--name", "Hit", "--fields", "unknown")]
+    [InlineData("search", "syntax", "invocation", "--name", "Hit", "--fields", "id,unknown")]
     public async Task Invalid_invocation_requests_are_structured_usage_errors(
         params string[] arguments)
     {

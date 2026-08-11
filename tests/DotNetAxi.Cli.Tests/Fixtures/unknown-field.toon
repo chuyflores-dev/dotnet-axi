@@ -9,4 +9,4 @@ valid_fields[4]{name}:
 error:
   code: usage.unknown_field
   message: Unknown field `owner` for `search symbol`.
-  correction: "Use `--fields` with one or more of: `id`, `file`, `line`, `detail`."
+  correction: "Use one comma-separated value: `--fields 'id,file,line,detail'`."

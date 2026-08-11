@@ -129,7 +129,7 @@ public sealed class CatchSyntaxCommandTests
             $"dnx dnaxi@{ToolVersion.Current} --verbosity quiet -- search syntax catch",
             bounded.Output);
         Assert.Contains(
-            "--type 'Exception' --empty --fields 'id' 'construct' 'column' --full",
+            "--type 'Exception' --empty --fields 'id,construct,column' --full",
             bounded.Output);
         Assert.DoesNotContain("--limit", bounded.Output);
     }

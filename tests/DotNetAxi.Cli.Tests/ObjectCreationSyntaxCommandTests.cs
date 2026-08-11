@@ -103,7 +103,7 @@ public sealed class ObjectCreationSyntaxCommandTests
         Assert.Contains(
             $"dnx dnaxi@{ToolVersion.Current} --verbosity quiet -- search syntax object-creation",
             bounded.Output);
-        Assert.Contains("--type 'Widget' --fields 'id' 'construct' 'column' --full", bounded.Output);
+        Assert.Contains("--type 'Widget' --fields 'id,construct,column' --full", bounded.Output);
         Assert.DoesNotContain("--limit", bounded.Output);
     }
 

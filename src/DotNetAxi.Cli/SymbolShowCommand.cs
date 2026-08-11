@@ -20,7 +20,7 @@ internal sealed record SymbolShowCommandRequest(
             throw new CommandUsageException(
                 "usage.symbol_id",
                 "The symbol ID must be a canonical symbol/v2 identity.",
-                "Run `dnaxi search symbol <name> --fields id signature --full` first.");
+                "Run `dnaxi search symbol <name> --fields 'id,signature' --full` first.");
         }
 
         if (paths.Any(string.IsNullOrWhiteSpace))
@@ -221,7 +221,7 @@ internal sealed class SymbolShowCommandHandler :
         "dnaxi search symbol "
         + Quote(name)
         + PathArguments(paths)
-        + " --fields id signature owning_projects variant_count variants --full";
+        + " --fields 'id,signature,owning_projects,variant_count,variants' --full";
 
     private static string PathArguments(IReadOnlyList<string> paths) =>
         string.Concat(paths.Select(path => " --path " + Quote(path)));

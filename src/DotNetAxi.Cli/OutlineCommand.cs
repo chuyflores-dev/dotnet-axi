@@ -37,7 +37,7 @@ internal sealed record OutlineCommandRequest(
             throw new CommandUsageException(
                 "usage.symbol_id",
                 "The symbol ID must be a canonical symbol/v2 identity.",
-                "Run `dnaxi search symbol <name> --fields id signature --full` first.");
+                "Run `dnaxi search symbol <name> --fields 'id,signature' --full` first.");
         }
 
         if (paths.Any(string.IsNullOrWhiteSpace))
@@ -490,7 +490,7 @@ internal sealed class OutlineCommandHandler :
         + Quote(name)
         + PathArguments(paths)
         + " --include-tests --include-generated"
-        + " --fields id signature owning_projects variant_count variants --full";
+        + " --fields 'id,signature,owning_projects,variant_count,variants' --full";
 
     private static string RetrievalCommand(OutlineCommandRequest request) =>
         CanonicalInvocation.OneShot(

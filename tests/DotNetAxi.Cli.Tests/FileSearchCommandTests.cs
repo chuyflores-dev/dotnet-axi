@@ -22,6 +22,26 @@ public sealed class FileSearchCommandTests
         Assert.Contains("usage.", output.ToString());
     }
 
+    [Theory]
+    [InlineData("search", "file", "--help")]
+    [InlineData("search", "symbol", "--help")]
+    [InlineData("search", "syntax", "catch", "--help")]
+    public async Task Fields_help_renders_concrete_compact_and_compatibility_forms(
+        params string[] args)
+    {
+        var output = new StringWriter();
+        var host = CliApplication.Create(output, new StringWriter());
+
+        var exit = await host.InvokeAsync(args);
+
+        Assert.Equal(0, exit);
+        Assert.Contains("Compact: --fields id,external.", output.ToString());
+        Assert.Contains(
+            "Repeated: --fields id --fields external.",
+            output.ToString());
+        Assert.Contains("Multi-value: --fields id external.", output.ToString());
+    }
+
     [Fact]
     public async Task Malformed_glob_is_a_structured_usage_error()
     {
@@ -72,6 +92,59 @@ public sealed class FileSearchCommandTests
         {
             Directory.Delete(workspace, recursive: true);
         }
+    }
+
+    [Fact]
+    public async Task Field_lists_accept_compact_repeated_multi_value_and_mixed_forms()
+    {
+        var workspace = CreateWorkspace();
+        try
+        {
+            await WriteAsync(workspace, "Root.csproj", Project());
+            await WriteAsync(workspace, "Match.cs", "source");
+
+            var result = await RunAsync(
+                workspace,
+                "search",
+                "file",
+                "Match",
+                "--fields",
+                " external , kind ",
+                "--fields",
+                "id,kind",
+                "owning_project_count",
+                "external");
+
+            Assert.Equal(0, result.ExitCode);
+            Assert.Contains(
+                "files[1]{id,path,kind,owning_project_count,external}:",
+                result.Output);
+        }
+        finally
+        {
+            Directory.Delete(workspace, recursive: true);
+        }
+    }
+
+    [Theory]
+    [InlineData(",id")]
+    [InlineData("id,,path")]
+    [InlineData("id,")]
+    public async Task Empty_field_segments_use_the_existing_blank_error_and_catalog(
+        string fields)
+    {
+        var output = new StringWriter();
+        var host = CliApplication.Create(output, new StringWriter());
+
+        var exit = await host.InvokeAsync(
+            ["search", "file", "query", "--fields", fields]);
+
+        Assert.Equal(2, exit);
+        Assert.Contains("code: usage.file_field", output.ToString());
+        Assert.Contains("message: A --fields value cannot be blank.", output.ToString());
+        Assert.Contains(
+            "correction: \"Use one comma-separated value: `--fields 'id,path,kind,owning_project_count,owning_projects,external'`.\"",
+            output.ToString());
     }
 
     [Fact]
@@ -294,12 +367,15 @@ public sealed class FileSearchCommandTests
                 "file",
                 "file",
                 "--fields",
-                "unknown");
+                "id,unknown");
 
             Assert.Equal(2, result.ExitCode);
             Assert.Contains("code: usage.unknown_field", result.Output);
             Assert.Contains("valid_fields[6]", result.Output);
             Assert.Contains("owning_projects", result.Output);
+            Assert.Contains(
+                "correction: \"Use one comma-separated value: `--fields 'id,path,kind,owning_project_count,owning_projects,external'`.\"",
+                result.Output);
         }
         finally
         {

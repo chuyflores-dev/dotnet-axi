@@ -2,6 +2,34 @@ using System.Collections.ObjectModel;
 
 namespace DotNetAxi.Contracts;
 
+public static class OutputFieldSelection
+{
+    public static IReadOnlyList<string> Parse(
+        IEnumerable<string>? requestedFields)
+    {
+        if (requestedFields is null)
+        {
+            return Array.Empty<string>();
+        }
+
+        return Array.AsReadOnly(
+            requestedFields
+                .SelectMany(static value => (value ?? string.Empty).Split(','))
+                .Select(static field => field.Trim())
+                .ToArray());
+    }
+
+    public static string CanonicalValue(
+        IEnumerable<string> requestedFields)
+    {
+        ArgumentNullException.ThrowIfNull(requestedFields);
+
+        return string.Join(
+            ',',
+            Parse(requestedFields).Distinct(StringComparer.Ordinal));
+    }
+}
+
 public sealed class OutputField<T>
 {
     public OutputField(
@@ -72,12 +100,12 @@ public sealed class OutputFieldSet<T>
     public OutputFieldSelection<T> Select(
         IEnumerable<string>? requestedFields = null)
     {
-        var requested = requestedFields?
+        var requested = OutputFieldSelection.Parse(requestedFields)
             .Select(field => ContractGuards.RequiredText(
                 field,
                 nameof(requestedFields)))
             .Distinct(StringComparer.Ordinal)
-            .ToArray() ?? [];
+            .ToArray();
         var unknown = requested
             .Where(field => !_fieldsByName.ContainsKey(field))
             .ToArray();

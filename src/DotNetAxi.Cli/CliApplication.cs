@@ -95,7 +95,7 @@ internal static class CliApplication
         var fileChanged = new Option<bool>("--changed");
         var fileIncludeGenerated = new Option<bool>("--include-generated");
         var fileLimit = new Option<int>("--limit") { DefaultValueFactory = static _ => 100 };
-        var fileFields = new Option<string[]>("--fields") { AllowMultipleArgumentsPerToken = true };
+        var fileFields = CreateFieldsOption();
         fileCommand.Arguments.Add(fileQuery);
         fileCommand.Options.Add(fileCaseSensitive);
         fileCommand.Options.Add(extension);
@@ -135,7 +135,7 @@ internal static class CliApplication
         };
         var limit = new Option<int>("--limit") { DefaultValueFactory = static _ => 100 };
         var full = new Option<bool>("--full");
-        var fields = new Option<string[]>("--fields") { AllowMultipleArgumentsPerToken = true };
+        var fields = CreateFieldsOption();
         var path = new Option<string[]>("--path") { AllowMultipleArgumentsPerToken = false };
         var project = new Option<string?>("--project");
         var changed = new Option<bool>("--changed");
@@ -209,10 +209,7 @@ internal static class CliApplication
             DefaultValueFactory = static _ => 100,
         };
         var symbolFull = new Option<bool>("--full");
-        var symbolFields = new Option<string[]>("--fields")
-        {
-            AllowMultipleArgumentsPerToken = true,
-        };
+        var symbolFields = CreateFieldsOption();
         symbolCommand.Arguments.Add(symbolQuery);
         symbolCommand.Options.Add(symbolKinds);
         symbolCommand.Options.Add(symbolNamespace);
@@ -407,10 +404,7 @@ internal static class CliApplication
         {
             Description = "Verify candidates with compiler semantics in each owner/framework scope; executes repository design-time build targets.",
         };
-        var invocationFields = new Option<string[]>("--fields")
-        {
-            AllowMultipleArgumentsPerToken = true,
-        };
+        var invocationFields = CreateFieldsOption();
         var invocationPath = new Option<string[]>("--path")
         {
             AllowMultipleArgumentsPerToken = false,
@@ -466,10 +460,7 @@ internal static class CliApplication
         {
             Description = "Verify candidates with compiler semantics in each owner/framework scope; executes repository design-time build targets.",
         };
-        var classFields = new Option<string[]>("--fields")
-        {
-            AllowMultipleArgumentsPerToken = true,
-        };
+        var classFields = CreateFieldsOption();
         var classPath = new Option<string[]>("--path")
         {
             AllowMultipleArgumentsPerToken = false,
@@ -525,10 +516,7 @@ internal static class CliApplication
         {
             Description = "Verify candidates with compiler semantics in each owner/framework scope; executes repository design-time build targets.",
         };
-        var objectCreationFields = new Option<string[]>("--fields")
-        {
-            AllowMultipleArgumentsPerToken = true,
-        };
+        var objectCreationFields = CreateFieldsOption();
         var objectCreationPath = new Option<string[]>("--path")
         {
             AllowMultipleArgumentsPerToken = false,
@@ -587,10 +575,7 @@ internal static class CliApplication
         {
             Description = "Verify candidates with compiler semantics in each owner/framework scope; executes repository design-time build targets.",
         };
-        var catchFields = new Option<string[]>("--fields")
-        {
-            AllowMultipleArgumentsPerToken = true,
-        };
+        var catchFields = CreateFieldsOption();
         var catchPath = new Option<string[]>("--path")
         {
             AllowMultipleArgumentsPerToken = false,
@@ -631,4 +616,14 @@ internal static class CliApplication
 
         return host;
     }
+
+    private static Option<string[]> CreateFieldsOption() =>
+        new("--fields")
+        {
+            AllowMultipleArgumentsPerToken = true,
+            Description =
+                "Select output fields. Compact: --fields id,external. "
+                + "Repeated: --fields id --fields external. "
+                + "Multi-value: --fields id external.",
+        };
 }

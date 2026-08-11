@@ -19,6 +19,24 @@ File, text, and syntax search MUST:
 unless an explicit path includes them. Optional backends MUST implement this
 contract instead of inheriting their own traversal defaults.
 
+## Shared output-field selection
+
+Every command that exposes `--fields` accepts a compact comma-separated value,
+for example `--fields id,file,line`. Repeated flags and the existing
+space-separated multi-value form remain accepted. The CLI splits every supplied
+value on commas, trims whitespace around each field name, and flattens mixed
+forms in caller order before applying ordinal field validation and canonical
+selection. Empty segments are blank field values and produce the command's
+structured field-usage error and complete field catalog; unknown names use the
+shared unknown-field error and the same catalog.
+
+Duplicate names do not duplicate output fields. Defaults, final projection
+order, and result schemas remain defined by each command's field set rather
+than caller ordering or current culture. Generated examples, corrections, and
+recovery commands use one canonical comma-separated `--fields` value, while
+help presents that compact form first and notes the compatible repeated and
+space-separated forms.
+
 ## File search
 
 ```bash

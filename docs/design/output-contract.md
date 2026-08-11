@@ -101,6 +101,14 @@ Field names are ordinal and case-sensitive. An unknown requested field fails
 with exit `2`, reports `usage.unknown_field`, and lists the valid fields before
 the handler or an executing dependency is created.
 
+The canonical input form is one comma-separated value such as
+`--fields id,file,line`; repeated options and space-separated multi-value
+options remain compatible. Mixed forms flatten in occurrence and value order,
+trim whitespace around comma-delimited names, and then follow the same
+canonical selection rules above. Blank segments use the command's structured
+blank-field error. Generated corrections and recovery commands emit the
+canonical single-value form.
+
 Default row projections are convenience views, not a guarantee that every
 available field is present. A caller that depends on an ID or detail field
 requests it explicitly with `--fields`; making a default projection leaner

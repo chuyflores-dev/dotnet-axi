@@ -63,6 +63,53 @@ public sealed class OutputShapingTests
         Assert.Equal("public method", expanded.Project(row)["detail"]);
     }
 
+    [Theory]
+    [InlineData("en-US")]
+    [InlineData("sv-SE")]
+    [InlineData("tr-TR")]
+    public void Requested_field_lists_flatten_in_caller_order_before_canonical_selection(
+        string cultureName)
+    {
+        var originalCulture = CultureInfo.CurrentCulture;
+        var originalUiCulture = CultureInfo.CurrentUICulture;
+
+        try
+        {
+            var culture = CultureInfo.GetCultureInfo(cultureName);
+            CultureInfo.CurrentCulture = culture;
+            CultureInfo.CurrentUICulture = culture;
+
+            string[] requested =
+                [" detail, line ", "id", "line", "detail,file"];
+            var parsed = OutputFieldSelection.Parse(requested);
+            var selection = CreateFields().Select(requested);
+
+            Assert.Equal(
+                ["detail", "line", "id", "line", "detail", "file"],
+                parsed);
+            Assert.Equal(
+                "detail,line,id,file",
+                OutputFieldSelection.CanonicalValue(parsed));
+            Assert.Equal(["id", "file", "line", "detail"], selection.Fields);
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = originalCulture;
+            CultureInfo.CurrentUICulture = originalUiCulture;
+        }
+    }
+
+    [Theory]
+    [InlineData(",id", "", "id")]
+    [InlineData("id,,file", "id", "", "file")]
+    [InlineData("id,", "id", "")]
+    public void Empty_field_segments_are_preserved_for_structured_validation(
+        string value,
+        params string[] expected)
+    {
+        Assert.Equal(expected, OutputFieldSelection.Parse([value]));
+    }
+
     [Fact]
     public void Unknown_fields_are_rejected_with_the_available_field_set()
     {

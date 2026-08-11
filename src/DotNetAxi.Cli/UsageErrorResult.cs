@@ -48,10 +48,7 @@ internal static class UsageErrorResult
         var message = exception.UnknownFields.Count == 1
             ? $"Unknown field {unknown} for `{command}`."
             : $"Unknown fields {unknown} for `{command}`.";
-        var available = string.Join(
-            ", ",
-            exception.AvailableFields.Select(static field => $"`{field}`"));
-        var correction = $"Use `--fields` with one or more of: {available}.";
+        var correction = FieldCatalogCorrection(exception.AvailableFields);
         var validFields = exception.AvailableFields
             .Select(static name => new UsageField(name))
             .ToArray();
@@ -93,6 +90,10 @@ internal static class UsageErrorResult
             command == "home"
                 ? "dnaxi --help"
                 : $"dnaxi {command} --help");
+
+    internal static string FieldCatalogCorrection(
+        IEnumerable<string> availableFields) =>
+        $"Use one comma-separated value: `--fields '{string.Join(',', availableFields)}'`.";
 
     private sealed record UsageErrorPayload(
         IReadOnlyList<UsageFlag> ValidFlags);

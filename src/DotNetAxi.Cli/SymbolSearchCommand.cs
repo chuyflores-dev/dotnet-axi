@@ -56,6 +56,8 @@ internal sealed record SymbolSearchCommandRequest(
         bool full,
         IReadOnlyList<string> fields)
     {
+        fields = OutputFieldSelection.Parse(fields);
+
         if (string.IsNullOrWhiteSpace(query) || query.Contains('\0', StringComparison.Ordinal))
         {
             throw Usage(
@@ -111,7 +113,7 @@ internal sealed record SymbolSearchCommandRequest(
             throw Usage(
                 "usage.symbol_field",
                 "A --fields value cannot be blank.",
-                $"Use `--fields` with one or more of: {string.Join(", ", AvailableFields)}.");
+                UsageErrorResult.FieldCatalogCorrection(AvailableFields));
         }
 
         var unknownFields = fields
@@ -322,7 +324,7 @@ internal sealed class SymbolSearchCommandHandler :
         if (request.Fields.Count > 0)
         {
             arguments.Add("--fields");
-            arguments.AddRange(request.Fields.Select(Quote));
+            arguments.Add(Quote(OutputFieldSelection.CanonicalValue(request.Fields)));
         }
 
         arguments.Add("--full");

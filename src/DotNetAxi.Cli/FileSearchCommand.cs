@@ -39,12 +39,14 @@ internal sealed record FileSearchCommandRequest(
         int limit,
         IReadOnlyList<string> fields)
     {
+        fields = OutputFieldSelection.Parse(fields);
+
         if (fields.Any(string.IsNullOrWhiteSpace))
         {
             throw Usage(
                 "usage.file_field",
                 "A --fields value cannot be blank.",
-                $"Use `--fields` with one or more of: {string.Join(", ", AvailableFields)}.");
+                UsageErrorResult.FieldCatalogCorrection(AvailableFields));
         }
 
         var unknown = fields
@@ -373,7 +375,7 @@ internal sealed class FileSearchCommandHandler :
         if (request.Fields.Count > 0)
         {
             arguments.Add("--fields");
-            arguments.AddRange(request.Fields.Select(Quote));
+            arguments.Add(Quote(OutputFieldSelection.CanonicalValue(request.Fields)));
         }
 
         arguments.Add("--limit");

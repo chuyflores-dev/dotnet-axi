@@ -137,6 +137,9 @@ public sealed class TextSearchCommandTests
         Assert.Contains("regular-expression text", output.ToString());
         Assert.Contains(".NET regular-expression language", output.ToString());
         Assert.Contains("--regex", output.ToString());
+        Assert.Contains(
+            "Compact: --fields id,external. Repeated: --fields id --fields external. Multi-value: --fields id external.",
+            output.ToString());
     }
 
     [Theory]
@@ -183,7 +186,7 @@ public sealed class TextSearchCommandTests
             await File.WriteAllTextAsync(Path.Combine(workspace, "two.cs"), "needle");
             await File.WriteAllBytesAsync(Path.Combine(workspace, "bad.bin"), [0, 1]);
 
-            var bounded = await RunAsync(workspace, "search", "text", "needle", "--limit", "1", "--fields", "id", "column", "skip_details");
+            var bounded = await RunAsync(workspace, "search", "text", "needle", "--limit", "1", "--fields", " id, column,skip_details ");
             var full = await RunAsync(workspace, "search", "text", "needle", "--full", "--fields", "id", "column", "skip_details");
 
             Assert.Equal(0, bounded.ExitCode);
@@ -192,7 +195,7 @@ public sealed class TextSearchCommandTests
             Assert.Contains(
                 $"dnx dnaxi@{ToolVersion.Current} --verbosity quiet -- search text",
                 bounded.Output);
-            Assert.Contains("--fields 'id' 'column' 'skip_details' --full", bounded.Output);
+            Assert.Contains("--fields 'id,column,skip_details' --full", bounded.Output);
             Assert.DoesNotContain("--limit", bounded.Output);
             Assert.Contains("text/v1/", bounded.Output);
             Assert.Contains("details:", bounded.Output);
