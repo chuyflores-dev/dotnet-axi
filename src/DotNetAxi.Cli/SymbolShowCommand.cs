@@ -58,19 +58,14 @@ internal sealed class SymbolShowCommandHandler :
         ArgumentNullException.ThrowIfNull(request);
         cancellationToken.ThrowIfCancellationRequested();
 
-        var workspace = new WorkspaceDiscoverer().Discover(Directory.GetCurrentDirectory());
-        var scope = SymbolWorkspaceScopeResolver.Resolve(workspace, request.Scope);
-        var resolver = new SymbolEntityResolver(
-            scope.Traverser,
-            scope.Ownership);
-        var resolution = await resolver
-            .ResolveAsync(
+        var resolved = await SymbolEvidencePipeline.ResolveAsync(
                 request.Id,
-                scope.Traversal,
-                scope.DeclarationScope,
+                request.Scope,
                 cancellationToken)
             .ConfigureAwait(false);
-        var evidence = EvidenceFor(scope, resolution);
+        var scope = resolved.Scope;
+        var resolution = resolved.Resolution;
+        var evidence = resolved.Evidence;
 
         if (resolution.Stale)
         {
@@ -124,18 +119,8 @@ internal sealed class SymbolShowCommandHandler :
             match.Signature,
             match.Accessibility,
             detail.ContainingType,
-            new SymbolOwnerPayload(
-                match.OwningProjectCount,
-                match.OwningProjects,
-                match.VariantCount,
-                match.Variants.Select(Variant).ToArray()),
-            new SymbolLocationPayload(
-                match.Range.Start.Path,
-                match.Range.Start.Line,
-                match.Range.Start.Column,
-                match.Range.End.Line,
-                match.Range.End.Column,
-                match.Range.Start.IsExternal),
+            SymbolEvidencePipeline.Owner(match),
+            SymbolEvidencePipeline.Location(match),
             BoundedText.Create(
                 detail.Documentation,
                 request.MaxCharacters,
@@ -160,7 +145,7 @@ internal sealed class SymbolShowCommandHandler :
         Evidence evidence)
     {
         var bounded = BoundedCollection<SymbolCandidatePayload>.Create(
-            candidates.Select(Candidate),
+            candidates.Select(SymbolEvidencePipeline.Candidate),
             limit: 10,
             knownTotal: candidates.Count,
             retrievalCommand: CanonicalInvocation.OneShot(query));
@@ -179,51 +164,16 @@ internal sealed class SymbolShowCommandHandler :
             evidence);
     }
 
-    private static Evidence EvidenceFor(
-        ResolvedSymbolWorkspaceScope scope,
-        SymbolEntityResolution resolution) =>
-        new(
-            resolution.Snapshot,
-            EvidenceResolution.Syntax,
-            new EvidenceCoverage(
-                CoverageLevel.Complete,
-                considered: resolution.ObservedFileCount,
-                analyzed: resolution.ObservedFileCount,
-                remaining: 0,
-                excluded: 0,
-                failed: 0),
-            EvidenceConfidence.Candidate,
-            scope.EvidenceScope);
-
-    private static SymbolCandidatePayload Candidate(SymbolDeclarationMatch match) =>
-        new(
-            match.Id,
-            match.Kind,
-            match.Name,
-            match.Signature,
-            match.Range.Start.Path,
-            match.Range.Start.Line);
-
-    private static SymbolVariantPayload Variant(SymbolDeclarationVariant variant) =>
-        new(
-            variant.Project,
-            variant.Configuration,
-            variant.Framework,
-            variant.Meaning);
-
     private static int ScalarCount(string text) =>
         text.EnumerateRunes().Count();
 
     private static string SearchQuery(
         string name,
         ResolvedSymbolWorkspaceScope scope) =>
-        "dnaxi search symbol "
-        + Quote(name)
-        + scope.CanonicalArguments()
-        + " --fields 'id,signature,owning_projects,variant_count,variants' --full";
+        SymbolEvidencePipeline.SearchQuery(name, scope);
 
     private static string Quote(string value) =>
-        "'" + value.Replace("'", "'\\''", StringComparison.Ordinal) + "'";
+        SymbolEvidencePipeline.Quote(value);
 
     private sealed record SymbolShowPayload(
         string Id,
@@ -239,41 +189,4 @@ internal sealed class SymbolShowCommandHandler :
         BoundedText Body,
         SymbolRelationshipSummary Relationships);
 
-    private sealed record SymbolOwnerPayload(
-        int ProjectCount,
-        IReadOnlyList<string> Projects,
-        int VariantCount,
-        IReadOnlyList<SymbolVariantPayload> Variants);
-
-    private sealed record SymbolVariantPayload(
-        string Project,
-        string? Configuration,
-        string? Framework,
-        string Meaning);
-
-    private sealed record SymbolLocationPayload(
-        string File,
-        int Line,
-        int Column,
-        int EndLine,
-        int EndColumn,
-        bool External);
-
-    private sealed record SymbolResolutionPayload(
-        string Query,
-        int CandidateCount,
-        bool TotalKnown,
-        int? Total,
-        int? Omitted,
-        bool Truncated,
-        string? RetrievalCommand,
-        IReadOnlyList<SymbolCandidatePayload> Candidates);
-
-    private sealed record SymbolCandidatePayload(
-        string Id,
-        string Kind,
-        string Name,
-        string Signature,
-        string File,
-        int Line);
 }

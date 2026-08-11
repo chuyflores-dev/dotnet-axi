@@ -36,11 +36,89 @@ public sealed class ToonResultSerializer
         ArgumentNullException.ThrowIfNull(result);
 
         var document = BuildDocument(result);
-        return ToonV41Encoder.Encode(document);
+        return ToonV41Encoder.Encode(
+            document,
+            result.Command == "context symbol"
+                ? static key => key == "sections"
+                : null);
     }
 
     public byte[] SerializeToUtf8(ICommandResult result) =>
         Utf8.GetBytes(Serialize(result));
+
+    internal static string SerializePayloadValue(
+        object value,
+        bool expandContextSections = false)
+    {
+        ArgumentNullException.ThrowIfNull(value);
+        return ToonV41Encoder.Encode(
+            JsonSerializer.SerializeToNode(
+                value,
+                value.GetType(),
+                PayloadOptions),
+            expandContextSections
+                ? static key => key == "sections"
+                : null);
+    }
+
+    internal static ContextSection<T> CreateContextSectionForBudget<T>(
+        string name,
+        int order,
+        T value,
+        bool hasPreviousSection) =>
+        StabilizeContextSection(
+            name,
+            order,
+            value,
+            hasPreviousSection);
+
+    private static ContextSection<T> StabilizeContextSection<T>(
+        string name,
+        int order,
+        T value,
+        bool hasPreviousSection)
+    {
+        var representation = SerializePayloadValue(value!);
+        for (var attempt = 0; attempt < 10; attempt++)
+        {
+            var emittedRepresentation = hasPreviousSection
+                ? "\n" + representation
+                : representation;
+            var section = ContextSection<T>.Create(
+                name,
+                order,
+                value,
+                emittedRepresentation);
+            var document = SerializePayloadValue(
+                new ContextSectionBudgetDocument<T>([section]),
+                expandContextSections: true);
+            var markerEnd = document.IndexOf('\n');
+            if (markerEnd < 0)
+            {
+                throw new InvalidOperationException(
+                    "A serialized context section did not contain a TOON array body.");
+            }
+
+            var emitted = document[(markerEnd + 1)..];
+            emittedRepresentation = hasPreviousSection
+                ? "\n" + emitted
+                : emitted;
+            var measured = ContextSection<T>.Create(
+                name,
+                order,
+                value,
+                emittedRepresentation);
+            if (measured.IncludedCharacters == section.IncludedCharacters)
+            {
+                return measured;
+            }
+
+            representation = emitted;
+        }
+
+        throw new InvalidOperationException(
+            "A serialized context section character count did not stabilize.");
+    }
 
     private static JsonObject BuildDocument(ICommandResult result)
     {
@@ -480,3 +558,6 @@ public sealed class ToonResultSerializer
         }
     }
 }
+
+internal sealed record ContextSectionBudgetDocument<T>(
+    IReadOnlyList<ContextSection<T>> Sections);

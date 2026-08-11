@@ -10,7 +10,9 @@ public sealed record SymbolDeclarationDetail(
     string? ContainingType,
     string Documentation,
     string Body,
-    SymbolRelationshipSummary Relationships);
+    SymbolRelationshipSummary Relationships,
+    string SourceText,
+    int SourceByteCount);
 
 public sealed record SymbolRelationshipSummary(
     int AttributeCount,
@@ -67,7 +69,9 @@ public sealed class SymbolDeclarationDetailReader
             ContainingType(node),
             Documentation(node),
             Body(node),
-            Relationships(node)));
+            Relationships(node),
+            source.ToString(),
+            match.SourceBytes.Length));
     }
 
     private static string? ContainingType(SyntaxNode node)
