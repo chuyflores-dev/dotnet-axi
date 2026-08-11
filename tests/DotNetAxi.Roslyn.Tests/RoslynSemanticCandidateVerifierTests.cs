@@ -152,7 +152,16 @@ public sealed class RoslynSemanticCandidateVerifierTests
               <PropertyGroup><TargetFrameworks>net8.0;net10.0</TargetFrameworks></PropertyGroup>
             </Project>
             """);
-        await workspace.WriteProjectAsync("App/App.csproj", string.Empty);
+        await workspace.WriteProjectAsync(
+            "App/App.csproj",
+            $"""
+            {ExplicitFrameworkReference()}
+            <ItemGroup Condition="'$(TargetFramework)' == 'net8.0'">
+              <Reference Include="Missing">
+                <HintPath>missing/reference.dll</HintPath>
+              </Reference>
+            </ItemGroup>
+            """);
         await workspace.WriteAsync(
             "App/Code.cs",
             "sealed class C { static void Target() { } static void Run() => Target(); }");
@@ -170,7 +179,7 @@ public sealed class RoslynSemanticCandidateVerifierTests
             net8 =>
             {
                 Assert.Equal(SemanticCandidateStatus.Unresolved, net8.Status);
-                Assert.NotNull(net8.Reason);
+                Assert.Equal("metadata.missing", net8.Reason);
             });
     }
 
