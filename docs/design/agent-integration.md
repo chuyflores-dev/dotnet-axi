@@ -96,7 +96,8 @@ verifies Codex and Claude Code, while `setup opencode` remains explicitly
 unsupported.
 
 The skill uses trigger-shaped metadata for .NET file, literal,
-regular-expression, and stable-syntax discovery and teaches exact
+regular-expression, stable-syntax, declaration, exact-symbol, and bounded
+context discovery and teaches exact
 version-pinned `dnx dnaxi@<version> --verbosity quiet -- <command>` invocation
 so an agent does not require a permanent global-tool installation. Known
 reported routes are invoked directly without a redundant help probe. The
@@ -138,7 +139,26 @@ teach agents to:
 - Use a returned path or match to choose the next narrower evidence-producing
   file, text, or syntax query instead of broadly dumping source. A truncated
   result's retrieval command is used only when the omitted rows are needed.
-- Use Roslyn operations for exact identity.
+- Search declarations with explicit solution or project scope when a repository
+  has multiple entry points, preserve all reported owner and
+  configuration/framework variants, and treat the rows as passive candidates
+  rather than compiler-verified meaning. Test-only declarations require
+  explicit test inclusion.
+- Use opt-in syntax verification only when compiler proof is required and
+  repository design-time execution is allowed. Preserve the verified,
+  rejected, or unresolved status of each owner/framework variant.
+- Resolve one selected canonical symbol identity with the same complete search
+  scope. Stale or ambiguous identities retain bounded replacement candidates
+  and a concrete correction; an agent must select a replacement explicitly
+  rather than silently rebinding the old identity.
+- Retrieve a bounded symbol, exact document line span, or syntax outline before
+  requesting a larger character budget or complete output. Compose declaration,
+  owner, document, and outline sections through bounded symbol context when
+  those sections are needed together.
+- Treat references, callers, callees, tests, implementations, and other graph
+  or relationship sections as unavailable until the invoked version reports
+  them. The skill names the `0.5.0` context sections without inventing later
+  commands or conclusions.
 - Inspect impact before public changes.
 - Request bounded context.
 - Run fast validation during work.

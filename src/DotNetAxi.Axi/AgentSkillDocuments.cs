@@ -140,6 +140,14 @@ public static class AgentSkillDocuments
         lines.AddRange(
         [
             string.Empty,
+            "## Resolve symbols and compose bounded context",
+            string.Empty,
+        ]);
+        AddNumbered(lines, guidance.SymbolContextFlow);
+
+        lines.AddRange(
+        [
+            string.Empty,
             "## Preserve evidence and safety",
             string.Empty,
         ]);
