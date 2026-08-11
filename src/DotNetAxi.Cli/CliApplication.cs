@@ -248,11 +248,12 @@ internal static class CliApplication
 
         var showCommand = new Command(
             "show",
-            "Show bounded detail for one stable evidence identity.");
+            "Show bounded detail for one stable evidence identity or document.");
         host.RegisterCommand(rootCommand, showCommand, OperationPolicy.Passive,
             [
                 "dnaxi show symbol <symbol/v2/...>",
                 "dnaxi show symbol <symbol/v2/...> --max-chars 2000",
+                "dnaxi show document src/App/Service.cs",
             ]);
 
         var showSymbolCommand = new Command(
@@ -282,6 +283,50 @@ internal static class CliApplication
                 result.GetValue(showSymbolPaths) ?? [],
                 result.GetValue(showSymbolMaxCharacters)),
             static () => new SymbolShowCommandHandler(),
+            host.ResponseWriter);
+
+        var showDocumentCommand = new Command(
+            "document",
+            "Show one bounded text document with identity and ownership evidence.");
+        var showDocumentPath = new Argument<string>("path")
+        {
+            Description = "One explicit workspace or external document path.",
+        };
+        var showDocumentIncludeGenerated = new Option<bool>(
+            "--include-generated")
+        {
+            Description = "Include a document classified as generated source.",
+        };
+        var showDocumentMaxCharacters = new Option<int>("--max-chars")
+        {
+            Description = "Limit the preview by Unicode scalar values.",
+            DefaultValueFactory = static _ => 1000,
+        };
+        var showDocumentFull = new Option<bool>("--full")
+        {
+            Description = "Return the complete document without a character limit.",
+        };
+        showDocumentCommand.Arguments.Add(showDocumentPath);
+        showDocumentCommand.Options.Add(showDocumentIncludeGenerated);
+        showDocumentCommand.Options.Add(showDocumentMaxCharacters);
+        showDocumentCommand.Options.Add(showDocumentFull);
+        host.RegisterCommand(
+            showCommand,
+            showDocumentCommand,
+            OperationPolicy.Passive,
+            [
+                "dnaxi show document src/App/Service.cs",
+                "dnaxi show document src/App/Service.cs --max-chars 2000",
+                "dnaxi show document Generated.g.cs --include-generated --full",
+            ]);
+        showDocumentCommand.BindHandler(
+            result => DocumentShowCommandRequest.Create(
+                result.GetValue(showDocumentPath)!,
+                result.GetValue(showDocumentIncludeGenerated),
+                result.GetValue(showDocumentMaxCharacters),
+                result.Tokens.Any(token => token.Value == "--max-chars"),
+                result.GetValue(showDocumentFull)),
+            static () => new DocumentShowCommandHandler(),
             host.ResponseWriter);
 
         var syntaxCommand = new Command(

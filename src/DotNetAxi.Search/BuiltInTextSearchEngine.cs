@@ -59,12 +59,14 @@ internal static class BuiltInTextSearchEngine
         foreach (var path in paths)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var read = await ReadAsync(path.FullPath, cancellationToken).ConfigureAwait(false);
+            var read = await new TextDocumentReader()
+                .ReadAsync(path.FullPath, cancellationToken)
+                .ConfigureAwait(false);
             Append(observation, path.RelativePath);
             Append(observation, read.Status.ToString());
-            if (read.Bytes is not null)
+            if (read.ContentAvailable)
             {
-                Append(observation, read.Bytes);
+                Append(observation, read.Content.Span);
             }
 
             if (read.Text is null)
@@ -100,7 +102,8 @@ internal static class BuiltInTextSearchEngine
                     continue;
                 }
 
-                var contentHash = Convert.ToHexStringLower(SHA256.HashData(read.Bytes!));
+                var contentHash = Convert.ToHexStringLower(
+                    SHA256.HashData(read.Content.Span));
                 var remainingCapacity = request.Limit - matches.Count;
                 var matchObservationLimit = remainingCapacity == int.MaxValue
                     ? int.MaxValue
@@ -371,113 +374,37 @@ internal static class BuiltInTextSearchEngine
             ? end - 2
             : end - 1;
 
-    private static async Task<ReadResult> ReadAsync(
-        string path,
-        CancellationToken cancellationToken)
+    private static string Reason(TextDocumentReadStatus status) => status switch
     {
-        byte[] bytes;
-        try
-        {
-            bytes = await File.ReadAllBytesAsync(path, cancellationToken).ConfigureAwait(false);
-            if (bytes.Length >= 4
-                && ((bytes[0] == 0xff && bytes[1] == 0xfe && bytes[2] == 0 && bytes[3] == 0)
-                    || (bytes[0] == 0 && bytes[1] == 0 && bytes[2] == 0xfe && bytes[3] == 0xff)))
-            {
-                return new(null, bytes, ReadStatus.UnsupportedEncoding);
-            }
-
-            Encoding encoding;
-            var start = 0;
-            if (bytes.Length >= 2 && bytes[0] == 0xff && bytes[1] == 0xfe)
-            {
-                encoding = new UnicodeEncoding(false, true, true);
-                start = 2;
-            }
-            else if (bytes.Length >= 2 && bytes[0] == 0xfe && bytes[1] == 0xff)
-            {
-                encoding = new UnicodeEncoding(true, true, true);
-                start = 2;
-            }
-            else
-            {
-                if (bytes.Contains((byte)0))
-                {
-                    return new(null, bytes, ReadStatus.Binary);
-                }
-
-                encoding = new UTF8Encoding(false, true);
-                if (bytes.Length >= 3
-                    && bytes[0] == 0xef
-                    && bytes[1] == 0xbb
-                    && bytes[2] == 0xbf)
-                {
-                    start = 3;
-                }
-            }
-
-            try
-            {
-                return new(
-                    encoding.GetString(bytes, start, bytes.Length - start),
-                    bytes,
-                    ReadStatus.Success);
-            }
-            catch (DecoderFallbackException)
-            {
-                return new(null, bytes, ReadStatus.Undecodable);
-            }
-        }
-        catch (IOException)
-        {
-            return new(null, null, ReadStatus.Unreadable);
-        }
-        catch (UnauthorizedAccessException)
-        {
-            return new(null, null, ReadStatus.Unreadable);
-        }
-    }
-
-    private static string Reason(ReadStatus status) => status switch
-    {
-        ReadStatus.Binary => "binary",
-        ReadStatus.UnsupportedEncoding => "unsupported_encoding",
-        ReadStatus.Unreadable => "unreadable",
+        TextDocumentReadStatus.Binary => "binary",
+        TextDocumentReadStatus.UnsupportedEncoding => "unsupported_encoding",
+        TextDocumentReadStatus.Unreadable => "unreadable",
         _ => "undecodable",
     };
 
-    private static TextSearchFileStatus ToObservationStatus(ReadStatus status) =>
+    private static TextSearchFileStatus ToObservationStatus(
+        TextDocumentReadStatus status) =>
         status switch
         {
-            ReadStatus.Binary => TextSearchFileStatus.Binary,
-            ReadStatus.UnsupportedEncoding => TextSearchFileStatus.UnsupportedEncoding,
-            ReadStatus.Unreadable => TextSearchFileStatus.Unreadable,
+            TextDocumentReadStatus.Binary => TextSearchFileStatus.Binary,
+            TextDocumentReadStatus.UnsupportedEncoding =>
+                TextSearchFileStatus.UnsupportedEncoding,
+            TextDocumentReadStatus.Unreadable => TextSearchFileStatus.Unreadable,
             _ => TextSearchFileStatus.Undecodable,
         };
 
     private static void Append(IncrementalHash hash, string text) =>
         Append(hash, Encoding.UTF8.GetBytes(text));
 
-    private static void Append(IncrementalHash hash, byte[] bytes)
+    private static void Append(
+        IncrementalHash hash,
+        ReadOnlySpan<byte> bytes)
     {
         Span<byte> length = stackalloc byte[4];
         BinaryPrimitives.WriteInt32BigEndian(length, bytes.Length);
         hash.AppendData(length);
         hash.AppendData(bytes);
     }
-
-    private enum ReadStatus
-    {
-        Success,
-        Binary,
-        Undecodable,
-        UnsupportedEncoding,
-        Unreadable,
-    }
-
-    private sealed record ReadResult(
-        string? Text,
-        byte[]? Bytes,
-        ReadStatus Status);
 
     private sealed class InvalidRegexMatcher(TimeSpan perFileTimeout)
         : ITextSearchMatcher

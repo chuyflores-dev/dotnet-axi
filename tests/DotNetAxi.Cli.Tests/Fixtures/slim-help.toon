@@ -23,7 +23,7 @@ flags[2]:
     description: Show installed versions and passive compatibility capabilities.
 subcommands[2]{name,description,classification}:
   search,Search the current workspace.,passive
-  show,Show bounded detail for one stable evidence identity.,passive
+  show,Show bounded detail for one stable evidence identity or document.,passive
 examples[3]{command}:
   dnx dnaxi@<tool-version> --verbosity quiet --
   dnx dnaxi@<tool-version> --verbosity quiet -- --help

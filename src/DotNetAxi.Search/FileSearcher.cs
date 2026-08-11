@@ -95,7 +95,7 @@ public sealed class FileSearcher : IFileSearcher
             }
 
             var match = new FileSearchMatch(
-                CreateId(path),
+                FileEntityIdentity.Create(path),
                 path.RelativePath,
                 FileKind(path.RelativePath),
                 path.IsExternal,
@@ -224,16 +224,6 @@ public sealed class FileSearcher : IFileSearcher
             ".props" or ".targets" => "build",
             _ => "file",
         };
-
-    private static string CreateId(WorkspaceTraversalPath path)
-    {
-        using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
-        Append(hash, "dotnet-axi/file-match/v1");
-        Append(hash, path.RelativePath);
-        Append(hash, path.IsExternal ? "external" : "workspace");
-        return "file/v1/" + Convert.ToHexStringLower(
-            hash.GetHashAndReset());
-    }
 
     private static void AppendValues(
         IncrementalHash hash,
