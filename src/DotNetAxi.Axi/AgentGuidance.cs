@@ -16,6 +16,7 @@ public sealed class AgentCommandGuidance
         string capabilityCondition,
         IEnumerable<string> capabilityFlow,
         IEnumerable<string> sourceDiscoveryFlow,
+        IEnumerable<string> symbolContextFlow,
         IEnumerable<string> safetyFlow,
         string completion,
         string evidenceReport)
@@ -37,6 +38,9 @@ public sealed class AgentCommandGuidance
         SourceDiscoveryFlow = Copy(
             sourceDiscoveryFlow,
             nameof(sourceDiscoveryFlow));
+        SymbolContextFlow = Copy(
+            symbolContextFlow,
+            nameof(symbolContextFlow));
         SafetyFlow = Copy(safetyFlow, nameof(safetyFlow));
         Completion = RequiredText(completion, nameof(completion));
         EvidenceReport = RequiredText(evidenceReport, nameof(evidenceReport));
@@ -67,6 +71,8 @@ public sealed class AgentCommandGuidance
     public IReadOnlyList<string> CapabilityFlow { get; }
 
     public IReadOnlyList<string> SourceDiscoveryFlow { get; }
+
+    public IReadOnlyList<string> SymbolContextFlow { get; }
 
     public IReadOnlyList<string> SafetyFlow { get; }
 
@@ -115,12 +121,12 @@ public sealed class AgentCommandGuidance
 
 public static class AgentGuidanceCatalog
 {
-    public const string SkillPackageVersion = "0.4.0";
+    public const string SkillPackageVersion = "0.5.0";
 
     public const string SkillName = "dotnet-axi";
 
     public const string SkillDescription =
-        "Use dotnet-axi for deterministic .NET repository evidence. Trigger for finding .NET files by path, searching literal or regular-expression text, locating stable C# syntax shapes, inspecting workspace, semantic, impact, or analysis evidence, and validating completion. When a controlled benchmark supplies the local feed, route applicable source discovery through dnx dnaxi@0.4.0 --source \"$DNAXI_LOCAL_FEED\" --verbosity quiet -- <command>; skip non-.NET work and direct reads of already-known files.";
+        "Use dotnet-axi for deterministic .NET repository evidence. Trigger for finding .NET files by path, searching literal or regular-expression text, locating stable C# syntax shapes or declarations, resolving symbol identity, retrieving bounded source context, inspecting workspace, semantic, impact, or analysis evidence, and validating completion. When a controlled benchmark supplies the local feed, route applicable discovery through dnx dnaxi@0.5.0 --source \"$DNAXI_LOCAL_FEED\" --verbosity quiet -- <command>; skip non-.NET work and direct reads of already-known files.";
 
     public static AgentCommandGuidance Command { get; } =
         CreateCommand(SkillPackageVersion);
@@ -175,7 +181,7 @@ public static class AgentGuidanceCatalog
         ],
         activationFlow:
         [
-            $"For .NET file, literal, regular-expression, or stable-syntax discovery, run the matching bounded `search` route through `{commandPrefix}` when the invoked version reports it.",
+            $"For .NET file, literal, regular-expression, stable-syntax, declaration, or bounded symbol-context discovery, run the matching route through `{commandPrefix}` when the invoked version reports it.",
             "Invoke known source-discovery routes directly; do not add a help probe before a known route. Inspect only the narrowest relevant help once when no documented route or option applies.",
             "Read an already-known file directly when that is smaller. If the required capability is unavailable, use an available direct tool and report the gap.",
         ],
@@ -194,7 +200,7 @@ public static class AgentGuidanceCatalog
         [
             "Use text search for literals.",
             "Use stable syntax queries for syntax shape.",
-            "Use Roslyn operations for exact identity.",
+            "Use declaration search and resolved symbol operations for exact source identity.",
             "Inspect impact before public changes.",
             "Request bounded context.",
             "Run fast validation during work.",
@@ -212,6 +218,17 @@ public static class AgentGuidanceCatalog
             "Treat stable syntax results as syntax candidates, never as compiler-verified symbol or type identity.",
             "Text search may use compatible `rg` acceleration. When that optional engine is absent, incompatible, or unsuitable for the query, `search text` degrades to its built-in engine with the same stable command behavior.",
             "Keep discovery bounded with a narrow `--path` and `--limit`. If output is truncated, follow its `retrieval_command` only when the remaining rows are needed; otherwise use the returned path or match to issue the next narrower file, text, or syntax query instead of dumping broad source.",
+        ],
+        symbolContextFlow:
+        [
+            $"Find C# declarations with `{commandPrefix} search symbol '<name>' --solution <solution> --fields id,kind,signature,owning_projects,variant_count,variants --limit 20`. Select `--solution` or `--project` explicitly when a repository has multiple entry points, and add `--include-tests` when the target may be test-only.",
+            "Treat `search symbol` rows, owner projects, and framework/configuration variants as passive declaration candidates with unresolved compiler meaning. Preserve all reported variants; do not select one implicitly or call the row compiler-verified.",
+            $"When compiler proof of a supported syntax construct is required and repository code execution is allowed, rerun its stable syntax query with `--verify`, for example `{commandPrefix} search syntax invocation --name SaveChangesAsync --path <scope> --verify --limit 20`. Report each construct and owner/framework variant as `verified`, `rejected`, or `unresolved`; do not generalize that proof into a different symbol claim.",
+            $"Resolve one selected canonical `symbol/v2` identity with `{commandPrefix} show symbol '<symbol/v2/...>' --solution <solution> --max-chars 2000`. Reuse the complete discovery scope, including project, paths, tests, and generated-source eligibility. If the ID is stale or ambiguous, follow the structured correction and bounded replacement candidates, rerun the reported symbol query when needed, and select a replacement explicitly; never silently bind it.",
+            $"Retrieve an exact document span with `{commandPrefix} show document '<path>' --start-line <line> --end-line <line> --max-chars 4000`. Follow its larger-budget recovery only when omitted characters matter; use `--full` only for an explicitly required complete document.",
+            $"Inspect source structure with `{commandPrefix} outline '<path-or-symbol>' --limit 100`. Keep symbol scope consistent, and use the reported full retrieval command only when omitted outline items matter.",
+            $"Compose bounded symbol evidence with `{commandPrefix} context symbol '<symbol/v2/...>' --include declaration,owner,document,outline --max-chars 12000`. Reuse the selected symbol scope. Increase the budget or use `--full` only when the omitted whole sections are required.",
+            "In 0.5.0, `context symbol` supports only `declaration`, `owner`, `document`, and `outline`. Treat `references`, `callers`, `callees`, `tests`, implementations, and other relationship or graph requests as unavailable capability corrections; do not invent commands, sections, or conclusions.",
         ],
         safetyFlow:
         [

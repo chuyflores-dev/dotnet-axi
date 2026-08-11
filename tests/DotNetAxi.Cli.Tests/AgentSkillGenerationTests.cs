@@ -24,13 +24,13 @@ public sealed class AgentSkillGenerationTests
             document.RelativePath == AgentSkillDocuments.SkillRelativePath).Content;
 
         AssertPortableMetadata(skill);
-        AssertBounded(skill, maximumLines: 110, maximumUtf8Bytes: 8_000);
+        AssertBounded(skill, maximumLines: 125, maximumUtf8Bytes: 12_000);
         Assert.DoesNotContain('\r', skill);
         Assert.EndsWith("\n", skill);
 
         var guidance = AgentGuidanceCatalog.Command;
         Assert.Equal(
-            "dnx dnaxi@0.4.0 --verbosity quiet -- <command>",
+            "dnx dnaxi@0.5.0 --verbosity quiet -- <command>",
             guidance.Invocation);
         Assert.DoesNotContain("<exact-version>", skill);
         Assert.Contains(guidance.Invocation, skill);
@@ -67,12 +67,14 @@ public sealed class AgentSkillGenerationTests
                      .Concat(guidance.SkipWhen)
                      .Concat(guidance.CapabilityFlow)
                      .Concat(guidance.SourceDiscoveryFlow)
+                     .Concat(guidance.SymbolContextFlow)
                      .Concat(guidance.SafetyFlow))
         {
             Assert.Contains(item, skill);
         }
 
         AssertSourceDiscoveryGuidance(skill);
+        AssertSymbolContextGuidance(skill);
 
         Assert.DoesNotContain("dnx dotnet-axi", skill);
         Assert.DoesNotContain("dnx dnaxi --", skill);
@@ -275,6 +277,7 @@ public sealed class AgentSkillGenerationTests
         Assert.True(File.Exists(skillPath));
         AssertPortableMetadata(File.ReadAllText(skillPath));
         AssertSourceDiscoveryGuidance(File.ReadAllText(skillPath));
+        AssertSymbolContextGuidance(File.ReadAllText(skillPath));
         Assert.Equal(
             File.ReadAllBytes(Path.Combine(source, "SKILL.md")),
             File.ReadAllBytes(skillPath));
@@ -309,16 +312,51 @@ public sealed class AgentSkillGenerationTests
         {
             Assert.Contains(required, content);
         }
+    }
 
-        foreach (var futureSemanticCommand in new[]
+    private static void AssertSymbolContextGuidance(string content)
+    {
+        foreach (var required in new[]
                  {
                      "search symbol",
                      "show symbol",
+                     "show document",
+                     "--start-line <line> --end-line <line>",
+                     "outline '<path-or-symbol>'",
+                     "context symbol",
+                     "--fields id,kind,signature,owning_projects,variant_count,variants",
+                     "--solution <solution>",
+                     "--project",
+                     "--include-tests",
+                     "passive declaration candidates",
+                     "framework/configuration variants",
+                     "--verify",
+                     "`verified`, `rejected`, or `unresolved`",
+                     "structured correction and bounded replacement candidates",
+                     "never silently bind",
+                     "--max-chars 2000",
+                     "--max-chars 12000",
+                     "declaration,owner,document,outline",
+                     "Increase the budget or use `--full`",
+                     "unavailable capability corrections",
+                 })
+        {
+            Assert.Contains(required, content);
+        }
+
+        foreach (var futureGraphCommand in new[]
+                 {
+                     "search references",
+                     "search implementations",
+                     "show references",
+                     "show implementations",
+                     "context references",
+                     "context implementations",
                      "-- references",
                      "-- implementations",
                  })
         {
-            Assert.DoesNotContain(futureSemanticCommand, content);
+            Assert.DoesNotContain(futureGraphCommand, content);
         }
     }
 
