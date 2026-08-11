@@ -138,6 +138,66 @@ public sealed class SymbolDeclarationSearcherTests
         Assert.Equal(2, result.Observations.Count);
     }
 
+    [Fact]
+    public async Task Detail_uses_the_same_source_bytes_as_the_resolved_identity()
+    {
+        using var workspace = new TestWorkspace();
+        var source = await workspace.WriteAsync(
+            "Symbols.cs",
+            "class Widget { void Run() { One(); } }");
+        var searcher = Searcher(
+            [Path(source, "Symbols.cs")],
+            new StubOwnershipResolver([]));
+        var match = Assert.Single((await searcher.SearchAsync(
+            Request(workspace.Root, "Run"))).Matches);
+        await workspace.WriteAsync(
+            "Symbols.cs",
+            "class Widget { void Run() { Two(); } }");
+
+        var detail = await new SymbolDeclarationDetailReader().ReadAsync(match);
+
+        Assert.Contains("One();", detail.Body, StringComparison.Ordinal);
+        Assert.DoesNotContain("Two();", detail.Body, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("class Widget(int value) { }", "Widget(int)")]
+    [InlineData("struct Widget(int value) { }", "Widget(int)")]
+    [InlineData("record Widget(int Value);", "Widget(int)")]
+    public async Task Primary_constructor_signature_and_parameter_count_are_reported(
+        string declaration,
+        string signature)
+    {
+        using var workspace = new TestWorkspace();
+        var source = await workspace.WriteAsync("Symbols.cs", declaration);
+        var match = Assert.Single((await Searcher(
+            [Path(source, "Symbols.cs")],
+            new StubOwnershipResolver([])).SearchAsync(
+                Request(workspace.Root, "Widget"))).Matches);
+
+        var detail = await new SymbolDeclarationDetailReader().ReadAsync(match);
+
+        Assert.Equal(signature, match.Signature);
+        Assert.Equal(1, detail.Relationships.ParameterCount);
+    }
+
+    [Fact]
+    public async Task Synthesized_preview_separators_are_platform_independent()
+    {
+        using var workspace = new TestWorkspace();
+        var source = await workspace.WriteAsync(
+            "Symbols.cs",
+            "class Widget\r\n{\r\n    int First;\r\n    int Second;\r\n}");
+        var match = Assert.Single((await Searcher(
+            [Path(source, "Symbols.cs")],
+            new StubOwnershipResolver([])).SearchAsync(
+                Request(workspace.Root, "Widget"))).Matches);
+
+        var detail = await new SymbolDeclarationDetailReader().ReadAsync(match);
+
+        Assert.Equal("int First;\nint Second;", detail.Body);
+    }
+
     private static SymbolDeclarationSearcher Searcher(
         IReadOnlyList<WorkspaceTraversalPath> paths,
         IFileOwnershipResolver ownership) =>

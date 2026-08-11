@@ -246,6 +246,44 @@ internal static class CliApplication
             static () => new SymbolSearchCommandHandler(),
             host.ResponseWriter);
 
+        var showCommand = new Command(
+            "show",
+            "Show bounded detail for one stable evidence identity.");
+        host.RegisterCommand(rootCommand, showCommand, OperationPolicy.Passive,
+            [
+                "dnaxi show symbol <symbol/v2/...>",
+                "dnaxi show symbol <symbol/v2/...> --max-chars 2000",
+            ]);
+
+        var showSymbolCommand = new Command(
+            "symbol",
+            "Show one resolved C# declaration without loading a compilation.");
+        var showSymbolId = new Argument<string>("symbol");
+        var showSymbolPaths = new Option<string[]>("--path")
+        {
+            AllowMultipleArgumentsPerToken = false,
+            Description = "Reuse an explicit search scope, including external paths.",
+        };
+        var showSymbolMaxCharacters = new Option<int>("--max-chars")
+        {
+            DefaultValueFactory = static _ => 1000,
+        };
+        showSymbolCommand.Arguments.Add(showSymbolId);
+        showSymbolCommand.Options.Add(showSymbolPaths);
+        showSymbolCommand.Options.Add(showSymbolMaxCharacters);
+        host.RegisterCommand(showCommand, showSymbolCommand, OperationPolicy.Passive,
+            [
+                "dnaxi show symbol <symbol/v2/...>",
+                "dnaxi show symbol <symbol/v2/...> --max-chars 2000",
+            ]);
+        showSymbolCommand.BindHandler(
+            result => SymbolShowCommandRequest.Create(
+                result.GetValue(showSymbolId)!,
+                result.GetValue(showSymbolPaths) ?? [],
+                result.GetValue(showSymbolMaxCharacters)),
+            static () => new SymbolShowCommandHandler(),
+            host.ResponseWriter);
+
         var syntaxCommand = new Command(
             "syntax",
             "Search stable tool-owned C# syntax shapes without loading a compilation.");

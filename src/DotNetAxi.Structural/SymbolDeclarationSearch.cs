@@ -116,6 +116,14 @@ public sealed record SymbolDeclarationMatch(
     public int OwningProjectCount => OwningProjects.Count;
 
     public int VariantCount => Variants.Count;
+
+    internal byte[] SourceBytes { get; init; } = [];
+
+    internal string? LegacyId { get; init; }
+
+    internal int SourceSpanStart { get; init; }
+
+    internal int SourceSpanLength { get; init; }
 }
 
 public sealed record SymbolDeclarationVariant(
@@ -333,6 +341,19 @@ public sealed class SymbolDeclarationSearcher
                         path.RelativePath,
                         path.IsExternal,
                         compilerVariants);
+                var legacyId = declaration.LegacySignature is null
+                    ? null
+                    : SymbolEntityIdentity.Create(
+                        declaration.Name,
+                        declaration.Kind,
+                        declaration.FullyQualifiedName,
+                        declaration.LegacySignature,
+                        contentHash,
+                        declaration.Node.SpanStart,
+                        declaration.Node.Span.Length,
+                        path.RelativePath,
+                        path.IsExternal,
+                        compilerVariants);
                 var variants = Array.AsReadOnly(compilerVariants
                     .Select(variant => new SymbolDeclarationVariant(
                         variant.Project,
@@ -353,7 +374,13 @@ public sealed class SymbolDeclarationSearcher
                     variants,
                     isTest,
                     isGenerated,
-                    rank.Value));
+                    rank.Value)
+                {
+                    SourceBytes = bytes,
+                    LegacyId = legacyId,
+                    SourceSpanStart = declaration.Node.SpanStart,
+                    SourceSpanLength = declaration.Node.Span.Length,
+                });
             }
         }
 
@@ -397,16 +424,31 @@ public sealed class SymbolDeclarationSearcher
                         value.Name.ToString());
                     break;
                 case ClassDeclarationSyntax value:
-                    yield return Create(value, "class", value.Identifier.ValueText, Accessibility(value.Modifiers, value));
+                    yield return Create(
+                        value,
+                        "class",
+                        value.Identifier.ValueText,
+                        Accessibility(value.Modifiers, value),
+                        value.ParameterList is null ? null : Parameters(value.ParameterList));
                     break;
                 case StructDeclarationSyntax value:
-                    yield return Create(value, "struct", value.Identifier.ValueText, Accessibility(value.Modifiers, value));
+                    yield return Create(
+                        value,
+                        "struct",
+                        value.Identifier.ValueText,
+                        Accessibility(value.Modifiers, value),
+                        value.ParameterList is null ? null : Parameters(value.ParameterList));
                     break;
                 case InterfaceDeclarationSyntax value:
                     yield return Create(value, "interface", value.Identifier.ValueText, Accessibility(value.Modifiers, value));
                     break;
                 case RecordDeclarationSyntax value:
-                    yield return Create(value, "record", value.Identifier.ValueText, Accessibility(value.Modifiers, value));
+                    yield return Create(
+                        value,
+                        "record",
+                        value.Identifier.ValueText,
+                        Accessibility(value.Modifiers, value),
+                        value.ParameterList is null ? null : Parameters(value.ParameterList));
                     break;
                 case EnumDeclarationSyntax value:
                     yield return Create(value, "enum", value.Identifier.ValueText, Accessibility(value.Modifiers, value));
@@ -480,6 +522,13 @@ public sealed class SymbolDeclarationSearcher
 
         components.AddRange(containers);
         components.Add(name);
+        var legacySignature = node switch
+        {
+            ClassDeclarationSyntax { ParameterList: not null } => name,
+            StructDeclarationSyntax { ParameterList: not null } => name,
+            RecordDeclarationSyntax { ParameterList: not null } => name,
+            _ => null,
+        };
         return new Declaration(
             node,
             kind,
@@ -487,7 +536,8 @@ public sealed class SymbolDeclarationSearcher
             string.Join('.', components),
             namespaceName,
             accessibility,
-            name + (parameters ?? string.Empty));
+            name + (parameters ?? string.Empty),
+            legacySignature);
     }
 
     private static string NamespaceOf(SyntaxNode node) =>
@@ -659,5 +709,6 @@ public sealed class SymbolDeclarationSearcher
         string FullyQualifiedName,
         string Namespace,
         string Accessibility,
-        string Signature);
+        string Signature,
+        string? LegacySignature = null);
 }

@@ -1,3 +1,6 @@
+using System.Buffers.Binary;
+using System.Security.Cryptography;
+using System.Text;
 using DotNetAxi.Contracts;
 
 namespace DotNetAxi.Structural.Tests;
@@ -284,6 +287,69 @@ public sealed class SymbolEntityIdentityTests
                 .AsTask());
 
         Assert.Contains("symbol/v2", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Primary_constructor_resolves_ids_emitted_before_signature_enrichment()
+    {
+        using var workspace = new TestWorkspace();
+        const string contents = "record Widget(int Value);";
+        var source = await workspace.WriteAsync("Symbols.cs", contents);
+        var paths = new[] { Path(source, "Symbols.cs") };
+        var legacyId = LegacyPrimaryConstructorId(
+            "Widget",
+            "record",
+            "Widget",
+            contents,
+            "Symbols.cs");
+
+        var resolution = await Resolver(paths).ResolveAsync(
+            legacyId,
+            new WorkspaceTraversalRequest(workspace.Root));
+
+        Assert.True(resolution.Resolved);
+        Assert.Equal("Widget(int)", Assert.Single(resolution.Matches).Signature);
+    }
+
+    private static string LegacyPrimaryConstructorId(
+        string name,
+        string kind,
+        string fullyQualifiedName,
+        string contents,
+        string relativePath)
+    {
+        var bytes = Encoding.UTF8.GetBytes(contents);
+        var contentHash = Convert.ToHexStringLower(SHA256.HashData(bytes));
+        using var stable = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+        Append(stable, "dotnet-axi/symbol-entity-stable/v2");
+        Append(stable, kind);
+        Append(stable, fullyQualifiedName);
+        Append(stable, name);
+        Append(stable, contentHash);
+        Append(stable, "0");
+        Append(stable, contents.Length.ToString(
+            System.Globalization.CultureInfo.InvariantCulture));
+        Append(stable, "0");
+
+        using var location = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+        Append(location, "dotnet-axi/symbol-entity-location/v2");
+        Append(location, relativePath);
+        Append(location, "workspace");
+        return "symbol/v2/"
+            + Convert.ToBase64String(Encoding.UTF8.GetBytes(name)).TrimEnd('=')
+            + "/"
+            + Convert.ToHexStringLower(stable.GetHashAndReset())
+            + "/"
+            + Convert.ToHexStringLower(location.GetHashAndReset());
+    }
+
+    private static void Append(IncrementalHash hash, string value)
+    {
+        var bytes = Encoding.UTF8.GetBytes(value);
+        Span<byte> length = stackalloc byte[4];
+        BinaryPrimitives.WriteInt32BigEndian(length, bytes.Length);
+        hash.AppendData(length);
+        hash.AppendData(bytes);
     }
 
     private static SymbolDeclarationSearcher Searcher(
