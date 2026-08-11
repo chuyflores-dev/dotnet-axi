@@ -43,6 +43,13 @@ public sealed class DocumentShowCommandTests
         Assert.Contains(
             $"byte_count: {Encoding.UTF8.GetByteCount(contents)}",
             result.Output);
+        Assert.Contains("line_count: 3", result.Output);
+        Assert.Contains(
+            "requested_span:\n  start_line: 1\n  end_line: 3",
+            result.Output);
+        Assert.Contains(
+            "actual_span:\n  start_line: 1\n  end_line: 3",
+            result.Output);
         Assert.Contains("public sealed class Document", result.Output);
         Assert.Contains(
             $"included_characters: {contents.EnumerateRunes().Count()}",
@@ -131,6 +138,205 @@ public sealed class DocumentShowCommandTests
         Assert.Contains("😀", full.Output);
     }
 
+    [Fact]
+    public async Task Independent_line_selectors_resolve_to_inclusive_spans()
+    {
+        using var workspace = new TestWorkspace();
+        await workspace.WriteAsync(
+            "Lines.cs",
+            "one\ntwo\nthree\nfour");
+
+        var startOnly = await workspace.RunAsync(
+            "show", "document", "Lines.cs", "--start-line", "3", "--full");
+        var endOnly = await workspace.RunAsync(
+            "show", "document", "Lines.cs", "--end-line", "2", "--full");
+        var exact = await workspace.RunAsync(
+            "show", "document", "Lines.cs",
+            "--start-line", "2", "--end-line", "3", "--full");
+        var oneLine = await workspace.RunAsync(
+            "show", "document", "Lines.cs",
+            "--start-line", "2", "--end-line", "2", "--full");
+
+        AssertSpan(startOnly, 3, 4, "three\\nfour");
+        AssertSpan(endOnly, 1, 2, "one\\ntwo\\n");
+        AssertSpan(exact, 2, 3, "two\\nthree\\n");
+        AssertSpan(oneLine, 2, 2, "two\\n");
+    }
+
+    [Theory]
+    [InlineData("one\ntwo\nthree", "two\\n")]
+    [InlineData("one\r\ntwo\r\nthree", "two\\r\\n")]
+    [InlineData("one\ntwo\nfinal", "final")]
+    public async Task Selected_lines_preserve_line_endings_and_final_content(
+        string contents,
+        string expectedPreview)
+    {
+        using var workspace = new TestWorkspace();
+        await workspace.WriteAsync("Lines.cs", contents);
+        var selectedLine = contents.StartsWith("one\n", StringComparison.Ordinal)
+            && expectedPreview == "final"
+                ? "3"
+                : "2";
+
+        var result = await workspace.RunAsync(
+            "show", "document", "Lines.cs",
+            "--start-line", selectedLine,
+            "--end-line", selectedLine,
+            "--full");
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Contains(
+            expectedPreview.Contains('\\', StringComparison.Ordinal)
+                ? $"preview: \"{expectedPreview}\""
+                : $"preview: {expectedPreview}",
+            result.Output);
+    }
+
+    [Fact]
+    public async Task Empty_document_exposes_one_empty_line()
+    {
+        using var workspace = new TestWorkspace();
+        await workspace.WriteAsync("Empty.cs", string.Empty);
+
+        var result = await workspace.RunAsync(
+            "show", "document", "Empty.cs",
+            "--start-line", "1", "--end-line", "1", "--full");
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Contains("line_count: 1", result.Output);
+        Assert.Contains("preview: \"\"", result.Output);
+        Assert.Contains("included_characters: 0", result.Output);
+        Assert.Contains("total_characters: 0", result.Output);
+        Assert.Contains("actual_span:\n  start_line: 1\n  end_line: 1", result.Output);
+    }
+
+    [Fact]
+    public async Task Selected_span_budget_counts_unicode_scalars_and_recovery_preserves_selectors()
+    {
+        using var workspace = new TestWorkspace();
+        await workspace.WriteAsync(
+            "Unicode.cs",
+            "ignored prefix\n😀界z\ntail");
+
+        var bounded = await workspace.RunAsync(
+            "show", "document", "Unicode.cs",
+            "--start-line", "2", "--end-line", "2",
+            "--max-chars", "2");
+
+        Assert.Equal(0, bounded.ExitCode);
+        Assert.Contains("preview: 😀界", bounded.Output);
+        Assert.Contains("included_characters: 2", bounded.Output);
+        Assert.Contains("total_characters: 4", bounded.Output);
+        Assert.Contains("omitted_characters: 2", bounded.Output);
+        Assert.Contains("truncated: true", bounded.Output);
+        Assert.Contains(
+            "show document 'Unicode.cs' --start-line 2 --end-line 2 --full",
+            bounded.Output);
+
+        var replay = await workspace.RunAsync(
+            "show", "document", "Unicode.cs",
+            "--start-line", "2", "--end-line", "2", "--full");
+
+        Assert.Equal(0, replay.ExitCode);
+        Assert.Contains("preview: \"😀界z\\n\"", replay.Output);
+        Assert.Contains("requested_span:\n  start_line: 2\n  end_line: 2", replay.Output);
+        Assert.Contains("actual_span:\n  start_line: 2\n  end_line: 2", replay.Output);
+    }
+
+    [Fact]
+    public async Task Multi_line_truncation_reports_only_preview_line_coverage()
+    {
+        using var workspace = new TestWorkspace();
+        await workspace.WriteAsync(
+            "Truncated.cs",
+            "ignored\nline two\nline three\nline four");
+
+        var result = await workspace.RunAsync(
+            "show", "document", "Truncated.cs",
+            "--start-line", "2", "--end-line", "4",
+            "--max-chars", "12");
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Contains("preview: \"line two\\nlin\"", result.Output);
+        Assert.Contains("requested_span:\n  start_line: 2\n  end_line: 4", result.Output);
+        Assert.Contains("actual_span:\n  start_line: 2\n  end_line: 3", result.Output);
+        Assert.Contains("truncated: true", result.Output);
+    }
+
+    [Fact]
+    public async Task Zero_character_budget_reports_no_actual_line_for_non_empty_span()
+    {
+        using var workspace = new TestWorkspace();
+        await workspace.WriteAsync("Zero.cs", "one\ntwo");
+
+        var result = await workspace.RunAsync(
+            "show", "document", "Zero.cs",
+            "--start-line", "2", "--end-line", "2",
+            "--max-chars", "0");
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Contains("preview: \"\"", result.Output);
+        Assert.Contains("requested_span:\n  start_line: 2\n  end_line: 2", result.Output);
+        Assert.Contains("actual_span:\npreview:", result.Output);
+        Assert.Contains("included_characters: 0", result.Output);
+        Assert.Contains("total_characters: 3", result.Output);
+        Assert.Contains("truncated: true", result.Output);
+    }
+
+    [Fact]
+    public async Task Search_text_path_and_line_replay_directly_in_document_show()
+    {
+        using var workspace = new TestWorkspace();
+        await workspace.WriteAsync(
+            "Replay.cs",
+            "ignore\nneedle and more\ntail");
+        var search = await workspace.RunAsync(
+            "search", "text", "needle", "--path", "Replay.cs",
+            "--fields", "file", "line", "preview");
+        var match = Regex.Match(
+            search.Output,
+            @"(?<file>Replay\.cs),(?<line>[0-9]+),needle and more",
+            RegexOptions.CultureInvariant);
+        Assert.True(match.Success, search.Output);
+
+        var path = match.Groups["file"].Value;
+        var line = match.Groups["line"].Value;
+        var shown = await workspace.RunAsync(
+            "show", "document", path,
+            "--start-line", line, "--end-line", line,
+            "--max-chars", "6");
+
+        Assert.Equal(0, shown.ExitCode);
+        Assert.Contains("preview: needle", shown.Output);
+        Assert.Contains(
+            $"show document '{path}' --start-line {line} --end-line {line} --full",
+            shown.Output);
+
+        var replay = await workspace.RunAsync(
+            "show", "document", path,
+            "--start-line", line, "--end-line", line, "--full");
+        Assert.Equal(0, replay.ExitCode);
+        Assert.Contains("preview: \"needle and more\\n\"", replay.Output);
+        Assert.Equal(EvidenceId(shown.Output), EvidenceId(replay.Output));
+    }
+
+    [Fact]
+    public async Task Repeated_line_span_reads_preserve_snapshot_and_payload()
+    {
+        using var workspace = new TestWorkspace();
+        await workspace.WriteAsync("Stable.cs", "one\ntwo\nthree");
+
+        var first = await workspace.RunAsync(
+            "show", "document", "Stable.cs", "--start-line", "2", "--full");
+        var second = await workspace.RunAsync(
+            "show", "document", "Stable.cs", "--start-line", "2", "--full");
+
+        Assert.Equal(0, first.ExitCode);
+        Assert.Equal(0, second.ExitCode);
+        Assert.Equal(EvidenceId(first.Output), EvidenceId(second.Output));
+        Assert.Equal(first.Output, second.Output);
+    }
+
     [Theory]
     [MemberData(nameof(EncodedDocuments))]
     public async Task Encoded_documents_report_the_detected_encoding(
@@ -166,14 +372,16 @@ public sealed class DocumentShowCommandTests
             "namespace Demo; public sealed class Generated { }");
 
         var excluded = await workspace.RunAsync(
-            "show", "document", "Generated.g.cs", "--max-chars", "20");
+            "show", "document", "Generated.g.cs",
+            "--start-line", "1", "--end-line", "1", "--max-chars", "20");
 
         Assert.Equal(1, excluded.ExitCode);
         Assert.Contains("status: failed", excluded.Output);
         Assert.Contains("code: document.generated_excluded", excluded.Output);
         Assert.Contains("dnx dnaxi@", excluded.Output);
         Assert.Contains(
-            "--verbosity quiet -- show document 'Generated.g.cs' --include-generated",
+            "--verbosity quiet -- show document 'Generated.g.cs' "
+                + "--start-line 1 --end-line 1 --include-generated",
             excluded.Output);
         Assert.Contains("--max-chars 20", excluded.Output);
 
@@ -361,6 +569,44 @@ public sealed class DocumentShowCommandTests
         Assert.Contains($"code: {errorCode}", result.Output);
     }
 
+    [Theory]
+    [InlineData("--start-line", "0", null, null, "usage.start_line", 2)]
+    [InlineData("--end-line", "-1", null, null, "usage.end_line", 2)]
+    [InlineData("--start-line", "3", "--end-line", "2", "usage.document_line_span", 2)]
+    [InlineData("--start-line", "4", null, null, "document.line_span_out_of_range", 1)]
+    [InlineData("--end-line", "4", null, null, "document.line_span_out_of_range", 1)]
+    public async Task Invalid_and_out_of_range_line_spans_are_structured(
+        string firstOption,
+        string firstValue,
+        string? secondOption,
+        string? secondValue,
+        string errorCode,
+        int exitCode)
+    {
+        using var workspace = new TestWorkspace();
+        await workspace.WriteAsync("Lines.cs", "one\ntwo\nthree");
+        var arguments = new List<string>
+        {
+            "show", "document", "Lines.cs", firstOption, firstValue,
+        };
+        if (secondOption is not null)
+        {
+            arguments.Add(secondOption);
+            arguments.Add(secondValue!);
+        }
+
+        var result = await workspace.RunAsync(arguments.ToArray());
+
+        Assert.Equal(exitCode, result.ExitCode);
+        Assert.Contains("status: failed", result.Output);
+        Assert.Contains($"code: {errorCode}", result.Output);
+        if (errorCode == "document.line_span_out_of_range")
+        {
+            Assert.Contains("has 3 line(s)", result.Output);
+            Assert.Contains("from 1 through 3", result.Output);
+        }
+    }
+
     public static IEnumerable<object[]> EncodedDocuments()
     {
         const string text = "Hello 世界 👋";
@@ -423,6 +669,22 @@ public sealed class DocumentShowCommandTests
                 @"file/v1/[a-f0-9]{64}",
                 RegexOptions.CultureInvariant)
             .Value;
+
+    private static void AssertSpan(
+        (int ExitCode, string Output) result,
+        long startLine,
+        long endLine,
+        string expectedPreview)
+    {
+        Assert.Equal(0, result.ExitCode);
+        Assert.Contains($"preview: \"{expectedPreview}\"", result.Output);
+        Assert.Contains(
+            $"requested_span:\n  start_line: {startLine}\n  end_line: {endLine}",
+            result.Output);
+        Assert.Contains(
+            $"actual_span:\n  start_line: {startLine}\n  end_line: {endLine}",
+            result.Output);
+    }
 
     private sealed class TestWorkspace : IDisposable
     {

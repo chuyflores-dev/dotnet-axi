@@ -100,6 +100,121 @@ public sealed class BoundedTextDocumentReaderTests : IDisposable
         Assert.False(result.Truncated);
     }
 
+    [Theory]
+    [InlineData("one\ntwo\nthree", 2, 2, "two\n", 3)]
+    [InlineData("one\r\ntwo\r\nthree", 2, 2, "two\r\n", 3)]
+    [InlineData("one\ntwo\nthree", 3, 3, "three", 3)]
+    public async Task Line_spans_are_one_based_inclusive_and_preserve_content(
+        string contents,
+        int startLine,
+        int endLine,
+        string expected,
+        long expectedLineCount)
+    {
+        var path = await WriteAsync(
+            "Lines.cs",
+            Encoding.UTF8.GetBytes(contents));
+
+        var result = await new BoundedTextDocumentReader().ReadAsync(
+            path,
+            maximumCharacters: null,
+            headerCharacters: 32,
+            startLine,
+            endLine);
+
+        Assert.Equal(TextDocumentReadStatus.Success, result.Status);
+        Assert.Equal(expected, result.Preview);
+        Assert.Equal(expected.EnumerateRunes().Count(), result.TotalCharacters);
+        Assert.Equal(expected.EnumerateRunes().Count(), result.IncludedCharacters);
+        Assert.Equal(expectedLineCount, result.TotalLines);
+        Assert.Equal(startLine, result.ActualStartLine);
+        Assert.Equal(endLine, result.ActualEndLine);
+    }
+
+    [Fact]
+    public async Task Character_budget_applies_only_to_the_selected_span()
+    {
+        var path = await WriteAsync(
+            "Unicode.cs",
+            Encoding.UTF8.GetBytes("ignored\n😀界z\ntail"));
+
+        var result = await new BoundedTextDocumentReader().ReadAsync(
+            path,
+            maximumCharacters: 2,
+            headerCharacters: 32,
+            startLine: 2,
+            endLine: 2);
+
+        Assert.Equal("😀界", result.Preview);
+        Assert.Equal(2, result.IncludedCharacters);
+        Assert.Equal(4, result.TotalCharacters);
+        Assert.Equal(2, result.OmittedCharacters);
+        Assert.True(result.Truncated);
+        Assert.Equal(3, result.TotalLines);
+        Assert.Equal(2, result.ActualStartLine);
+        Assert.Equal(2, result.ActualEndLine);
+    }
+
+    [Fact]
+    public async Task Multi_line_truncation_reports_only_preview_line_coverage()
+    {
+        var path = await WriteAsync(
+            "Truncated.cs",
+            Encoding.UTF8.GetBytes("ignored\nline two\nline three\nline four"));
+
+        var result = await new BoundedTextDocumentReader().ReadAsync(
+            path,
+            maximumCharacters: 12,
+            headerCharacters: 32,
+            startLine: 2,
+            endLine: 4);
+
+        Assert.Equal("line two\nlin", result.Preview);
+        Assert.True(result.Truncated);
+        Assert.Equal(2, result.ActualStartLine);
+        Assert.Equal(3, result.ActualEndLine);
+    }
+
+    [Fact]
+    public async Task Zero_character_budget_has_no_actual_line_for_non_empty_span()
+    {
+        var path = await WriteAsync(
+            "Zero.cs",
+            Encoding.UTF8.GetBytes("one\ntwo"));
+
+        var result = await new BoundedTextDocumentReader().ReadAsync(
+            path,
+            maximumCharacters: 0,
+            headerCharacters: 32,
+            startLine: 2,
+            endLine: 2);
+
+        Assert.Equal(string.Empty, result.Preview);
+        Assert.True(result.Truncated);
+        Assert.Null(result.ActualStartLine);
+        Assert.Null(result.ActualEndLine);
+    }
+
+    [Fact]
+    public async Task Empty_document_has_one_empty_line()
+    {
+        var path = await WriteAsync("Empty.cs", []);
+
+        var result = await new BoundedTextDocumentReader().ReadAsync(
+            path,
+            maximumCharacters: 10,
+            headerCharacters: 32,
+            startLine: 1,
+            endLine: 1);
+
+        Assert.Equal(TextDocumentReadStatus.Success, result.Status);
+        Assert.Equal(string.Empty, result.Preview);
+        Assert.Equal(0, result.TotalCharacters);
+        Assert.Equal(1, result.TotalLines);
+        Assert.Equal(1, result.ActualStartLine);
+        Assert.Equal(1, result.ActualEndLine);
+    }
+
     [Fact]
     public async Task Pre_cancelled_read_does_not_return_partial_evidence()
     {

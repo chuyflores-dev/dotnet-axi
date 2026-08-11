@@ -13,6 +13,8 @@ internal sealed record DocumentShowCommandRequest(
     bool IncludeGenerated,
     int MaxCharacters,
     bool MaxCharactersSpecified,
+    int? StartLine,
+    int? EndLine,
     bool Full)
 {
     public static DocumentShowCommandRequest Create(
@@ -20,6 +22,8 @@ internal sealed record DocumentShowCommandRequest(
         bool includeGenerated,
         int maxCharacters,
         bool maxCharactersSpecified,
+        int? startLine,
+        int? endLine,
         bool full)
     {
         if (string.IsNullOrWhiteSpace(path))
@@ -46,11 +50,37 @@ internal sealed record DocumentShowCommandRequest(
                 "Use either --full or one explicit --max-chars value.");
         }
 
+        if (startLine is <= 0)
+        {
+            throw new CommandUsageException(
+                "usage.start_line",
+                "The --start-line value must be positive.",
+                "Use a positive, one-based --start-line value.");
+        }
+
+        if (endLine is <= 0)
+        {
+            throw new CommandUsageException(
+                "usage.end_line",
+                "The --end-line value must be positive.",
+                "Use a positive, one-based --end-line value.");
+        }
+
+        if (startLine > endLine)
+        {
+            throw new CommandUsageException(
+                "usage.document_line_span",
+                "The --start-line value cannot be greater than --end-line.",
+                "Use an inclusive line span whose start is not after its end.");
+        }
+
         return new DocumentShowCommandRequest(
             path,
             includeGenerated,
             maxCharacters,
             maxCharactersSpecified,
+            startLine,
+            endLine,
             full);
     }
 }
@@ -105,11 +135,23 @@ internal sealed class DocumentShowCommandHandler :
                 document.FullPath,
                 request.Full ? null : request.MaxCharacters,
                 WorkspaceGeneratedCodeClassifier.MaximumHeaderCharacters,
+                request.StartLine,
+                request.EndLine,
                 cancellationToken)
             .ConfigureAwait(false);
         if (read.Status is not TextDocumentReadStatus.Success)
         {
             return ReadFailure(document.RelativePath, read.Status);
+        }
+
+        if (request.StartLine > read.TotalLines
+            || request.EndLine > read.TotalLines)
+        {
+            return Failure(
+                "document.line_span_out_of_range",
+                $"Document `{document.RelativePath}` has {read.TotalLines} line(s), "
+                    + "and the requested line span exceeds that range.",
+                $"Use --start-line and --end-line values from 1 through {read.TotalLines}.");
         }
 
         var currentPaths = new WorkspacePathTraverser()
@@ -177,6 +219,13 @@ internal sealed class DocumentShowCommandHandler :
             read.Encoding!,
             read.HasByteOrderMark,
             read.ByteCount,
+            read.TotalLines,
+            new DocumentRequestedLineSpan(
+                request.StartLine ?? 1,
+                request.EndLine ?? read.TotalLines),
+            new DocumentActualLineSpan(
+                read.ActualStartLine,
+                read.ActualEndLine),
             read.Preview!,
             read.IncludedCharacters,
             TotalKnown: true,
@@ -429,6 +478,7 @@ internal sealed class DocumentShowCommandHandler :
         CanonicalInvocation.OneShot(
             "dnaxi show document "
             + Quote(request.Path)
+            + SpanArguments(request)
             + (request.IncludeGenerated ? " --include-generated" : string.Empty)
             + " --full");
 
@@ -438,6 +488,7 @@ internal sealed class DocumentShowCommandHandler :
         var invocation = CanonicalInvocation.OneShot(
             "dnaxi show document "
             + Quote(request.Path)
+            + SpanArguments(request)
             + " --include-generated"
             + (request.Full
                 ? " --full"
@@ -471,6 +522,18 @@ internal sealed class DocumentShowCommandHandler :
     private static string Quote(string value) =>
         "'" + value.Replace("'", "'\\''", StringComparison.Ordinal) + "'";
 
+    private static string SpanArguments(DocumentShowCommandRequest request) =>
+        (request.StartLine is { } startLine
+            ? " --start-line "
+                + startLine.ToString(
+                    System.Globalization.CultureInfo.InvariantCulture)
+            : string.Empty)
+        + (request.EndLine is { } endLine
+            ? " --end-line "
+                + endLine.ToString(
+                    System.Globalization.CultureInfo.InvariantCulture)
+            : string.Empty);
+
     private sealed record DocumentShowPayload(
         string Id,
         string Path,
@@ -481,6 +544,9 @@ internal sealed class DocumentShowCommandHandler :
         string Encoding,
         bool ByteOrderMark,
         long ByteCount,
+        long LineCount,
+        DocumentRequestedLineSpan RequestedSpan,
+        DocumentActualLineSpan ActualSpan,
         string Preview,
         long IncludedCharacters,
         bool TotalKnown,
@@ -489,6 +555,14 @@ internal sealed class DocumentShowCommandHandler :
         bool Truncated,
         string? RetrievalCommand,
         DocumentOutlineReference OutlineReference);
+
+    private sealed record DocumentRequestedLineSpan(
+        long StartLine,
+        long EndLine);
+
+    private sealed record DocumentActualLineSpan(
+        long? StartLine,
+        long? EndLine);
 
     private sealed record DocumentOutlineReference(
         string Path,

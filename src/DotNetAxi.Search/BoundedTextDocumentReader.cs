@@ -14,6 +14,9 @@ public sealed class BoundedTextDocumentReadResult
         string? preview = null,
         long includedCharacters = 0,
         long totalCharacters = 0,
+        long totalLines = 1,
+        long? actualStartLine = null,
+        long? actualEndLine = null,
         string? header = null,
         string? contentHash = null)
     {
@@ -24,6 +27,9 @@ public sealed class BoundedTextDocumentReadResult
         Preview = preview;
         IncludedCharacters = includedCharacters;
         TotalCharacters = totalCharacters;
+        TotalLines = totalLines;
+        ActualStartLine = actualStartLine;
+        ActualEndLine = actualEndLine;
         Header = header;
         ContentHash = contentHash;
     }
@@ -41,6 +47,12 @@ public sealed class BoundedTextDocumentReadResult
     public long IncludedCharacters { get; }
 
     public long TotalCharacters { get; }
+
+    public long TotalLines { get; }
+
+    public long? ActualStartLine { get; }
+
+    public long? ActualEndLine { get; }
 
     public long OmittedCharacters =>
         TotalCharacters - IncludedCharacters;
@@ -61,6 +73,22 @@ public sealed class BoundedTextDocumentReader
         int? maximumCharacters,
         int headerCharacters,
         CancellationToken cancellationToken = default)
+        => await ReadAsync(
+                path,
+                maximumCharacters,
+                headerCharacters,
+                startLine: null,
+                endLine: null,
+                cancellationToken)
+            .ConfigureAwait(false);
+
+    public async Task<BoundedTextDocumentReadResult> ReadAsync(
+        string path,
+        int? maximumCharacters,
+        int headerCharacters,
+        int? startLine,
+        int? endLine,
+        CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
         if (maximumCharacters < 0)
@@ -79,6 +107,8 @@ public sealed class BoundedTextDocumentReader
                 "The header character limit cannot be negative.");
         }
 
+        ValidateLineSpan(startLine, endLine);
+
         try
         {
             await using var stream = new FileStream(
@@ -92,6 +122,8 @@ public sealed class BoundedTextDocumentReader
                     stream,
                     maximumCharacters,
                     headerCharacters,
+                    startLine,
+                    endLine,
                     cancellationToken)
                 .ConfigureAwait(false);
         }
@@ -110,7 +142,24 @@ public sealed class BoundedTextDocumentReader
         int? maximumCharacters,
         int headerCharacters,
         CancellationToken cancellationToken)
+        => await ReadAsync(
+                stream,
+                maximumCharacters,
+                headerCharacters,
+                startLine: null,
+                endLine: null,
+                cancellationToken)
+            .ConfigureAwait(false);
+
+    internal static async Task<BoundedTextDocumentReadResult> ReadAsync(
+        Stream stream,
+        int? maximumCharacters,
+        int headerCharacters,
+        int? startLine,
+        int? endLine,
+        CancellationToken cancellationToken)
     {
+        ValidateLineSpan(startLine, endLine);
         using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
         var prefix = new byte[4];
         var prefixCount = await ReadPrefixAsync(
@@ -132,7 +181,9 @@ public sealed class BoundedTextDocumentReader
         var decoder = encoding.Value.GetDecoder();
         var accumulator = new TextAccumulator(
             maximumCharacters,
-            headerCharacters);
+            headerCharacters,
+            startLine,
+            endLine);
         var initialContent = prefix.AsSpan(
             encoding.PreambleLength,
             prefixCount - encoding.PreambleLength);
@@ -204,6 +255,9 @@ public sealed class BoundedTextDocumentReader
                 accumulator.Preview,
                 accumulator.IncludedCharacters,
                 accumulator.TotalCharacters,
+                accumulator.TotalLines,
+                accumulator.ActualStartLine,
+                accumulator.ActualEndLine,
                 accumulator.Header,
                 Convert.ToHexStringLower(hash.GetHashAndReset()));
         }
@@ -282,19 +336,54 @@ public sealed class BoundedTextDocumentReader
     private static BoundedTextDocumentReadResult Result(
         TextDocumentReadStatus status) => new(status);
 
+    private static void ValidateLineSpan(int? startLine, int? endLine)
+    {
+        if (startLine is <= 0)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(startLine),
+                startLine,
+                "The start line must be positive.");
+        }
+
+        if (endLine is <= 0)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(endLine),
+                endLine,
+                "The end line must be positive.");
+        }
+
+        if (startLine > endLine)
+        {
+            throw new ArgumentException(
+                "The start line cannot be greater than the end line.",
+                nameof(startLine));
+        }
+    }
+
     private sealed class TextAccumulator(
         int? maximumCharacters,
-        int headerCharacters)
+        int headerCharacters,
+        int? startLine,
+        int? endLine)
     {
         private readonly StringBuilder _preview = new();
         private readonly StringBuilder _header = new();
         private char? _pendingHighSurrogate;
+        private bool _endsWithLineFeed;
 
         public string Preview => _preview.ToString();
 
         public long IncludedCharacters { get; private set; }
 
         public long TotalCharacters { get; private set; }
+
+        public long TotalLines { get; private set; } = 1;
+
+        public long? ActualStartLine { get; private set; }
+
+        public long? ActualEndLine { get; private set; }
 
         public string Header => _header.ToString();
 
@@ -359,18 +448,54 @@ public sealed class BoundedTextDocumentReader
             }
         }
 
-        public bool TryComplete() => _pendingHighSurrogate is null;
+        public bool TryComplete()
+        {
+            if (_pendingHighSurrogate is not null)
+            {
+                return false;
+            }
+
+            if (TotalCharacters == 0
+                && (startLine ?? 1) <= TotalLines)
+            {
+                ActualStartLine = startLine ?? 1;
+                ActualEndLine = ActualStartLine;
+            }
+            else if (_endsWithLineFeed
+                && TotalCharacters == IncludedCharacters
+                && (startLine ?? 1) <= TotalLines
+                && (endLine ?? TotalLines) >= TotalLines)
+            {
+                ActualStartLine ??= TotalLines;
+                ActualEndLine = TotalLines;
+            }
+
+            return true;
+        }
 
         private void Append(Rune rune)
         {
-            if (maximumCharacters is null
-                || IncludedCharacters < maximumCharacters.Value)
+            _endsWithLineFeed = rune.Value == '\n';
+            var selected = TotalLines >= (startLine ?? 1)
+                && (endLine is null || TotalLines <= endLine.Value);
+            if (selected)
             {
-                _preview.Append(rune);
-                IncludedCharacters++;
+                if (maximumCharacters is null
+                    || IncludedCharacters < maximumCharacters.Value)
+                {
+                    _preview.Append(rune);
+                    IncludedCharacters++;
+                    ActualStartLine ??= TotalLines;
+                    ActualEndLine = TotalLines;
+                }
+
+                TotalCharacters++;
             }
 
-            TotalCharacters++;
+            if (rune.Value == '\n')
+            {
+                TotalLines++;
+            }
         }
     }
 }
