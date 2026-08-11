@@ -302,6 +302,30 @@ dnaxi outline <path-or-symbol>
 project/type, source location, documentation preview, applicable body preview,
 and cheap relationship summaries.
 
+The command accepts one canonical `symbol/v2` identity from `search symbol`
+and resolves it through the same passive syntax traversal. `--max-chars`
+defaults to 1,000 Unicode scalar values and applies independently to the
+documentation and body previews. Each preview reports its included, total,
+and omitted character counts; a truncated preview includes a complete command
+with a sufficient larger budget. Bodyless declarations retain an explicit
+empty preview. Cheap summaries are syntax-local counts for attributes,
+parameters, type parameters, members, base types, and sibling overloads; they
+do not claim semantic relationship evidence.
+
+An ID discovered through an explicit `search symbol --path` scope reuses that
+scope through one or more `show symbol --path` options. This keeps external
+files and explicitly selected build output available without retaining tool
+state. Truncation and replacement commands preserve the supplied paths.
+
+Current primary-constructor identities include their parameter signature.
+Resolution also recognizes `symbol/v2` primary-constructor fingerprints emitted
+before that signature enrichment, then returns the current identity and detail.
+
+Malformed or unsupported identities are usage errors. Stale identities return
+bounded replacement candidates and the existing full symbol-search correction.
+An identity that resolves to multiple current declarations returns bounded
+candidates and remains explicitly ambiguous.
+
 `show document` defaults to an outline and bounded preview instead of dumping
 a large file.
 

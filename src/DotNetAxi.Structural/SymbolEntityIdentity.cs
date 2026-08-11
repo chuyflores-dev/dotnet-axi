@@ -150,14 +150,23 @@ public sealed record SymbolEntityResolution
 {
     public SymbolEntityResolution(
         string id,
+        string lookupName,
+        string snapshot,
+        int observedFileCount,
         IEnumerable<SymbolDeclarationMatch> matches,
         IEnumerable<SymbolDeclarationMatch>? replacementCandidates = null,
         string? errorCode = null,
         string? query = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(id);
+        ArgumentException.ThrowIfNullOrWhiteSpace(lookupName);
+        ArgumentException.ThrowIfNullOrWhiteSpace(snapshot);
         ArgumentNullException.ThrowIfNull(matches);
+        ArgumentOutOfRangeException.ThrowIfNegative(observedFileCount);
         Id = id;
+        LookupName = lookupName;
+        Snapshot = snapshot;
+        ObservedFileCount = observedFileCount;
         Matches = Array.AsReadOnly(matches.ToArray());
         ReplacementCandidates = Array.AsReadOnly(
             replacementCandidates?.ToArray() ?? []);
@@ -173,6 +182,12 @@ public sealed record SymbolEntityResolution
     }
 
     public string Id { get; }
+
+    public string LookupName { get; }
+
+    public string Snapshot { get; }
+
+    public int ObservedFileCount { get; }
 
     public IReadOnlyList<SymbolDeclarationMatch> Matches { get; }
 
@@ -205,6 +220,9 @@ public sealed class SymbolEntityResolver
         _searcher = new SymbolDeclarationSearcher(traverser, ownership);
     }
 
+    public static bool IsSupportedId(string id) =>
+        SymbolEntityIdentity.TryParse(id, out _);
+
     public async ValueTask<SymbolEntityResolution> ResolveAsync(
         string id,
         WorkspaceTraversalRequest traversal,
@@ -233,27 +251,50 @@ public sealed class SymbolEntityResolver
             cancellationToken)
             .ConfigureAwait(false);
         var stableMatches = result.Matches
-            .Where(match => SymbolEntityIdentity.TryParse(match.Id, out var candidate)
-                && candidate.StableFingerprint.Equals(
-                    identity.StableFingerprint,
-                    StringComparison.Ordinal))
+            .Where(match => HasStableFingerprint(
+                match,
+                identity.StableFingerprint))
             .ToArray();
         var exactMatches = stableMatches
-            .Where(match => match.Id.Equals(id, StringComparison.Ordinal))
+            .Where(match => match.Id.Equals(id, StringComparison.Ordinal)
+                || match.LegacyId?.Equals(id, StringComparison.Ordinal) == true)
             .ToArray();
         var matches = exactMatches.Length > 0 ? exactMatches : stableMatches;
         if (matches.Length > 0)
         {
-            return new SymbolEntityResolution(id, matches);
+            return new SymbolEntityResolution(
+                id,
+                identity.LookupName,
+                result.Snapshot,
+                result.Observations.Count,
+                matches);
         }
 
         return new SymbolEntityResolution(
             id,
+            identity.LookupName,
+            result.Snapshot,
+            result.Observations.Count,
             [],
             result.Matches,
             "evidence.stale_id",
             ReplacementQuery(identity.LookupName));
     }
+
+    private static bool HasStableFingerprint(
+        SymbolDeclarationMatch match,
+        string stableFingerprint) =>
+        HasStableFingerprint(match.Id, stableFingerprint)
+        || match.LegacyId is not null
+        && HasStableFingerprint(match.LegacyId, stableFingerprint);
+
+    private static bool HasStableFingerprint(
+        string id,
+        string stableFingerprint) =>
+        SymbolEntityIdentity.TryParse(id, out var candidate)
+        && candidate.StableFingerprint.Equals(
+            stableFingerprint,
+            StringComparison.Ordinal);
 
     private static string ReplacementQuery(string name) =>
         "dnaxi search symbol "
