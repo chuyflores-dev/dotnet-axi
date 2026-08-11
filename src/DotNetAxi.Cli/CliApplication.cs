@@ -329,6 +329,56 @@ internal static class CliApplication
             static () => new DocumentShowCommandHandler(),
             host.ResponseWriter);
 
+        var outlineCommand = new Command(
+            "outline",
+            "Show the stable Roslyn syntax structure of one C# document or symbol.");
+        var outlineTarget = new Argument<string>("path-or-symbol")
+        {
+            Description = "One explicit C# document path or canonical symbol/v2 identity.",
+        };
+        var outlinePaths = new Option<string[]>("--path")
+        {
+            AllowMultipleArgumentsPerToken = false,
+            Description = "Reuse an explicit symbol-search scope, including external paths.",
+        };
+        var outlineIncludeGenerated = new Option<bool>("--include-generated")
+        {
+            Description = "Include generated C# source explicitly.",
+        };
+        var outlineLimit = new Option<int>("--limit")
+        {
+            DefaultValueFactory = static _ => 100,
+            Description = "Limit the number of source-ordered outline items.",
+        };
+        var outlineFull = new Option<bool>("--full")
+        {
+            Description = "Return every outline item without a count limit.",
+        };
+        outlineCommand.Arguments.Add(outlineTarget);
+        outlineCommand.Options.Add(outlinePaths);
+        outlineCommand.Options.Add(outlineIncludeGenerated);
+        outlineCommand.Options.Add(outlineLimit);
+        outlineCommand.Options.Add(outlineFull);
+        host.RegisterCommand(
+            rootCommand,
+            outlineCommand,
+            OperationPolicy.Passive,
+            [
+                "dnaxi outline src/App/Service.cs",
+                "dnaxi outline <symbol/v2/...> --full",
+                "dnaxi outline Generated.g.cs --include-generated --limit 200",
+            ]);
+        outlineCommand.BindHandler(
+            result => OutlineCommandRequest.Create(
+                result.GetValue(outlineTarget)!,
+                result.GetValue(outlinePaths) ?? [],
+                result.GetValue(outlineIncludeGenerated),
+                result.GetValue(outlineLimit),
+                result.Tokens.Any(token => token.Value == "--limit"),
+                result.GetValue(outlineFull)),
+            static () => new OutlineCommandHandler(),
+            host.ResponseWriter);
+
         var syntaxCommand = new Command(
             "syntax",
             "Search stable tool-owned C# syntax shapes without loading a compilation.");

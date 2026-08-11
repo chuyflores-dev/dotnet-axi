@@ -52,9 +52,50 @@ public sealed class DocumentShowCommandTests
         Assert.Contains("truncated: false", result.Output);
         Assert.DoesNotContain("retrieval_command:", result.Output);
         Assert.Contains(
-            "outline_reference:\n  path: Document.cs\n  available: false",
+            "outline_reference:\n  path: Document.cs\n  available: true",
             result.Output);
-        Assert.DoesNotContain(" outline ", result.Output);
+        Assert.Contains("-- outline 'Document.cs'", result.Output);
+    }
+
+    [Fact]
+    public async Task Non_csharp_document_keeps_outline_reference_unavailable()
+    {
+        using var workspace = new TestWorkspace();
+        await workspace.WriteAsync("notes.txt", "plain text");
+
+        var result = await workspace.RunAsync(
+            "show", "document", "notes.txt", "--full");
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Contains(
+            "outline_reference:\n  path: notes.txt\n  available: false",
+            result.Output);
+        Assert.DoesNotContain("\n  command:", result.Output);
+        Assert.DoesNotContain("-- outline 'notes.txt'", result.Output);
+    }
+
+    [Fact]
+    public async Task Outline_reference_is_replayable_below_the_workspace_root()
+    {
+        using var workspace = new TestWorkspace();
+        await workspace.WriteAsync(
+            "App.csproj",
+            "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+        await workspace.WriteAsync("src/Document.cs", "class Document { }");
+        var currentDirectory = Path.Combine(workspace.Root, "src");
+
+        var shown = await workspace.RunFromAsync(
+            currentDirectory,
+            "show", "document", "Document.cs", "--full");
+        var outlined = await workspace.RunFromAsync(
+            currentDirectory,
+            "outline", "Document.cs", "--full");
+
+        Assert.Equal(0, shown.ExitCode);
+        Assert.Contains("path: src/Document.cs", shown.Output);
+        Assert.Contains("-- outline 'Document.cs'", shown.Output);
+        Assert.Equal(0, outlined.ExitCode);
+        Assert.Contains("name: Document", outlined.Output);
     }
 
     [Fact]
@@ -427,14 +468,19 @@ public sealed class DocumentShowCommandTests
             return Path.GetRelativePath(Root, path).Replace('\\', '/');
         }
 
-        public async Task<(int ExitCode, string Output)> RunAsync(
+        public Task<(int ExitCode, string Output)> RunAsync(
+            params string[] arguments) =>
+            RunFromAsync(Root, arguments);
+
+        public async Task<(int ExitCode, string Output)> RunFromAsync(
+            string currentDirectory,
             params string[] arguments)
         {
             var start = new System.Diagnostics.ProcessStartInfo
             {
                 FileName = Environment.GetEnvironmentVariable("DOTNET_HOST_PATH")
                     ?? "dotnet",
-                WorkingDirectory = Root,
+                WorkingDirectory = currentDirectory,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
                 UseShellExecute = false,

@@ -165,6 +165,7 @@ public sealed class CommandHostTests
             operation => Assert.Equal("show", operation.Name),
             operation => Assert.Equal("show symbol", operation.Name),
             operation => Assert.Equal("show document", operation.Name),
+            operation => Assert.Equal("outline", operation.Name),
             operation => Assert.Equal("search syntax", operation.Name),
             operation => Assert.Equal("search syntax invocation", operation.Name),
             operation => Assert.Equal("search syntax class", operation.Name),

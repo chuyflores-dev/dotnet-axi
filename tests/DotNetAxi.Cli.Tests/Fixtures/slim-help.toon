@@ -21,7 +21,8 @@ flags[2]:
     maximum_values: 0
     inherited: false
     description: Show installed versions and passive compatibility capabilities.
-subcommands[2]{name,description,classification}:
+subcommands[3]{name,description,classification}:
+  outline,Show the stable Roslyn syntax structure of one C# document or symbol.,passive
   search,Search the current workspace.,passive
   show,Show bounded detail for one stable evidence identity or document.,passive
 examples[3]{command}:
