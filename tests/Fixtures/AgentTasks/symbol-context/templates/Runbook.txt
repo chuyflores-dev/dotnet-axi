@@ -1,0 +1,7 @@
+symbol context runbook
+select Workspace.slnx explicitly
+select the requested project explicitly
+include test declarations only when requested
+use exact inclusive document line spans
+line six is the bounded preview target
+line seven must remain outside that target

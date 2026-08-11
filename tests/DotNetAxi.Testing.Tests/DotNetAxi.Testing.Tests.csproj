@@ -18,6 +18,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="../../src/DotNetAxi.Cli/DotNetAxi.Cli.csproj" />
     <ProjectReference Include="../DotNetAxi.Testing/DotNetAxi.Testing.csproj" />
     <ProjectReference
       Include="../DotNetAxi.DotNet.ProcessTestApp/DotNetAxi.DotNet.ProcessTestApp.csproj"

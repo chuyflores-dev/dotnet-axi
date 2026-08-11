@@ -1,0 +1,35 @@
+{
+  "schema": "dotnet-axi/fixture/v1",
+  "name": "agent-symbol-context",
+  "seed": 5016,
+  "sdk": {
+    "version": "10.0.302",
+    "rollForward": "latestPatch",
+    "allowPrerelease": false
+  },
+  "capabilities": [
+    "language:csharp",
+    "project:sdk-style",
+    "workspace:multi-project",
+    "workspace:multi-solution"
+  ],
+  "files": [
+    { "path": "Alternate.slnx", "template": "templates/Alternate.slnx", "expandTokens": false },
+    { "path": "Workspace.slnx", "template": "templates/Workspace.slnx", "expandTokens": false },
+    { "path": "docs/Runbook.txt", "template": "templates/Runbook.txt", "expandTokens": false },
+    { "path": "loose/UnownedCandidate.cs", "template": "templates/UnownedCandidate.cs", "expandTokens": false },
+    { "path": "oracles/ambiguous-symbol-id.txt", "template": "templates/ambiguous-symbol-id.txt", "expandTokens": false },
+    { "path": "oracles/stale-symbol-id.txt", "template": "templates/stale-symbol-id.txt", "expandTokens": false },
+    { "path": "src/Alternate/Alternate.csproj", "template": "templates/Alternate.csproj", "expandTokens": false },
+    { "path": "src/Alternate/ScopeProbe.cs", "template": "templates/AlternateScopeProbe.cs", "expandTokens": false },
+    { "path": "src/Core/Core.csproj", "template": "templates/Core.csproj", "expandTokens": false },
+    { "path": "src/Core/LedgerService.cs", "template": "templates/LedgerService.cs", "expandTokens": false },
+    { "path": "src/Core/StaleService.cs", "template": "templates/StaleService.cs", "expandTokens": false },
+    { "path": "src/Core/moved/RelocatedWidget1.cs", "template": "templates/RelocatedWidget.cs", "expandTokens": false },
+    { "path": "src/Core/moved/RelocatedWidget2.cs", "template": "templates/RelocatedWidget.cs", "expandTokens": false },
+    { "path": "src/Worker/ScopeProbe.cs", "template": "templates/WorkerScopeProbe.cs", "expandTokens": false },
+    { "path": "src/Worker/Worker.csproj", "template": "templates/Worker.csproj", "expandTokens": false },
+    { "path": "tests/Core.Tests/Core.Tests.csproj", "template": "templates/Core.Tests.csproj", "expandTokens": false },
+    { "path": "tests/Core.Tests/ScopeProbe.cs", "template": "templates/TestScopeProbe.cs", "expandTokens": false }
+  ]
+}

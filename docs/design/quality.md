@@ -461,6 +461,16 @@ false candidates, and syntax that must remain unresolved without semantic
 inference. The task prompt describes the outcome and response facts, not a
 condition-specific command.
 
+The controlled `0.5.0` symbol-context set adds declaration discovery, explicit
+solution, project, and test scope, owner and framework variants, fresh identity
+resolution, stale and ambiguous correction, semantic candidate verification,
+bounded symbol and exact document-span retrieval, outline, and whole-section
+context truncation. A fixed multi-solution fixture and exact fact oracles keep
+the prompts condition-neutral while deterministic pull-request tests prove the
+success, stale, ambiguous, partial-coverage, truncated, and unsupported
+outcomes without dispatching a paid agent. Relationship and mutation
+capabilities remain invalid for pre-`0.6.0` corpus tasks.
+
 Codex discovery series are prepared and dispatched only through the manual
 `DotNetAxi.CodexBenchmark` console. A strict request pins the candidate package
 and skill, instruction and tool artifacts, authenticated `CODEX_HOME` path
