@@ -39,6 +39,123 @@ public static partial class AgentTaskCorpusLoader
         "dotnet-axi",
     ];
 
+    private static readonly string[] Pre06UnavailableCapabilityFamilies =
+    [
+        "analysis.impact",
+        "context.callees",
+        "context.callers",
+        "context.derived",
+        "context.derived-types",
+        "context.implementations",
+        "context.inheritance",
+        "context.overrides",
+        "context.references",
+        "context.relationship",
+        "context.relationships",
+        "context.tests",
+        "context.symbol.callees",
+        "context.symbol.callers",
+        "context.symbol.derived",
+        "context.symbol.derived-types",
+        "context.symbol.implementations",
+        "context.symbol.inheritance",
+        "context.symbol.overrides",
+        "context.symbol.references",
+        "context.symbol.relationship",
+        "context.symbol.relationships",
+        "context.symbol.tests",
+        "dependency.graph",
+        "graph",
+        "impact",
+        "mutation",
+        "project.graph",
+        "relationship",
+        "search.bases",
+        "search.callees",
+        "search.callers",
+        "search.derived",
+        "search.implementations",
+        "search.overrides",
+        "search.references",
+        "search.relationship",
+        "search.relationships",
+        "search.symbol.callees",
+        "search.symbol.callers",
+        "search.symbol.derived-types",
+        "search.symbol.implementations",
+        "search.symbol.inheritance",
+        "search.symbol.overrides",
+        "search.symbol.references",
+        "search.symbol.relationship",
+        "search.symbol.relationships",
+    ];
+
+    private const string Pre06UnavailableExpectationPattern =
+        @"(?ix)(?<![\w-])(?:"
+        + @"references|implementations|inheritance|overrides|"
+        + @"derived[ /\\-]+types?|callers?|callees?|mutations?|renames?"
+        + @")(?![\w-])|"
+        + @"(?<![\w-])(?:symbol|search|context)[ /\\.-]+(?:"
+        + @"references?|implementations?|derived(?:[ /\\-]+types?)?|"
+        + @"bases?|overrides?|callers?|callees?|tests)(?![\w-])|"
+        + @"(?<![\w-])(?:references?|implementations?|derived|bases?|"
+        + @"overrides?|callers?|callees?|tests)[ /\\.-]+(?:symbol|search|context)"
+        + @"(?![\w-])|"
+        + @"(?<![\w-])graph[ /\\.-]+(?:"
+        + @"projects?|dependencies|paths?|cycles?|impact)(?![\w-])|"
+        + @"(?<![\w-])(?:projects?|dependencies|paths?|cycles?|impact)"
+        + @"[ /\\.-]+graph(?![\w-])|"
+        + @"(?<![\w-])(?:project|dependency|code)[ /\\-]+graphs?(?![\w-])|"
+        + @"(?<![\w-])(?:graph|dependency)[ /\\-]+paths?(?![\w-])|"
+        + @"(?<![\w-])(?:project|dependency|graph)[ /\\-]+cycles?(?![\w-])|"
+        + @"(?<![\w-])impact[ /\\-]+analysis(?![\w-])|"
+        + @"(?<![\w-])(?:edit|modify|delete|rename|update)\s+(?:the\s+)?"
+        + @"(?:<path>|files?|source|documents?|projects?|solutions?|"
+        + @"workspace|repository|declarations?|symbols?|code)(?![\w-])|"
+        + @"(?<![\w-])change\s+(?:the\s+)?(?:<path>|workspace|repository|"
+        + @"declarations?|symbols?|code)(?![\w-])";
+
+    private const string DeclaredPathCuePattern =
+        @"(?ix)(?:\b(?:path|file|directory|folder|document|source|repository|"
+        + @"in|from|at|edit|modify|delete|rename|update|change)\b"
+        + @"(?:\s+(?:the|declared|repository|source))*"
+        + @"\s*[:=]?\s*)$";
+
+    private static readonly HashSet<string> Pre06UnavailableBarePathSegments =
+        new(StringComparer.OrdinalIgnoreCase)
+        {
+            "analysis",
+            "callee",
+            "callees",
+            "caller",
+            "callers",
+            "code",
+            "cycle",
+            "cycles",
+            "dependency",
+            "derived-type",
+            "derived-types",
+            "graph",
+            "graphs",
+            "impact",
+            "implementation",
+            "implementations",
+            "inheritance",
+            "mutation",
+            "mutations",
+            "override",
+            "overrides",
+            "path",
+            "paths",
+            "project",
+            "reference",
+            "references",
+            "relationship",
+            "relationships",
+            "rename",
+            "renames",
+        };
+
     public static async ValueTask<AgentTaskCorpus> LoadAsync(
         string corpusPath,
         CancellationToken cancellationToken = default)
@@ -128,23 +245,54 @@ public static partial class AgentTaskCorpusLoader
         var milestone = ValidateVersion(
             task.Milestone,
             $"Task '{id}' milestone");
+        var isPre06 = System.Version.Parse(milestone)
+            < new System.Version(0, 6, 0);
         var requiredCapabilities = ValidateIdentifiers(
             task.RequiredCapabilities,
             $"Task '{id}' required capability",
             requireNonEmpty: true);
+        if (isPre06 && requiredCapabilities.Any(IsUnavailableBefore06))
+        {
+            throw new AgentTaskCorpusException(
+                $"Task '{id}' cannot require unshipped relationship or mutation capabilities before milestone 0.6.0.");
+        }
         var prompt = ValidateNeutralText(
             task.Prompt,
             $"Task '{id}' prompt");
-        var repository = await ValidateRepositoryAsync(
+        var repositoryValidation = await ValidateRepositoryAsync(
             id,
             task.Repository,
             corpusDirectory,
             cancellationToken);
+        var repository = repositoryValidation.State;
+        if (isPre06
+            && ContainsUnavailableExpectationBefore06(
+                prompt,
+                repositoryValidation.DeclaredPathTokens))
+        {
+            throw new AgentTaskCorpusException(
+                $"Task '{id}' prompt cannot require unshipped relationship, graph, impact, or mutation outcomes before milestone 0.6.0.");
+        }
         var applicability = ValidateApplicability(id, task.Applicability);
         var execution = ValidateExecution(id, task.Execution);
+        if (isPre06
+            && execution.PermittedTools.Any(IsWorkspaceMutationTool))
+        {
+            throw new AgentTaskCorpusException(
+                $"Task '{id}' cannot permit workspace mutation tools before milestone 0.6.0.");
+        }
         var successOracle = ValidateSuccessOracle(
             id,
             task.SuccessOracle);
+        if (isPre06
+            && successOracle.ExpectedFacts.Any(
+                fact => ContainsUnavailableExpectationBefore06(
+                    fact,
+                    repositoryValidation.DeclaredPathTokens)))
+        {
+            throw new AgentTaskCorpusException(
+                $"Task '{id}' expected facts cannot require unshipped relationship, graph, impact, or mutation outcomes before milestone 0.6.0.");
+        }
         var safetyOracle = ValidateSafetyOracle(id, task.SafetyOracle);
         var requiredValidation = ValidateIdentifiers(
             task.RequiredValidation,
@@ -186,7 +334,7 @@ public static partial class AgentTaskCorpusLoader
             requiredValidation);
     }
 
-    private static async ValueTask<AgentTaskRepositoryState>
+    private static async ValueTask<ValidatedRepositoryState>
         ValidateRepositoryAsync(
             string taskId,
             RepositoryDocument? repository,
@@ -272,12 +420,14 @@ public static partial class AgentTaskCorpusLoader
                 $"Task '{taskId}' fixture content hash does not match the materialized fixture; expected '{contentHash}', actual '{actualContentHash}'.");
         }
 
-        return new AgentTaskRepositoryState(
-            fixtureManifest,
-            fixtureName,
-            repository.FixtureSeed.Value,
-            contentHash,
-            "materialized-clean");
+        return new ValidatedRepositoryState(
+            new AgentTaskRepositoryState(
+                fixtureManifest,
+                fixtureName,
+                repository.FixtureSeed.Value,
+                contentHash,
+                "materialized-clean"),
+            CreateDeclaredPathTokens(plan.Files));
     }
 
     private static AgentTaskApplicability ValidateApplicability(
@@ -589,6 +739,110 @@ public static partial class AgentTaskCorpusLoader
                 marker,
                 StringComparison.OrdinalIgnoreCase));
 
+    private static bool IsUnavailableBefore06(string capability) =>
+        Pre06UnavailableCapabilityFamilies.Any(family =>
+            string.Equals(capability, family, StringComparison.Ordinal)
+            || capability.StartsWith(
+                family + ".",
+                StringComparison.Ordinal));
+
+    private static bool IsWorkspaceMutationTool(string tool)
+    {
+        var segments = tool.Split(
+            ['.', '-', ':'],
+            StringSplitOptions.RemoveEmptyEntries);
+        if (segments.Length == 0)
+        {
+            return false;
+        }
+
+        if (segments[0] is "mutation" or "rename")
+        {
+            return true;
+        }
+
+        return segments[0] is "workspace" or "repository"
+            && segments.Skip(1).Any(static segment => segment is
+                "apply" or
+                "delete" or
+                "edit" or
+                "modify" or
+                "mutation" or
+                "rename" or
+                "write");
+    }
+
+    private static bool ContainsUnavailableExpectationBefore06(
+        string value,
+        IReadOnlyList<string> declaredPathTokens)
+    {
+        var withoutRepositoryPaths = value;
+        foreach (var pathToken in declaredPathTokens)
+        {
+            withoutRepositoryPaths = Regex.Replace(
+                withoutRepositoryPaths,
+                $@"(?<![\w.-]){Regex.Escape(pathToken)}(?![\w-])",
+                match => IsDeclaredPathUsage(
+                        withoutRepositoryPaths,
+                        match.Index)
+                    ? "<path>"
+                    : match.Value,
+                RegexOptions.CultureInvariant);
+        }
+
+        return Regex.IsMatch(
+            withoutRepositoryPaths,
+            Pre06UnavailableExpectationPattern,
+            RegexOptions.CultureInvariant);
+    }
+
+    private static bool IsDeclaredPathUsage(string value, int pathIndex) =>
+        Regex.IsMatch(
+            value[..pathIndex],
+            DeclaredPathCuePattern,
+            RegexOptions.CultureInvariant);
+
+    private static IReadOnlyList<string> CreateDeclaredPathTokens(
+        IReadOnlyList<FixtureMaterializedFile> files)
+    {
+        var tokens = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var file in files)
+        {
+            var segments = file.RelativePath.Split('/');
+            for (var length = 1; length <= segments.Length; length++)
+            {
+                AddDeclaredPathToken(
+                    tokens,
+                    string.Join('/', segments.Take(length)));
+            }
+
+            AddDeclaredPathToken(tokens, segments[^1]);
+        }
+
+        return Array.AsReadOnly(
+            tokens
+                .OrderByDescending(static token => token.Length)
+                .ThenBy(static token => token, StringComparer.Ordinal)
+                .ToArray());
+    }
+
+    private static void AddDeclaredPathToken(
+        ISet<string> tokens,
+        string token)
+    {
+        if (!token.Contains('/')
+            && Pre06UnavailableBarePathSegments.Contains(token))
+        {
+            return;
+        }
+
+        tokens.Add(token);
+        if (token.Contains('/'))
+        {
+            tokens.Add(token.Replace('/', '\\'));
+        }
+    }
+
     private static string ValidateRelativePath(string? value, string field)
     {
         if (!PortableRelativePath.TryNormalize(
@@ -634,6 +888,10 @@ public static partial class AgentTaskCorpusLoader
 
     [GeneratedRegex("^[0-9a-f]{64}$")]
     private static partial Regex Sha256Regex();
+
+    private sealed record ValidatedRepositoryState(
+        AgentTaskRepositoryState State,
+        IReadOnlyList<string> DeclaredPathTokens);
 
     private sealed class CorpusDocument
     {

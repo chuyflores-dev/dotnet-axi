@@ -1,0 +1,127 @@
+{
+  "schema": "dotnet-axi/agent-task-corpus/v1",
+  "id": "symbol-context",
+  "version": "1.0.0",
+  "tasks": [
+    {
+      "id": "test-symbol-explicit-scope",
+      "milestone": "0.5.0",
+      "requiredCapabilities": ["search.symbol.declaration"],
+      "prompt": "Explicitly select Workspace.slnx and include test declarations. Find the exact SymbolContext.Tests.ScopeProbe declaration. Return only the declaration path and line, owner project, and signature as labeled facts, one per line.",
+      "repository": { "fixtureManifest": "fixture.json", "fixtureName": "agent-symbol-context", "fixtureSeed": 5016, "contentHash": "6559cf242ebe4bd74110ea2636950a3bbac5ed5f9db9c3056e0ad47045ed3c03", "state": "materialized-clean" },
+      "applicability": { "baseline": true, "candidate": true },
+      "execution": { "permittedTools": ["repository-read", "source-search"], "timeoutSeconds": 120, "network": "disabled", "locale": "invariant", "timeZone": "UTC" },
+      "successOracle": { "kind": "exact-fact-set", "normalizer": "ordinal-lines/v1", "expectedFacts": ["declaration: tests/Core.Tests/ScopeProbe.cs:3", "owner: tests/Core.Tests/Core.Tests.csproj", "signature: ScopeProbe"] },
+      "safetyOracle": { "kind": "all", "checks": ["claims-supported", "network-unused", "workspace-unchanged"] },
+      "requiredValidation": ["fixture-content-hash", "safety-oracle", "success-oracle"]
+    },
+    {
+      "id": "symbol-owner-framework-variants",
+      "milestone": "0.5.0",
+      "requiredCapabilities": ["search.symbol.declaration"],
+      "prompt": "Inspect only src/Core/Core.csproj and find the exact SymbolContext.Product.LedgerService declaration. Return only its declaration path and line, owner project, framework variants, and variant count as labeled facts, one per line.",
+      "repository": { "fixtureManifest": "fixture.json", "fixtureName": "agent-symbol-context", "fixtureSeed": 5016, "contentHash": "6559cf242ebe4bd74110ea2636950a3bbac5ed5f9db9c3056e0ad47045ed3c03", "state": "materialized-clean" },
+      "applicability": { "baseline": true, "candidate": true },
+      "execution": { "permittedTools": ["repository-read", "source-search"], "timeoutSeconds": 120, "network": "disabled", "locale": "invariant", "timeZone": "UTC" },
+      "successOracle": { "kind": "exact-fact-set", "normalizer": "ordinal-lines/v1", "expectedFacts": ["declaration: src/Core/LedgerService.cs:4", "framework: net10.0", "framework: net8.0", "owner: src/Core/Core.csproj", "variant-count: 2"] },
+      "safetyOracle": { "kind": "all", "checks": ["claims-supported", "network-unused", "workspace-unchanged"] },
+      "requiredValidation": ["fixture-content-hash", "safety-oracle", "success-oracle"]
+    },
+    {
+      "id": "fresh-symbol-identity-show",
+      "milestone": "0.5.0",
+      "requiredCapabilities": ["show.symbol.identity"],
+      "prompt": "Inspect only src/Core/Core.csproj. Discover the opaque identity for SymbolContext.Product.LedgerService.Format(string), then resolve that identity in a separate tool invocation. Return only its body statement, declaration path and line, and signature as labeled facts, one per line.",
+      "repository": { "fixtureManifest": "fixture.json", "fixtureName": "agent-symbol-context", "fixtureSeed": 5016, "contentHash": "6559cf242ebe4bd74110ea2636950a3bbac5ed5f9db9c3056e0ad47045ed3c03", "state": "materialized-clean" },
+      "applicability": { "baseline": false, "candidate": true },
+      "execution": { "permittedTools": ["repository-read", "source-search"], "timeoutSeconds": 120, "network": "disabled", "locale": "invariant", "timeZone": "UTC" },
+      "successOracle": { "kind": "exact-fact-set", "normalizer": "ordinal-lines/v1", "expectedFacts": ["body: return $\"ledger:{value}\";", "declaration: src/Core/LedgerService.cs:8", "signature: Format(string)"] },
+      "safetyOracle": { "kind": "all", "checks": ["claims-supported", "network-unused", "workspace-unchanged"] },
+      "requiredValidation": ["fixture-content-hash", "safety-oracle", "success-oracle"]
+    },
+    {
+      "id": "stale-symbol-correction",
+      "milestone": "0.5.0",
+      "requiredCapabilities": ["show.symbol.identity"],
+      "prompt": "The file oracles/stale-symbol-id.txt contains a declaration identity captured before Reconcile changed from int to string. Resolve it within src/Core/Core.csproj without selecting a replacement implicitly. Return only the correction query target, replacement signature, and stale status as labeled facts, one per line.",
+      "repository": { "fixtureManifest": "fixture.json", "fixtureName": "agent-symbol-context", "fixtureSeed": 5016, "contentHash": "6559cf242ebe4bd74110ea2636950a3bbac5ed5f9db9c3056e0ad47045ed3c03", "state": "materialized-clean" },
+      "applicability": { "baseline": false, "candidate": true },
+      "execution": { "permittedTools": ["repository-read", "source-search"], "timeoutSeconds": 120, "network": "disabled", "locale": "invariant", "timeZone": "UTC" },
+      "successOracle": { "kind": "exact-fact-set", "normalizer": "ordinal-lines/v1", "expectedFacts": ["correction-target: Reconcile", "replacement: Reconcile(string)", "status: stale"] },
+      "safetyOracle": { "kind": "all", "checks": ["claims-supported", "network-unused", "workspace-unchanged"] },
+      "requiredValidation": ["fixture-content-hash", "safety-oracle", "success-oracle"]
+    },
+    {
+      "id": "ambiguous-symbol-correction",
+      "milestone": "0.5.0",
+      "requiredCapabilities": ["show.symbol.identity"],
+      "prompt": "The file oracles/ambiguous-symbol-id.txt contains the former identity of RelocatedWidget, whose unchanged declaration now exists at two locations in src/Core/Core.csproj. Resolve it without choosing a candidate. Return only the candidate count, selection result, and ambiguity status as labeled facts, one per line.",
+      "repository": { "fixtureManifest": "fixture.json", "fixtureName": "agent-symbol-context", "fixtureSeed": 5016, "contentHash": "6559cf242ebe4bd74110ea2636950a3bbac5ed5f9db9c3056e0ad47045ed3c03", "state": "materialized-clean" },
+      "applicability": { "baseline": false, "candidate": true },
+      "execution": { "permittedTools": ["repository-read", "source-search"], "timeoutSeconds": 120, "network": "disabled", "locale": "invariant", "timeZone": "UTC" },
+      "successOracle": { "kind": "exact-fact-set", "normalizer": "ordinal-lines/v1", "expectedFacts": ["candidate-count: 2", "selected: none", "status: ambiguous"] },
+      "safetyOracle": { "kind": "all", "checks": ["claims-supported", "network-unused", "workspace-unchanged"] },
+      "requiredValidation": ["fixture-content-hash", "safety-oracle", "success-oracle"]
+    },
+    {
+      "id": "syntax-candidate-partial-verification",
+      "milestone": "0.5.0",
+      "requiredCapabilities": ["search.syntax.verify"],
+      "prompt": "Verify the compiler meaning of the MissingAudit invocation candidate in loose/UnownedCandidate.cs. Return only the candidate path and line, coverage, reason, and verification status as labeled facts, one per line.",
+      "repository": { "fixtureManifest": "fixture.json", "fixtureName": "agent-symbol-context", "fixtureSeed": 5016, "contentHash": "6559cf242ebe4bd74110ea2636950a3bbac5ed5f9db9c3056e0ad47045ed3c03", "state": "materialized-clean" },
+      "applicability": { "baseline": true, "candidate": true },
+      "execution": { "permittedTools": ["repository-execution", "repository-read", "source-search"], "timeoutSeconds": 180, "network": "disabled", "locale": "invariant", "timeZone": "UTC" },
+      "successOracle": { "kind": "exact-fact-set", "normalizer": "ordinal-lines/v1", "expectedFacts": ["candidate: loose/UnownedCandidate.cs:5", "coverage: partial", "reason: ownership.not_found", "status: unresolved"] },
+      "safetyOracle": { "kind": "all", "checks": ["claims-supported", "network-unused", "workspace-unchanged"] },
+      "requiredValidation": ["fixture-content-hash", "safety-oracle", "success-oracle"]
+    },
+    {
+      "id": "bounded-symbol-show",
+      "milestone": "0.5.0",
+      "requiredCapabilities": ["show.symbol.identity"],
+      "prompt": "Inspect only src/Core/Core.csproj. Show SymbolContext.Product.LedgerService with a 24-character preview budget. Return only the declaration path and line, signature, truncation state, and whether a larger-budget retrieval is supplied as labeled facts, one per line.",
+      "repository": { "fixtureManifest": "fixture.json", "fixtureName": "agent-symbol-context", "fixtureSeed": 5016, "contentHash": "6559cf242ebe4bd74110ea2636950a3bbac5ed5f9db9c3056e0ad47045ed3c03", "state": "materialized-clean" },
+      "applicability": { "baseline": false, "candidate": true },
+      "execution": { "permittedTools": ["repository-read", "source-search"], "timeoutSeconds": 120, "network": "disabled", "locale": "invariant", "timeZone": "UTC" },
+      "successOracle": { "kind": "exact-fact-set", "normalizer": "ordinal-lines/v1", "expectedFacts": ["declaration: src/Core/LedgerService.cs:4", "retrieval: available", "signature: LedgerService", "truncated: true"] },
+      "safetyOracle": { "kind": "all", "checks": ["claims-supported", "network-unused", "workspace-unchanged"] },
+      "requiredValidation": ["fixture-content-hash", "safety-oracle", "success-oracle"]
+    },
+    {
+      "id": "document-exact-line-span",
+      "milestone": "0.5.0",
+      "requiredCapabilities": ["show.document"],
+      "prompt": "Retrieve exactly inclusive lines 5 through 6 of docs/Runbook.txt. Return only the actual span, first selected line, and second selected line as labeled facts, one per line.",
+      "repository": { "fixtureManifest": "fixture.json", "fixtureName": "agent-symbol-context", "fixtureSeed": 5016, "contentHash": "6559cf242ebe4bd74110ea2636950a3bbac5ed5f9db9c3056e0ad47045ed3c03", "state": "materialized-clean" },
+      "applicability": { "baseline": true, "candidate": true },
+      "execution": { "permittedTools": ["repository-read", "source-search"], "timeoutSeconds": 120, "network": "disabled", "locale": "invariant", "timeZone": "UTC" },
+      "successOracle": { "kind": "exact-fact-set", "normalizer": "ordinal-lines/v1", "expectedFacts": ["actual-span: 5-6", "line-5: use exact inclusive document line spans", "line-6: line six is the bounded preview target"] },
+      "safetyOracle": { "kind": "all", "checks": ["claims-supported", "network-unused", "workspace-unchanged"] },
+      "requiredValidation": ["fixture-content-hash", "safety-oracle", "success-oracle"]
+    },
+    {
+      "id": "symbol-outline",
+      "milestone": "0.5.0",
+      "requiredCapabilities": ["outline.syntax"],
+      "prompt": "Inspect only src/Core/Core.csproj and outline SymbolContext.Product.LedgerService through its declaration identity. Return only the ordered depth-zero root and depth-one member signatures as numbered facts, one per line.",
+      "repository": { "fixtureManifest": "fixture.json", "fixtureName": "agent-symbol-context", "fixtureSeed": 5016, "contentHash": "6559cf242ebe4bd74110ea2636950a3bbac5ed5f9db9c3056e0ad47045ed3c03", "state": "materialized-clean" },
+      "applicability": { "baseline": false, "candidate": true },
+      "execution": { "permittedTools": ["repository-read", "source-search"], "timeoutSeconds": 120, "network": "disabled", "locale": "invariant", "timeZone": "UTC" },
+      "successOracle": { "kind": "exact-fact-set", "normalizer": "ordinal-lines/v1", "expectedFacts": ["1: depth 0 public sealed class LedgerService { }", "2: depth 1 public string Name { get; }", "3: depth 1 public string Format(string value);"] },
+      "safetyOracle": { "kind": "all", "checks": ["claims-supported", "network-unused", "workspace-unchanged"] },
+      "requiredValidation": ["fixture-content-hash", "safety-oracle", "success-oracle"]
+    },
+    {
+      "id": "context-whole-section-truncation",
+      "milestone": "0.5.0",
+      "requiredCapabilities": ["context.symbol"],
+      "prompt": "Inspect only src/Core/Core.csproj. Request declaration, owner, document, and outline context for SymbolContext.Product.LedgerService with a zero-character section budget. Return only the included character count, omitted sections in canonical order, retrieval availability, and truncation state as labeled facts, one per line.",
+      "repository": { "fixtureManifest": "fixture.json", "fixtureName": "agent-symbol-context", "fixtureSeed": 5016, "contentHash": "6559cf242ebe4bd74110ea2636950a3bbac5ed5f9db9c3056e0ad47045ed3c03", "state": "materialized-clean" },
+      "applicability": { "baseline": false, "candidate": true },
+      "execution": { "permittedTools": ["repository-read", "source-search"], "timeoutSeconds": 120, "network": "disabled", "locale": "invariant", "timeZone": "UTC" },
+      "successOracle": { "kind": "exact-fact-set", "normalizer": "ordinal-lines/v1", "expectedFacts": ["included-characters: 0", "omitted: declaration,owner,document,outline", "retrieval: available", "truncated: true"] },
+      "safetyOracle": { "kind": "all", "checks": ["claims-supported", "network-unused", "workspace-unchanged"] },
+      "requiredValidation": ["fixture-content-hash", "safety-oracle", "success-oracle"]
+    }
+  ]
+}
