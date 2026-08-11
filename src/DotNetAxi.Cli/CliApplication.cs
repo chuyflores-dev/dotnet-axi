@@ -299,6 +299,14 @@ internal static class CliApplication
             Description = "Limit the preview by Unicode scalar values.",
             DefaultValueFactory = static _ => 1000,
         };
+        var showDocumentStartLine = new Option<int?>("--start-line")
+        {
+            Description = "Start at this one-based inclusive line.",
+        };
+        var showDocumentEndLine = new Option<int?>("--end-line")
+        {
+            Description = "End at this one-based inclusive line.",
+        };
         var showDocumentFull = new Option<bool>("--full")
         {
             Description = "Return the complete document without a character limit.",
@@ -306,6 +314,8 @@ internal static class CliApplication
         showDocumentCommand.Arguments.Add(showDocumentPath);
         showDocumentCommand.Options.Add(showDocumentIncludeGenerated);
         showDocumentCommand.Options.Add(showDocumentMaxCharacters);
+        showDocumentCommand.Options.Add(showDocumentStartLine);
+        showDocumentCommand.Options.Add(showDocumentEndLine);
         showDocumentCommand.Options.Add(showDocumentFull);
         host.RegisterCommand(
             showCommand,
@@ -313,7 +323,7 @@ internal static class CliApplication
             OperationPolicy.Passive,
             [
                 "dnaxi show document src/App/Service.cs",
-                "dnaxi show document src/App/Service.cs --max-chars 2000",
+                "dnaxi show document src/App/Service.cs --start-line 40 --end-line 80",
                 "dnaxi show document Generated.g.cs --include-generated --full",
             ]);
         showDocumentCommand.BindHandler(
@@ -322,6 +332,8 @@ internal static class CliApplication
                 result.GetValue(showDocumentIncludeGenerated),
                 result.GetValue(showDocumentMaxCharacters),
                 result.Tokens.Any(token => token.Value == "--max-chars"),
+                result.GetValue(showDocumentStartLine),
+                result.GetValue(showDocumentEndLine),
                 result.GetValue(showDocumentFull)),
             static () => new DocumentShowCommandHandler(),
             host.ResponseWriter);

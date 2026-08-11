@@ -355,22 +355,43 @@ present.
 
 The preview defaults to 1,000 Unicode scalar values. `--max-chars` selects a
 different bound and `--full` explicitly returns the whole document; the two
-options cannot be combined. The default and explicitly bounded paths stream
-decoding, validation, content hashing, and scalar counting while retaining
-only the requested preview and the bounded generated-code header; `--full` is
-the explicit unbounded-memory path. Truncation reports included, total, and
-omitted character counts plus a complete `--full` retrieval command. Supported
-text encodings are strict UTF-8 with or without a byte-order mark and byte-order
-marked little- or big-endian UTF-16. Binary, undecodable, unsupported, missing,
-and unreadable documents return structured failures without leaking partial
-content. Before reporting verified evidence, a second fixed-buffer pass rejects
-concurrent content changes and reproduces the original `v1` raw-byte snapshot
-derivation without retaining the document. Source syntax need not parse
-successfully for the document text to be shown. The outline reference preserves
-the normalized document path. Eligible C# documents report the capability as
-available and include a concrete `dnaxi outline <path>` command; other document
-types keep it unavailable. Generated-document references preserve explicit
-generated-source inclusion.
+options cannot be combined. Independent `--start-line` and `--end-line`
+selectors bound the document preview by one-based inclusive lines. An omitted
+start means the first line and an omitted end means the final line, so the file
+and line from `search text` compose directly with `show document --start-line`
+without reinterpretation. LF terminates one line and an immediately preceding
+CR remains part of the same CRLF terminator. A final line without a terminator
+is included, and an empty document has one empty line. Non-positive or reversed
+selectors are usage errors; a selector beyond the known final line returns a
+`document.line_span_out_of_range` failure with the valid line range rather than
+clamping the request.
+
+Successful results report the document `line_count`, the requested span after
+resolving omitted boundaries, and the actual line span represented in the
+returned preview. Character truncation can therefore make the actual end line
+earlier than the requested end. A zero-character budget over non-empty selected
+content has no actual start or end line. A selected line with genuinely empty
+content, including the sole line of an empty document, is nevertheless reported
+as the actual span when it is returned completely without truncation. The
+character budget and included, total, and omitted character counts apply only
+to the selected span. The default and explicitly bounded paths stream decoding,
+validation, content hashing, line and scalar counting while retaining only the
+requested preview and the bounded generated-code header; `--full` is the
+explicit unbounded-memory path for the selected span. Truncation reports a
+complete `--full` retrieval command that preserves both line selectors, and
+generated-source corrections preserve them as well. Calls without selectors
+continue to select the complete document. Supported text encodings are strict
+UTF-8 with or without a byte-order mark and byte-order marked little- or
+big-endian UTF-16. Binary, undecodable, unsupported, missing, and unreadable
+documents return structured failures without leaking partial content. Before
+reporting verified evidence, a second fixed-buffer pass rejects concurrent
+content changes and reproduces the original `v1` raw-byte snapshot derivation
+without retaining the document. Source syntax need not parse successfully for
+the document text to be shown. The outline reference preserves the normalized
+document path. Eligible C# documents report the capability as available and
+include a concrete `dnaxi outline <path>` command; other document types keep it
+unavailable. Generated-document references preserve explicit generated-source
+inclusion.
 
 `outline` returns imports, namespace, types, members, signatures, and relevant
 attributes through Roslyn syntax. It accepts one explicit C# document path or
