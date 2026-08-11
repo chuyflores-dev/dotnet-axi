@@ -176,6 +176,38 @@ verified, rejected, and unresolved counts.
 Arbitrary syntax nodes do not invent a compiler meaning. A query without a
 declared verifier rejects `--verify` with an actionable structured error.
 
+The declared MVP verifiers are invocation method binding, attributed-class
+attribute binding, object-creation type binding, and catch-clause type or
+validity binding. Ordinary syntax search remains parse-only. `--verify` uses
+the workspace-selected SDK and Roslyn's MSBuild design-time project loader; it
+is explicitly classified as executing because design-time targets can run
+repository code and write artifacts. It does not restore missing inputs or
+silently substitute a different framework.
+
+Frameworks and conditional metadata come from MSBuild's evaluated imports for
+the effective configuration, not lexical project-file guesses. Verification
+derives source ownership from each variant's evaluated `Compile` items, so
+linked sources introduced by imports, properties, or globs remain in scope.
+Passive directory ownership is retained only when project evaluation fails, so
+that the failure remains explicit instead of disappearing from coverage.
+Verification
+checks that each syntax candidate still has the same content-derived identity
+in the loaded document. A changed candidate is unresolved as `candidate.stale`
+instead of being remapped by location. Semantic evidence uses a new snapshot
+that includes the syntax snapshot, selected SDK/MSBuild runtime, evaluated
+project inputs, source trees, compiler options, and metadata references.
+
+Counts classify discovered syntax candidates, so they always partition
+`discovered`. A candidate is verified when at least one owner/configuration/
+framework variant verifies it, unresolved when none verifies and at least one
+variant cannot be resolved, and rejected otherwise. Each candidate still
+lists every attempted variant with its individual status, resolved symbol when
+available, and a stable reason such as `ownership.not_found`,
+`metadata.missing`, `semantic.ambiguous`, or `semantic.unresolved`.
+Any unresolved variant makes result coverage and command status partial even
+when another variant verifies the same candidate. Partial reasons remain
+machine-readable and no unresolved variant is dropped from output.
+
 ## Symbol declarations
 
 ```bash

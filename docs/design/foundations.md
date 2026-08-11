@@ -197,6 +197,11 @@ Capability components provide typed query-plan candidates through
 `DotNetAxi.Contracts`; `DotNetAxi.Analysis` selects a plan, and the CLI only
 renders it.
 
+Most capability projects depend only on `DotNetAxi.Contracts`. The semantic
+Roslyn engine additionally composes the SDK host resolver, structural
+candidate contracts, and workspace/MSBuild authority; the CLI remains the
+only project that composes every capability.
+
 ## Progressive analysis
 
 The tool MUST use progressive analysis instead of mandatory eager indexing.
@@ -220,6 +225,16 @@ compilation is required.
 3. Load candidate projects and required dependencies.
 4. Use Roslyn to verify exact symbols or relationships.
 5. Return verified results with coverage metadata.
+
+Candidate-scoped syntax verification evaluates workspace project declarations
+to derive effective `Compile` membership, including imports, properties, and
+globs. It then loads only the owning configuration/framework variants with the
+SDK selected for the workspace. Failed projects retain passive ownership as
+explicit unresolved coverage. Because the Roslyn MSBuild loader can run
+repository design-time targets, selecting `--verify` is an executing operation
+even though ordinary syntax search stays passive.
+Missing project inputs, metadata, or compiler meaning remain unresolved
+coverage; they are not repaired, restored, or inferred by the semantic layer.
 
 ### Level 3 — Dependency-aware expansion
 

@@ -24,9 +24,10 @@ internal static class CommandHelpResult
             .OrderBy(
                 static entry => entry.Option.Name,
                 StringComparer.Ordinal)
-            .Select(static entry => CreateFlag(
+            .Select(entry => CreateFlag(
                 entry.Option,
-                entry.Inherited))
+                entry.Inherited,
+                operation.OptionPolicies.GetValueOrDefault(entry.Option)))
             .ToArray();
         var subcommands = command.Subcommands
             .Where(static subcommand => !subcommand.Hidden)
@@ -72,7 +73,8 @@ internal static class CommandHelpResult
 
     private static HelpFlag CreateFlag(
         Option option,
-        bool inherited)
+        bool inherited,
+        OperationPolicy? conditionalPolicy)
     {
         var arity = option.Arity;
         var aliases = option.Aliases
@@ -89,7 +91,8 @@ internal static class CommandHelpResult
             MaximumValues(arity),
             DefaultValue(option),
             inherited,
-            OptionalText(option.Description));
+            OptionalText(option.Description),
+            conditionalPolicy?.Classification);
     }
 
     private static IEnumerable<AvailableOption> AvailableOptions(
@@ -249,7 +252,8 @@ internal static class CommandHelpResult
         int? MaximumValues,
         string? DefaultValue,
         bool Inherited,
-        string? Description);
+        string? Description,
+        OperationClassification? Classification);
 
     private sealed record HelpSubcommand(
         string Name,

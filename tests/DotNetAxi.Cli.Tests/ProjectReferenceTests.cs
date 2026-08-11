@@ -22,6 +22,10 @@ public sealed class ProjectReferenceTests
             sourceRoot,
             "DotNetAxi.Cli",
             "DotNetAxi.Cli.csproj");
+        var roslynProject = Path.Combine(
+            sourceRoot,
+            "DotNetAxi.Roslyn",
+            "DotNetAxi.Roslyn.csproj");
 
         Assert.Empty(ReadProjectReferences(contractsProject));
 
@@ -31,9 +35,21 @@ public sealed class ProjectReferenceTests
             .ToArray();
         Assert.Equal(expectedCliReferences, ReadProjectReferences(cliProject));
 
+        var expectedRoslynReferences = new[]
+        {
+            contractsProject,
+            Path.Combine(sourceRoot, "DotNetAxi.DotNet", "DotNetAxi.DotNet.csproj"),
+            Path.Combine(sourceRoot, "DotNetAxi.Structural", "DotNetAxi.Structural.csproj"),
+            Path.Combine(sourceRoot, "DotNetAxi.Workspaces", "DotNetAxi.Workspaces.csproj"),
+        }.Order(StringComparer.Ordinal).ToArray();
+        Assert.Equal(
+            expectedRoslynReferences,
+            ReadProjectReferences(roslynProject));
+
         foreach (var project in projects.Where(path =>
                      !PathEquals(path, contractsProject) &&
-                     !PathEquals(path, cliProject)))
+                     !PathEquals(path, cliProject) &&
+                     !PathEquals(path, roslynProject)))
         {
             Assert.Equal([contractsProject], ReadProjectReferences(project));
         }

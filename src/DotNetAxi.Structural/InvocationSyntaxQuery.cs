@@ -5,7 +5,7 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 namespace DotNetAxi.Structural;
 
 /// <summary>Finds invocation expressions by their terminal syntactic name.</summary>
-public sealed class InvocationSyntaxQuery : IRoslynSyntaxQuery
+public sealed class InvocationSyntaxQuery : ISemanticallyVerifiableSyntaxQuery
 {
     public InvocationSyntaxQuery(string name)
     {
@@ -27,6 +27,10 @@ public sealed class InvocationSyntaxQuery : IRoslynSyntaxQuery
     public string Kind => "invocation";
 
     public string Identity { get; }
+
+    public SemanticSyntaxVerifier Verifier => new(
+        SemanticSyntaxVerifierKind.Invocation,
+        Name);
 
     public IEnumerable<SyntaxNode> FindCandidates(
         CompilationUnitSyntax root,

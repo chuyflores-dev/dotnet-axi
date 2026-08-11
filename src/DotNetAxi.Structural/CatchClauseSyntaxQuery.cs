@@ -5,7 +5,7 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 namespace DotNetAxi.Structural;
 
 /// <summary>Finds catch clauses by optional terminal type name and empty-body intent.</summary>
-public sealed class CatchClauseSyntaxQuery : IRoslynSyntaxQuery
+public sealed class CatchClauseSyntaxQuery : ISemanticallyVerifiableSyntaxQuery
 {
     public CatchClauseSyntaxQuery(string? type = null, bool emptyOnly = false)
     {
@@ -35,6 +35,10 @@ public sealed class CatchClauseSyntaxQuery : IRoslynSyntaxQuery
     public string Kind => "catch";
 
     public string Identity { get; }
+
+    public SemanticSyntaxVerifier Verifier => new(
+        SemanticSyntaxVerifierKind.CatchClause,
+        Type);
 
     public IEnumerable<SyntaxNode> FindCandidates(
         CompilationUnitSyntax root,

@@ -5,6 +5,8 @@ namespace DotNetAxi.Cli;
 
 public sealed record CommandOperation
 {
+    private readonly Dictionary<Option, OperationPolicy> _optionPolicies =
+        new(ReferenceEqualityComparer.Instance);
     internal CommandOperation(
         Command command,
         string name,
@@ -26,6 +28,32 @@ public sealed record CommandOperation
     public OperationPolicy Policy { get; }
 
     public IReadOnlyList<string> Examples { get; }
+
+    internal IReadOnlyDictionary<Option, OperationPolicy> OptionPolicies =>
+        _optionPolicies;
+
+    internal void AddOptionPolicy(Option option, OperationPolicy policy)
+    {
+        ArgumentNullException.ThrowIfNull(option);
+        ArgumentNullException.ThrowIfNull(policy);
+        if (!Command.Options.Contains(option))
+        {
+            throw new InvalidOperationException(
+                $"Option '{option.Name}' is not registered on command '{Name}'.");
+        }
+
+        if (option.ValueType != typeof(bool))
+        {
+            throw new InvalidOperationException(
+                "Conditional operation policies require a Boolean option.");
+        }
+
+        if (!_optionPolicies.TryAdd(option, policy))
+        {
+            throw new InvalidOperationException(
+                $"Option '{option.Name}' already has an operation policy.");
+        }
+    }
 
     private static IReadOnlyList<string> CopyExamples(
         IEnumerable<string> examples)
@@ -124,6 +152,33 @@ internal sealed class CommandOperationRegistry
             ? operation
             : throw new InvalidOperationException(
                 $"Command '{command.Name}' has no operation classification.");
+    }
+
+    public OperationPolicy Resolve(ParseResult parseResult)
+    {
+        ArgumentNullException.ThrowIfNull(parseResult);
+        var operation = Get(parseResult.CommandResult.Command);
+        return operation.OptionPolicies
+            .Where(pair => parseResult.GetValue((Option<bool>)pair.Key))
+            .Select(static pair => pair.Value)
+            .OrderByDescending(static policy => policy.Classification)
+            .FirstOrDefault()
+            ?? operation.Policy;
+    }
+
+    public void AddOptionPolicy(
+        CommandOperation operation,
+        Option<bool> option,
+        OperationPolicy policy)
+    {
+        ArgumentNullException.ThrowIfNull(operation);
+        if (!_operations.Contains(operation))
+        {
+            throw new InvalidOperationException(
+                "The command operation is not registered by this host.");
+        }
+
+        operation.AddOptionPolicy(option, policy);
     }
 
     public void EnsureComplete(RootCommand rootCommand)

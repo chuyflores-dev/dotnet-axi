@@ -10,6 +10,7 @@ internal sealed record InvocationSyntaxCommandRequest(
     int Limit,
     bool LimitSpecified,
     bool Full,
+    bool Verify,
     IReadOnlyList<string> Fields,
     IReadOnlyList<string> Paths)
 {
@@ -31,6 +32,7 @@ internal sealed record InvocationSyntaxCommandRequest(
         int limit,
         bool limitSpecified,
         bool full,
+        bool verify,
         IReadOnlyList<string> fields,
         IReadOnlyList<string> paths)
     {
@@ -57,6 +59,7 @@ internal sealed record InvocationSyntaxCommandRequest(
             limit,
             limitSpecified,
             full,
+            verify,
             fields,
             paths);
     }
@@ -87,14 +90,30 @@ internal sealed class InvocationSyntaxCommandHandler :
             explicitPaths: request.Paths,
             includeGenerated: request.IncludeGenerated,
             currentDirectory: workspace.CurrentDirectory);
+        var query = new InvocationSyntaxQuery(request.Name);
         var result = await new RoslynSyntaxEngine(new WorkspacePathTraverser())
             .QueryAsync(
                 new RoslynSyntaxQueryRequest(traversal),
-                new InvocationSyntaxQuery(request.Name),
+                query,
                 cancellationToken)
             .ConfigureAwait(false);
 
         var retrievalCommand = RetrievalCommand(request);
+        if (request.Verify)
+        {
+            return await SemanticSyntaxVerificationCommand.ExecuteAsync(
+                    "search syntax invocation",
+                    workspace,
+                    result,
+                    query,
+                    fields,
+                    request.Full,
+                    request.Limit,
+                    retrievalCommand,
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+
         var includedCandidates = request.Full
             ? result.Candidates
             : result.Candidates.Take(request.Limit);
@@ -183,6 +202,11 @@ internal sealed class InvocationSyntaxCommandHandler :
         if (request.IncludeGenerated)
         {
             arguments.Add("--include-generated");
+        }
+
+        if (request.Verify)
+        {
+            arguments.Add("--verify");
         }
 
         foreach (var path in request.Paths)

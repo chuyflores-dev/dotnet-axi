@@ -5,7 +5,7 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 namespace DotNetAxi.Structural;
 
 /// <summary>Finds class declarations with a matching syntactic attribute name.</summary>
-public sealed class AttributedClassSyntaxQuery : IRoslynSyntaxQuery
+public sealed class AttributedClassSyntaxQuery : ISemanticallyVerifiableSyntaxQuery
 {
     private const string AttributeSuffix = "Attribute";
 
@@ -30,6 +30,10 @@ public sealed class AttributedClassSyntaxQuery : IRoslynSyntaxQuery
     public string Kind => "class";
 
     public string Identity { get; }
+
+    public SemanticSyntaxVerifier Verifier => new(
+        SemanticSyntaxVerifierKind.AttributedClass,
+        AttributeName);
 
     public IEnumerable<SyntaxNode> FindCandidates(
         CompilationUnitSyntax root,
