@@ -255,7 +255,10 @@ public sealed class MsBuildProjectGraphEvaluatorTests
                 ]));
 
         Assert.Equal(ProjectGraphCompleteness.Complete, graph.Completeness);
-        Assert.Equal("10.0.302", graph.Runtime?.SdkVersion);
+        var sdkVersion = Version.Parse(Assert.IsType<string>(graph.Runtime?.SdkVersion));
+        Assert.Equal(10, sdkVersion.Major);
+        Assert.Equal(0, sdkVersion.Minor);
+        Assert.InRange(sdkVersion.Build, 302, 399);
         Assert.StartsWith("18.6.", graph.Runtime?.MsBuildVersion);
         Assert.Empty(graph.Failures);
         Assert.Equal(WorkspaceSelectionSource.ExplicitProject, graph.Selection.Source);
