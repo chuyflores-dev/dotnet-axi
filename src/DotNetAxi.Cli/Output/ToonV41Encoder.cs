@@ -10,9 +10,11 @@ internal static class ToonV41Encoder
     private const char Delimiter = ',';
     private const int IndentSize = 2;
 
-    public static string Encode(JsonNode? root)
+    public static string Encode(
+        JsonNode? root,
+        Func<string, bool>? forceExpandedArray = null)
     {
-        var writer = new Writer();
+        var writer = new Writer(forceExpandedArray);
         writer.WriteRoot(root);
         return writer.ToString();
     }
@@ -356,6 +358,12 @@ internal static class ToonV41Encoder
     private sealed class Writer
     {
         private readonly List<string> _lines = [];
+        private readonly Func<string, bool>? _forceExpandedArray;
+
+        public Writer(Func<string, bool>? forceExpandedArray = null)
+        {
+            _forceExpandedArray = forceExpandedArray;
+        }
 
         public override string ToString() => string.Join('\n', _lines);
 
@@ -488,7 +496,8 @@ internal static class ToonV41Encoder
                 return;
             }
 
-            if (TryGetTabularShape(value, out var fields))
+            if (!(_forceExpandedArray?.Invoke(key) ?? false)
+                && TryGetTabularShape(value, out var fields))
             {
                 WriteTabularArray(
                     key,

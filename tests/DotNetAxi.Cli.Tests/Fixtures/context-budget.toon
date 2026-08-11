@@ -3,9 +3,21 @@ command: context symbol
 status: success
 budget_mode: explicit
 maximum_characters: 5
-sections[2]{name,order,value,included_characters,total_known,total_characters,complete}:
-  declaration,0,A😀,2,true,2,true
-  owner,1,xyz,3,true,3,true
+sections[2]:
+  - name: declaration
+    order: 0
+    value: A😀
+    included_characters: 2
+    total_known: true
+    total_characters: 2
+    complete: true
+  - name: owner
+    order: 1
+    value: xyz
+    included_characters: 3
+    total_known: true
+    total_characters: 3
+    complete: true
 included_characters: 5
 total_known: true
 total_characters: 9

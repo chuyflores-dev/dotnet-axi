@@ -368,6 +368,89 @@ internal static class CliApplication
             static () => new DocumentShowCommandHandler(),
             host.ResponseWriter);
 
+        var contextCommand = new Command(
+            "context",
+            "Compose bounded evidence for one coding-agent decision.");
+        host.RegisterCommand(
+            rootCommand,
+            contextCommand,
+            OperationPolicy.Passive,
+            [
+                "dnaxi context symbol <symbol/v2/...>",
+                "dnaxi context symbol <symbol/v2/...> --include declaration,owner",
+            ]);
+        var contextSymbolCommand = new Command(
+            "symbol",
+            "Compose declaration, owner, document, and outline evidence once.");
+        var contextSymbolId = new Argument<string>("symbol");
+        var contextSymbolSolution = new Option<string?>("--solution")
+        {
+            Description = "Reuse the selected solution scope.",
+        };
+        var contextSymbolProject = new Option<string?>("--project")
+        {
+            Description = "Reuse the selected project scope.",
+        };
+        var contextSymbolPaths = new Option<string[]>("--path")
+        {
+            AllowMultipleArgumentsPerToken = false,
+            Description = "Reuse an explicit search scope, including external paths.",
+        };
+        var contextSymbolIncludeTests = new Option<bool>("--include-tests")
+        {
+            Description = "Resolve declarations classified as test-only.",
+        };
+        var contextSymbolIncludeGenerated = new Option<bool>("--include-generated")
+        {
+            Description = "Resolve declarations classified as generated source.",
+        };
+        var contextSymbolSections = new Option<string[]>("--include")
+        {
+            AllowMultipleArgumentsPerToken = true,
+            Description = "Sections: declaration, owner, document, outline. Defaults to all four.",
+        };
+        var contextSymbolMaxCharacters = new Option<int>("--max-chars")
+        {
+            DefaultValueFactory = static _ => 12000,
+            Description = "Limit included whole sections by emitted Unicode scalar values.",
+        };
+        var contextSymbolFull = new Option<bool>("--full")
+        {
+            Description = "Return every requested section without a character limit.",
+        };
+        contextSymbolCommand.Arguments.Add(contextSymbolId);
+        contextSymbolCommand.Options.Add(contextSymbolSolution);
+        contextSymbolCommand.Options.Add(contextSymbolProject);
+        contextSymbolCommand.Options.Add(contextSymbolPaths);
+        contextSymbolCommand.Options.Add(contextSymbolIncludeTests);
+        contextSymbolCommand.Options.Add(contextSymbolIncludeGenerated);
+        contextSymbolCommand.Options.Add(contextSymbolSections);
+        contextSymbolCommand.Options.Add(contextSymbolMaxCharacters);
+        contextSymbolCommand.Options.Add(contextSymbolFull);
+        host.RegisterCommand(
+            contextCommand,
+            contextSymbolCommand,
+            OperationPolicy.Passive,
+            [
+                "dnaxi context symbol <symbol/v2/...>",
+                "dnaxi context symbol <symbol/v2/...> --include declaration,owner --max-chars 4000",
+                "dnaxi context symbol <symbol/v2/...> --full",
+            ]);
+        contextSymbolCommand.BindHandler(
+            result => ContextSymbolCommandRequest.Create(
+                result.GetValue(contextSymbolId)!,
+                result.GetValue(contextSymbolSolution),
+                result.GetValue(contextSymbolProject),
+                result.GetValue(contextSymbolPaths) ?? [],
+                result.GetValue(contextSymbolIncludeTests),
+                result.GetValue(contextSymbolIncludeGenerated),
+                result.GetValue(contextSymbolSections) ?? [],
+                result.GetValue(contextSymbolMaxCharacters),
+                result.Tokens.Any(token => token.Value == "--max-chars"),
+                result.GetValue(contextSymbolFull)),
+            static () => new ContextSymbolCommandHandler(),
+            host.ResponseWriter);
+
         var outlineCommand = new Command(
             "outline",
             "Show the stable Roslyn syntax structure of one C# document or symbol.");

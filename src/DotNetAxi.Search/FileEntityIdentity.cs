@@ -11,10 +11,17 @@ public static class FileEntityIdentity
     {
         ArgumentNullException.ThrowIfNull(path);
 
+        return Create(path.RelativePath, path.IsExternal);
+    }
+
+    public static string Create(string path, bool isExternal)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(path);
+
         using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
         Append(hash, "dotnet-axi/file-match/v1");
-        Append(hash, path.RelativePath);
-        Append(hash, path.IsExternal ? "external" : "workspace");
+        Append(hash, new SourceLocation(path, 1, 1, isExternal).Path);
+        Append(hash, isExternal ? "external" : "workspace");
         return "file/v1/" + Convert.ToHexStringLower(
             hash.GetHashAndReset());
     }

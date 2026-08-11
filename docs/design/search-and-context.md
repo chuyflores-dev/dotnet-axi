@@ -445,7 +445,9 @@ dnaxi context symbol <symbol> \
   --max-chars 12000
 ```
 
-The command MUST enforce an explicit or configured output budget.
+The command MUST enforce an explicit, configured, or built-in default output
+budget. Configured mode applies only when a configuration source supplies a
+value; without one, the built-in default applies.
 Budget resolution uses `--full` first, an explicit character limit second, a
 configured limit third, and the built-in default last. `--full` is unbounded
 and is mutually exclusive with an explicit character limit. A larger-budget
@@ -464,9 +466,39 @@ available with the corresponding `0.6.0` capabilities; requesting an
 unavailable section returns a capability correction rather than partial
 unlabeled output.
 
+`context symbol` defaults to all four `0.5.0` sections. `--include` accepts
+the canonical names `declaration`, `owner`, `document`, and `outline`; values
+may be comma-separated, supplied as multiple values, or repeated. Section
+priority follows that canonical order. Blank or unknown names are usage
+errors. The reserved relationship names `references`, `callers`, `callees`,
+and `tests` return a capability correction until their graph capabilities are
+available.
+
+The command resolves the caller-selected symbol workspace scope and symbol
+identity once. Declaration detail, the resolved source document, ownership,
+and the Roslyn outline are derived from that same immutable resolution input
+and share its workspace snapshot. The document text owns the source bytes;
+the declaration and outline refer to the document and resolved declaration by
+stable ID instead of emitting the root declaration span again. Section values
+carry their resolution, confidence, and provenance while the envelope reports
+the shared snapshot, coverage, and effective scope. A shared target header
+keeps the resolved symbol identity, source location, and document reference
+available even when the declaration section is not selected or does not fit.
+That header is emitted once outside the section budget.
+
+Each section cost is measured from the exact structured TOON list item that
+the caller receives, including the section's name, order, evidence metadata,
+and character-count metadata. This keeps exact-fit and recovery budgets honest
+without charging shared result-envelope evidence to every section.
+
 When truncated, it reports actual included size, total known size, omitted
 sections, and a complete `--full` or larger-budget command. Repeated calls
 against an unchanged snapshot use deterministic ordering.
+
+Recovery commands preserve the effective `--solution`, `--project`, `--path`,
+`--include-tests`, and `--include-generated` scope plus the canonical selected
+sections. Stale or ambiguous candidates also include a concrete continuation
+command with that scope, section selection, and budget.
 
 The total and omitted character count are present only when every section
 reports a known total. An included but incomplete section is named among the
