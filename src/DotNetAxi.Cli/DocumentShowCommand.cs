@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.Buffers.Binary;
 using System.Security.Cryptography;
 using System.Text;
@@ -14,8 +15,6 @@ internal sealed record DocumentShowCommandRequest(
     bool MaxCharactersSpecified,
     bool Full)
 {
-    public int EffectiveMaxCharacters => Full ? int.MaxValue : MaxCharacters;
-
     public static DocumentShowCommandRequest Create(
         string path,
         bool includeGenerated,
@@ -101,8 +100,12 @@ internal sealed class DocumentShowCommandHandler :
                 "Remove the applicable exclusion or select an eligible document.");
         }
 
-        var read = await new TextDocumentReader()
-            .ReadAsync(document.FullPath, cancellationToken)
+        var read = await new BoundedTextDocumentReader()
+            .ReadAsync(
+                document.FullPath,
+                request.Full ? null : request.MaxCharacters,
+                WorkspaceGeneratedCodeClassifier.MaximumHeaderCharacters,
+                cancellationToken)
             .ConfigureAwait(false);
         if (read.Status is not TextDocumentReadStatus.Success)
         {
@@ -114,14 +117,12 @@ internal sealed class DocumentShowCommandHandler :
         var currentDocument = currentPaths.Count == 1 ? currentPaths[0] : null;
         if (currentDocument is null || !SameDocument(document, currentDocument))
         {
-            return Failure(
-                "document.changed_during_read",
-                $"Document `{document.RelativePath}` changed while it was being read.",
-                "Run the command again against a stable document path.");
+            return ChangedDuringRead(document.RelativePath);
         }
 
+        document = currentDocument;
         var isGenerated = document.IsGenerated
-            || WorkspaceGeneratedCodeClassifier.HasGeneratedHeader(read.Text!);
+            || WorkspaceGeneratedCodeClassifier.HasGeneratedHeader(read.Header!);
         if (isGenerated && !request.IncludeGenerated)
         {
             return Failure(
@@ -138,17 +139,28 @@ internal sealed class DocumentShowCommandHandler :
             .Distinct(StringComparer.Ordinal)
             .Order(StringComparer.Ordinal)
             .ToArray();
-        var snapshot = SnapshotIdentity(
-            document,
-            isGenerated,
-            read.Content.Span,
-            owners,
-            cancellationToken);
-        var retrievalCommand = RetrievalCommand(request);
-        var bounded = BoundedText.Create(
-            read.Text!,
-            request.EffectiveMaxCharacters,
-            retrievalCommand);
+        var snapshot = await CaptureSnapshotAsync(
+                document,
+                isGenerated,
+                owners,
+                read.ContentHash!,
+                read.ByteCount,
+                cancellationToken)
+            .ConfigureAwait(false);
+        if (snapshot is null)
+        {
+            return ChangedDuringRead(document.RelativePath);
+        }
+
+        var finalPaths = new WorkspacePathTraverser()
+            .Traverse(traversal, cancellationToken);
+        var finalDocument = finalPaths.Count == 1 ? finalPaths[0] : null;
+        if (finalDocument is null || !SameDocument(document, finalDocument))
+        {
+            return ChangedDuringRead(document.RelativePath);
+        }
+
+        document = finalDocument;
         var payload = new DocumentShowPayload(
             FileEntityIdentity.Create(document),
             document.RelativePath,
@@ -158,14 +170,14 @@ internal sealed class DocumentShowCommandHandler :
             owners,
             read.Encoding!,
             read.HasByteOrderMark,
-            read.Content.Length,
-            bounded.Preview,
-            bounded.IncludedCharacters,
+            read.ByteCount,
+            read.Preview!,
+            read.IncludedCharacters,
             TotalKnown: true,
-            bounded.TotalCharacters,
-            bounded.OmittedCharacters,
-            bounded.Truncated,
-            bounded.RetrievalCommand,
+            read.TotalCharacters,
+            read.OmittedCharacters,
+            read.Truncated,
+            read.Truncated ? RetrievalCommand(request) : null,
             new DocumentOutlineReference(
                 document.RelativePath,
                 Available: false));
@@ -230,33 +242,111 @@ internal sealed class DocumentShowCommandHandler :
         && before.IsExternal == after.IsExternal
         && before.IsGenerated == after.IsGenerated;
 
-    private static string SnapshotIdentity(
+    internal static async Task<string?> CaptureSnapshotAsync(
         WorkspaceTraversalPath document,
         bool isGenerated,
-        ReadOnlySpan<byte> content,
         IReadOnlyList<string> owners,
+        string expectedContentHash,
+        long expectedByteCount,
         CancellationToken cancellationToken)
     {
-        using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
-        Append(hash, "dotnet-axi/document-show-observation/v1", cancellationToken);
-        Append(hash, document.RelativePath, cancellationToken);
-        Append(
-            hash,
-            document.IsExternal ? "external" : "workspace",
-            cancellationToken);
-        Append(hash, isGenerated ? "generated" : "source", cancellationToken);
-        Append(
-            hash,
-            owners.Count.ToString(
-                System.Globalization.CultureInfo.InvariantCulture),
-            cancellationToken);
-        foreach (var owner in owners)
+        const int bufferSize = 64 * 1024;
+        try
         {
-            Append(hash, owner, cancellationToken);
-        }
+            await using var stream = new FileStream(
+                document.FullPath,
+                FileMode.Open,
+                FileAccess.Read,
+                FileShare.Read,
+                bufferSize,
+                FileOptions.Asynchronous | FileOptions.SequentialScan);
+            if (stream.Length != expectedByteCount)
+            {
+                return null;
+            }
 
-        Append(hash, content, cancellationToken);
-        return "ws_" + Convert.ToHexStringLower(hash.GetHashAndReset());
+            using var observation = IncrementalHash.CreateHash(
+                HashAlgorithmName.SHA256);
+            using var content = IncrementalHash.CreateHash(
+                HashAlgorithmName.SHA256);
+            Append(
+                observation,
+                "dotnet-axi/document-show-observation/v1",
+                cancellationToken);
+            Append(observation, document.RelativePath, cancellationToken);
+            Append(
+                observation,
+                document.IsExternal ? "external" : "workspace",
+                cancellationToken);
+            Append(
+                observation,
+                isGenerated ? "generated" : "source",
+                cancellationToken);
+            Append(
+                observation,
+                owners.Count.ToString(
+                    System.Globalization.CultureInfo.InvariantCulture),
+                cancellationToken);
+            foreach (var owner in owners)
+            {
+                Append(observation, owner, cancellationToken);
+            }
+
+            AppendLength(observation, expectedByteCount);
+            var buffer = ArrayPool<byte>.Shared.Rent(bufferSize);
+            long byteCount = 0;
+            try
+            {
+                while (true)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    var count = await stream.ReadAsync(
+                            buffer.AsMemory(0, bufferSize),
+                            cancellationToken)
+                        .ConfigureAwait(false);
+                    if (count == 0)
+                    {
+                        break;
+                    }
+
+                    byteCount += count;
+                    var bytes = buffer.AsSpan(0, count);
+                    content.AppendData(bytes);
+                    observation.AppendData(bytes);
+                }
+            }
+            finally
+            {
+                ArrayPool<byte>.Shared.Return(buffer, clearArray: true);
+            }
+
+            if (byteCount != expectedByteCount
+                || !string.Equals(
+                    Convert.ToHexStringLower(content.GetHashAndReset()),
+                    expectedContentHash,
+                    StringComparison.Ordinal))
+            {
+                return null;
+            }
+
+            return "ws_" + Convert.ToHexStringLower(
+                observation.GetHashAndReset());
+        }
+        catch (IOException)
+        {
+            return null;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return null;
+        }
+    }
+
+    private static void AppendLength(IncrementalHash hash, long length)
+    {
+        Span<byte> bytes = stackalloc byte[sizeof(ulong)];
+        BinaryPrimitives.WriteUInt64BigEndian(bytes, checked((ulong)length));
+        hash.AppendData(bytes);
     }
 
     private static void Append(
@@ -313,6 +403,13 @@ internal sealed class DocumentShowCommandHandler :
                 "The document read status does not describe a failure."),
         };
 
+    private static CommandResult<DocumentShowPayload> ChangedDuringRead(
+        string path) =>
+        Failure(
+            "document.changed_during_read",
+            $"Document `{path}` changed while it was being read.",
+            "Run the command again against a stable document path.");
+
     private static CommandResult<DocumentShowPayload> Failure(
         string code,
         string message,
@@ -357,12 +454,12 @@ internal sealed class DocumentShowCommandHandler :
         IReadOnlyList<string> OwningProjects,
         string Encoding,
         bool ByteOrderMark,
-        int ByteCount,
+        long ByteCount,
         string Preview,
-        int IncludedCharacters,
+        long IncludedCharacters,
         bool TotalKnown,
-        int TotalCharacters,
-        int OmittedCharacters,
+        long TotalCharacters,
+        long OmittedCharacters,
         bool Truncated,
         string? RetrievalCommand,
         DocumentOutlineReference OutlineReference);

@@ -1,5 +1,7 @@
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
+using DotNetAxi.Contracts;
 
 namespace DotNetAxi.Cli.Tests;
 
@@ -26,6 +28,9 @@ public sealed class DocumentShowCommandTests
         Assert.Contains("command: show document", result.Output);
         Assert.Contains("status: success", result.Output);
         Assert.Matches("snapshot: ws_[a-f0-9]{64}", result.Output);
+        Assert.Equal(
+            "ws_e7c282c2534cc4efafd49d31ecb8a44978c4eaf70942d3f8e49f8bfdb7da40fd",
+            EvidenceId(result.Output));
         Assert.Matches("id: file/v1/[a-f0-9]{64}", result.Output);
         Assert.Equal(FileId(search.Output), FileId(result.Output));
         Assert.Contains("path: Document.cs", result.Output);
@@ -220,6 +225,31 @@ public sealed class DocumentShowCommandTests
         Assert.Equal(FileId(before.Output), FileId(after.Output));
         Assert.Contains("preview: before", before.Output);
         Assert.Contains("preview: after", after.Output);
+    }
+
+    [Fact]
+    public async Task Snapshot_capture_rejects_same_length_content_change()
+    {
+        using var workspace = new TestWorkspace();
+        await workspace.WriteAsync("Changed.cs", "after!");
+        var path = new WorkspaceTraversalPath(
+            Path.Combine(workspace.Root, "Changed.cs"),
+            "Changed.cs",
+            isExternal: false,
+            isGenerated: false);
+        var expectedHash = Convert.ToHexStringLower(
+            SHA256.HashData(Encoding.UTF8.GetBytes("before")));
+
+        var snapshot = await Cli.DocumentShowCommandHandler
+            .CaptureSnapshotAsync(
+                path,
+                isGenerated: false,
+                owners: [],
+                expectedHash,
+                expectedByteCount: 6,
+                CancellationToken.None);
+
+        Assert.Null(snapshot);
     }
 
     [Fact]

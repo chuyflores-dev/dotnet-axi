@@ -337,15 +337,21 @@ present.
 
 The preview defaults to 1,000 Unicode scalar values. `--max-chars` selects a
 different bound and `--full` explicitly returns the whole document; the two
-options cannot be combined. Truncation reports included, total, and omitted
-character counts plus a complete `--full` retrieval command. Supported text
-encodings are strict UTF-8 with or without a byte-order mark and byte-order
+options cannot be combined. The default and explicitly bounded paths stream
+decoding, validation, content hashing, and scalar counting while retaining
+only the requested preview and the bounded generated-code header; `--full` is
+the explicit unbounded-memory path. Truncation reports included, total, and
+omitted character counts plus a complete `--full` retrieval command. Supported
+text encodings are strict UTF-8 with or without a byte-order mark and byte-order
 marked little- or big-endian UTF-16. Binary, undecodable, unsupported, missing,
 and unreadable documents return structured failures without leaking partial
-content. Source syntax need not parse successfully for the document text to be
-shown. Until the `outline` command ships, the outline reference preserves the
-normalized document path and reports that the capability is unavailable
-instead of advertising a command that cannot execute.
+content. Before reporting verified evidence, a second fixed-buffer pass rejects
+concurrent content changes and reproduces the original `v1` raw-byte snapshot
+derivation without retaining the document. Source syntax need not parse
+successfully for the document text to be shown. Until the `outline` command
+ships, the outline reference preserves the normalized document path and reports
+that the capability is unavailable instead of advertising a command that cannot
+execute.
 
 `outline` returns imports, namespace, types, members, signatures, and relevant
 attributes through Roslyn syntax.

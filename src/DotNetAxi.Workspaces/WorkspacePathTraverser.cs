@@ -465,7 +465,8 @@ public sealed class WorkspacePathTraverser : IWorkspacePathTraverser
 
     private static bool HasGeneratedHeader(FileInfo file)
     {
-        const int maximumCharacters = 4096;
+        const int maximumCharacters =
+            WorkspaceGeneratedCodeClassifier.MaximumHeaderCharacters;
         try
         {
             using var stream = File.Open(
