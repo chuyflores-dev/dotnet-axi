@@ -66,65 +66,32 @@ public sealed class TextDocumentReader
             return Result(TextDocumentReadStatus.Unreadable);
         }
 
-        if (HasUtf32ByteOrderMark(bytes))
+        if (TextDocumentEncodingDetector.HasUnsupportedByteOrderMark(bytes))
         {
             return Result(
                 TextDocumentReadStatus.UnsupportedEncoding,
                 content: bytes);
         }
 
-        Encoding encoding;
-        string encodingName;
-        var hasByteOrderMark = false;
-        var start = 0;
-        if (HasPrefix(bytes, 0xff, 0xfe))
+        var encoding = TextDocumentEncodingDetector.Detect(bytes);
+        if (encoding.DetectNullBytes && bytes.Contains((byte)0))
         {
-            encoding = new UnicodeEncoding(
-                bigEndian: false,
-                byteOrderMark: true,
-                throwOnInvalidBytes: true);
-            encodingName = "utf-16-le";
-            hasByteOrderMark = true;
-            start = 2;
-        }
-        else if (HasPrefix(bytes, 0xfe, 0xff))
-        {
-            encoding = new UnicodeEncoding(
-                bigEndian: true,
-                byteOrderMark: true,
-                throwOnInvalidBytes: true);
-            encodingName = "utf-16-be";
-            hasByteOrderMark = true;
-            start = 2;
-        }
-        else
-        {
-            if (bytes.Contains((byte)0))
-            {
-                return Result(
-                    TextDocumentReadStatus.Binary,
-                    content: bytes);
-            }
-
-            encoding = new UTF8Encoding(
-                encoderShouldEmitUTF8Identifier: false,
-                throwOnInvalidBytes: true);
-            encodingName = "utf-8";
-            if (HasPrefix(bytes, 0xef, 0xbb, 0xbf))
-            {
-                hasByteOrderMark = true;
-                start = 3;
-            }
+            return Result(
+                TextDocumentReadStatus.Binary,
+                content: bytes);
         }
 
         try
         {
             return Result(
                 TextDocumentReadStatus.Success,
-                encoding.GetString(bytes, start, bytes.Length - start),
+                encoding.Value.GetString(
+                    bytes,
+                    encoding.PreambleLength,
+                    bytes.Length - encoding.PreambleLength),
                 bytes,
-                encodingName,
-                hasByteOrderMark);
+                encoding.Name,
+                encoding.PreambleLength > 0);
         }
         catch (DecoderFallbackException)
         {
@@ -133,13 +100,6 @@ public sealed class TextDocumentReader
                 content: bytes);
         }
     }
-
-    private static bool HasUtf32ByteOrderMark(byte[] bytes) =>
-        HasPrefix(bytes, 0xff, 0xfe, 0x00, 0x00)
-        || HasPrefix(bytes, 0x00, 0x00, 0xfe, 0xff);
-
-    private static bool HasPrefix(byte[] bytes, params byte[] prefix) =>
-        bytes.AsSpan().StartsWith(prefix);
 
     private static TextDocumentReadResult Result(
         TextDocumentReadStatus status,
