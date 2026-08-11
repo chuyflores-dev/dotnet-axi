@@ -56,6 +56,42 @@ public sealed class OutputShapingGoldenTests
     }
 
     [Fact]
+    public void Bounded_context_matches_the_golden_contract()
+    {
+        var context = ContextBudgeter.Apply(
+            [
+                ContextSection<string>.Create(
+                    "document",
+                    order: 2,
+                    value: "body",
+                    emittedText: "body"),
+                ContextSection<string>.Create(
+                    "owner",
+                    order: 1,
+                    value: "xyz",
+                    emittedText: "xyz"),
+                ContextSection<string>.Create(
+                    "declaration",
+                    order: 0,
+                    value: "A😀",
+                    emittedText: "A😀"),
+            ],
+            ContextBudget.Resolve(
+                defaultMaximumCharacters: 2,
+                explicitMaximumCharacters: 5),
+            maximum =>
+                $"Run `dnaxi context symbol Example.Widget --max-chars {maximum}`",
+            "Run `dnaxi context symbol Example.Widget --full`");
+        var result = CommandResult<BoundedContext<string>>.Success(
+            "context symbol",
+            context);
+
+        var document = _serializer.Serialize(result);
+
+        Assert.Equal(ReadFixture("context-budget.toon"), document);
+    }
+
+    [Fact]
     public async Task Unknown_field_matches_the_usage_golden_without_creating_handler()
     {
         var rootCommand = new RootCommand();
