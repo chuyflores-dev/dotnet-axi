@@ -9,15 +9,17 @@ namespace DotNetAxi.Cli;
 internal sealed record OutlineCommandRequest(
     string Target,
     bool SymbolTarget,
-    IReadOnlyList<string> Paths,
-    bool IncludeGenerated,
+    SymbolWorkspaceScopeRequest Scope,
     int Limit,
     bool LimitSpecified,
     bool Full)
 {
     public static OutlineCommandRequest Create(
         string target,
+        string? solution,
+        string? project,
         IReadOnlyList<string> paths,
+        bool includeTests,
         bool includeGenerated,
         int limit,
         bool limitSpecified,
@@ -40,20 +42,16 @@ internal sealed record OutlineCommandRequest(
                 "Run `dnaxi search symbol <name> --fields 'id,signature' --full` first.");
         }
 
-        if (paths.Any(string.IsNullOrWhiteSpace))
-        {
-            throw new CommandUsageException(
-                "usage.outline_path",
-                "A --path value cannot be blank.",
-                "Provide one or more non-blank paths.");
-        }
-
-        if (!symbolTarget && paths.Count > 0)
+        if (!symbolTarget
+            && (paths.Count > 0
+                || solution is not null
+                || project is not null
+                || includeTests))
         {
             throw new CommandUsageException(
                 "usage.outline_scope",
-                "The --path option applies only to a symbol identity target.",
-                "Remove --path when outlining one explicit document.");
+                "Workspace selectors and test eligibility apply only to a symbol identity target.",
+                "Remove --solution, --project, --path, and --include-tests when outlining one explicit document.");
         }
 
         if (limit < 0)
@@ -75,8 +73,13 @@ internal sealed record OutlineCommandRequest(
         return new OutlineCommandRequest(
             target,
             symbolTarget,
-            Array.AsReadOnly(paths.ToArray()),
-            includeGenerated,
+            SymbolWorkspaceScopeRequest.Create(
+                solution,
+                project,
+                paths,
+                includeTests,
+                includeGenerated,
+                "usage.outline_path"),
             limit,
             limitSpecified,
             full);
@@ -107,24 +110,22 @@ internal sealed class OutlineCommandHandler :
         OutlineCommandRequest request,
         CancellationToken cancellationToken)
     {
-        var traversal = new WorkspaceTraversalRequest(
-            workspace.RootPath,
-            explicitPaths: request.Paths,
-            includeGenerated: request.IncludeGenerated,
-            currentDirectory: workspace.CurrentDirectory);
+        var scope = SymbolWorkspaceScopeResolver.Resolve(workspace, request.Scope);
         var resolver = new SymbolEntityResolver(
-            new WorkspacePathTraverser(),
-            new WorkspaceProjectOwnershipResolver(
-                workspace.RootPath,
-                workspace.Projects.Select(static project => project.Path)));
+            scope.Traverser,
+            scope.Ownership);
         var resolution = await resolver
-            .ResolveAsync(request.Target, traversal, cancellationToken)
+            .ResolveAsync(
+                request.Target,
+                scope.Traversal,
+                scope.DeclarationScope,
+                cancellationToken)
             .ConfigureAwait(false);
-        var evidence = SymbolEvidence(workspace.RootPath, request.Paths, resolution);
+        var evidence = SymbolEvidence(scope, resolution);
 
         if (resolution.Stale)
         {
-            var query = SearchQuery(resolution.LookupName, request.Paths);
+            var query = SearchQuery(resolution.LookupName, scope);
             return SymbolFailure(
                 resolution.ErrorCode!,
                 "The symbol ID no longer identifies a current declaration.",
@@ -136,7 +137,7 @@ internal sealed class OutlineCommandHandler :
 
         if (resolution.Ambiguous)
         {
-            var query = SearchQuery(resolution.LookupName, request.Paths);
+            var query = SearchQuery(resolution.LookupName, scope);
             return SymbolFailure(
                 "evidence.ambiguous_id",
                 "The symbol ID resolves to multiple current declarations.",
@@ -165,7 +166,8 @@ internal sealed class OutlineCommandHandler :
             match.Id,
             match.IsGenerated,
             match.OwningProjects,
-            evidence);
+            evidence,
+            scope.CanonicalArguments());
     }
 
     private static async ValueTask<ICommandResult> OutlineDocumentAsync(
@@ -226,7 +228,7 @@ internal sealed class OutlineCommandHandler :
 
         var isGenerated = document.IsGenerated
             || WorkspaceGeneratedCodeClassifier.HasGeneratedHeader(read.Text!);
-        if (isGenerated && !request.IncludeGenerated)
+        if (isGenerated && !request.Scope.IncludeGenerated)
         {
             return DocumentFailure(
                 "document.generated_excluded",
@@ -306,7 +308,8 @@ internal sealed class OutlineCommandHandler :
             FileEntityIdentity.Create(document),
             isGenerated,
             owners,
-            evidence);
+            evidence,
+            scopeArguments: string.Empty);
     }
 
     private static CommandResult<OutlinePayload> Success(
@@ -316,13 +319,14 @@ internal sealed class OutlineCommandHandler :
         string id,
         bool generated,
         IReadOnlyList<string> owners,
-        Evidence evidence)
+        Evidence evidence,
+        string scopeArguments)
     {
         var bounded = BoundedCollection<SourceOutlineItem>.Create(
             outline.Items,
             request.Full ? outline.Items.Count : request.Limit,
             knownTotal: outline.TotalCount,
-            retrievalCommand: RetrievalCommand(request));
+            retrievalCommand: RetrievalCommand(request, scopeArguments));
         return CommandResult<OutlinePayload>.Success(
             "outline",
             new OutlinePayload(
@@ -382,8 +386,7 @@ internal sealed class OutlineCommandHandler :
         && before.IsGenerated == after.IsGenerated;
 
     private static Evidence SymbolEvidence(
-        string workspaceRoot,
-        IReadOnlyList<string> paths,
+        ResolvedSymbolWorkspaceScope scope,
         SymbolEntityResolution resolution) =>
         new(
             resolution.Snapshot,
@@ -396,11 +399,7 @@ internal sealed class OutlineCommandHandler :
                 excluded: 0,
                 failed: 0),
             EvidenceConfidence.Candidate,
-            new EvidenceScope(
-                workspaceRoot,
-                paths.Count == 0
-                    ? "eligible C# declaration paths"
-                    : "eligible explicitly selected C# declaration paths"));
+            scope.EvidenceScope);
 
     private static CommandResult<OutlineResolutionPayload> SymbolFailure(
         string code,
@@ -485,19 +484,19 @@ internal sealed class OutlineCommandHandler :
 
     private static string SearchQuery(
         string name,
-        IReadOnlyList<string> paths) =>
+        ResolvedSymbolWorkspaceScope scope) =>
         "dnaxi search symbol "
         + Quote(name)
-        + PathArguments(paths)
-        + " --include-tests --include-generated"
+        + scope.CanonicalArguments()
         + " --fields 'id,signature,owning_projects,variant_count,variants' --full";
 
-    private static string RetrievalCommand(OutlineCommandRequest request) =>
+    private static string RetrievalCommand(
+        OutlineCommandRequest request,
+        string scopeArguments) =>
         CanonicalInvocation.OneShot(
             "dnaxi outline "
             + Quote(request.Target)
-            + PathArguments(request.Paths)
-            + (request.IncludeGenerated ? " --include-generated" : string.Empty)
+            + scopeArguments
             + " --full");
 
     private static string GeneratedCorrection(OutlineCommandRequest request) =>
@@ -514,9 +513,6 @@ internal sealed class OutlineCommandHandler :
                             System.Globalization.CultureInfo.InvariantCulture)
                     : string.Empty))
         + "` to include it explicitly.";
-
-    private static string PathArguments(IReadOnlyList<string> paths) =>
-        string.Concat(paths.Select(path => " --path " + Quote(path)));
 
     private static string Quote(string value) =>
         "'" + value.Replace("'", "'\\''", StringComparison.Ordinal) + "'";

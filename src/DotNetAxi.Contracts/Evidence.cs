@@ -77,7 +77,9 @@ public sealed record EvidenceScope
         string? solution = null,
         IEnumerable<string>? projects = null,
         IEnumerable<string>? frameworks = null,
-        string? configuration = null)
+        string? configuration = null,
+        EvidenceEligibility? eligibility = null,
+        IEnumerable<string>? paths = null)
     {
         WorkspaceRoot = ContractGuards.RequiredText(
             workspaceRoot,
@@ -91,6 +93,8 @@ public sealed record EvidenceScope
         Configuration = ContractGuards.OptionalText(
             configuration,
             nameof(configuration));
+        Eligibility = eligibility;
+        Paths = ContractGuards.CopyText(paths, nameof(paths));
     }
 
     public string WorkspaceRoot { get; }
@@ -104,7 +108,15 @@ public sealed record EvidenceScope
     public IReadOnlyList<string> Frameworks { get; }
 
     public string? Configuration { get; }
+
+    public EvidenceEligibility? Eligibility { get; }
+
+    public IReadOnlyList<string> Paths { get; }
 }
+
+public sealed record EvidenceEligibility(
+    bool IncludeTests,
+    bool IncludeGenerated);
 
 public sealed record EvidenceCoverage
 {

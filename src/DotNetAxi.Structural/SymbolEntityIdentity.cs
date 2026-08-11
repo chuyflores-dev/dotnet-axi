@@ -227,6 +227,37 @@ public sealed class SymbolEntityResolver
         string id,
         WorkspaceTraversalRequest traversal,
         CancellationToken cancellationToken = default)
+        => await ResolveAsync(
+            id,
+            traversal,
+            includeTests: true,
+            includeGenerated: true,
+            cancellationToken)
+            .ConfigureAwait(false);
+
+    public async ValueTask<SymbolEntityResolution> ResolveAsync(
+        string id,
+        WorkspaceTraversalRequest traversal,
+        bool includeTests,
+        bool includeGenerated,
+        CancellationToken cancellationToken = default)
+        => await ResolveAsync(
+            id,
+            traversal,
+            new SymbolDeclarationScope(
+                solution: null,
+                projects: null,
+                traversal.ExplicitPaths,
+                includeTests,
+                includeGenerated),
+            cancellationToken)
+            .ConfigureAwait(false);
+
+    public async ValueTask<SymbolEntityResolution> ResolveAsync(
+        string id,
+        WorkspaceTraversalRequest traversal,
+        SymbolDeclarationScope scope,
+        CancellationToken cancellationToken = default)
     {
         if (!SymbolEntityIdentity.TryParse(id, out var identity))
         {
@@ -241,13 +272,14 @@ public sealed class SymbolEntityResolver
             traversal.WorkspaceRoot,
             traversal.Configuration,
             traversal.ExplicitPaths,
-            includeGenerated: true,
+            scope.IncludeGenerated,
             currentDirectory: traversal.CurrentDirectory);
         var result = await _searcher.SearchAsync(
             new SymbolDeclarationSearchRequest(
                 identity.LookupName,
                 resolutionTraversal,
-                includeTests: true),
+                includeTests: scope.IncludeTests,
+                scope: scope),
             cancellationToken)
             .ConfigureAwait(false);
         var stableMatches = result.Matches

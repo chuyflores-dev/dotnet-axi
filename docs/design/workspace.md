@@ -28,6 +28,24 @@ If multiple candidates remain, the command MUST fail non-interactively with
 the ambiguity, candidate paths, and a concrete `--solution <path>` or
 `--project <path>` correction.
 
+Passive symbol commands share this selection contract. `search symbol`, `show
+symbol`, and symbol-targeted `outline` resolve the same effective entry point,
+project set, explicit paths, and source eligibility. A directory workspace
+with no supported entry point remains searchable, but the commands never pick
+one entry point when multiple candidates have equal precedence. Repository
+configuration participates through the existing configured-selector hook once
+configuration loading supplies it; the symbol commands do not define a second
+configuration schema.
+
+Selecting a solution reads its `.sln` or `.slnx` membership passively without
+evaluating projects or loading a compilation. Selecting a project uses that
+single passive owner. Traversal is restricted to files owned by the selected
+projects, including literal linked `Compile` sources already recognized by
+passive ownership; explicitly selected external paths remain available and
+visibly unowned. Repeated solution members, overlapping project directories,
+and linked files are de-duplicated by normalized file identity while every
+distinct owner and compiler-variant candidate remains attached.
+
 Workspace-aware commands MUST support the applicable selectors:
 
 - `--configuration <name>`.

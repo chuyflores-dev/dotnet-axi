@@ -189,6 +189,10 @@ internal static class CliApplication
         {
             Description = "Limit results to a namespace and its descendants.",
         };
+        var symbolSolution = new Option<string?>("--solution")
+        {
+            Description = "Select one passively discovered solution scope.",
+        };
         var symbolProject = new Option<string?>("--project")
         {
             Description = "Limit results to one passively discovered project owner.",
@@ -213,6 +217,7 @@ internal static class CliApplication
         symbolCommand.Arguments.Add(symbolQuery);
         symbolCommand.Options.Add(symbolKinds);
         symbolCommand.Options.Add(symbolNamespace);
+        symbolCommand.Options.Add(symbolSolution);
         symbolCommand.Options.Add(symbolProject);
         symbolCommand.Options.Add(symbolPaths);
         symbolCommand.Options.Add(symbolAccessibilities);
@@ -231,6 +236,7 @@ internal static class CliApplication
                 result.GetValue(symbolQuery)!,
                 result.GetValue(symbolKinds) ?? [],
                 result.GetValue(symbolNamespace),
+                result.GetValue(symbolSolution),
                 result.GetValue(symbolProject),
                 result.GetValue(symbolPaths) ?? [],
                 result.GetValue(symbolAccessibilities) ?? [],
@@ -257,17 +263,37 @@ internal static class CliApplication
             "symbol",
             "Show one resolved C# declaration without loading a compilation.");
         var showSymbolId = new Argument<string>("symbol");
+        var showSymbolSolution = new Option<string?>("--solution")
+        {
+            Description = "Reuse the selected solution scope.",
+        };
+        var showSymbolProject = new Option<string?>("--project")
+        {
+            Description = "Reuse the selected project scope.",
+        };
         var showSymbolPaths = new Option<string[]>("--path")
         {
             AllowMultipleArgumentsPerToken = false,
             Description = "Reuse an explicit search scope, including external paths.",
+        };
+        var showSymbolIncludeTests = new Option<bool>("--include-tests")
+        {
+            Description = "Resolve declarations classified as test-only.",
+        };
+        var showSymbolIncludeGenerated = new Option<bool>("--include-generated")
+        {
+            Description = "Resolve declarations classified as generated source.",
         };
         var showSymbolMaxCharacters = new Option<int>("--max-chars")
         {
             DefaultValueFactory = static _ => 1000,
         };
         showSymbolCommand.Arguments.Add(showSymbolId);
+        showSymbolCommand.Options.Add(showSymbolSolution);
+        showSymbolCommand.Options.Add(showSymbolProject);
         showSymbolCommand.Options.Add(showSymbolPaths);
+        showSymbolCommand.Options.Add(showSymbolIncludeTests);
+        showSymbolCommand.Options.Add(showSymbolIncludeGenerated);
         showSymbolCommand.Options.Add(showSymbolMaxCharacters);
         host.RegisterCommand(showCommand, showSymbolCommand, OperationPolicy.Passive,
             [
@@ -277,7 +303,11 @@ internal static class CliApplication
         showSymbolCommand.BindHandler(
             result => SymbolShowCommandRequest.Create(
                 result.GetValue(showSymbolId)!,
+                result.GetValue(showSymbolSolution),
+                result.GetValue(showSymbolProject),
                 result.GetValue(showSymbolPaths) ?? [],
+                result.GetValue(showSymbolIncludeTests),
+                result.GetValue(showSymbolIncludeGenerated),
                 result.GetValue(showSymbolMaxCharacters)),
             static () => new SymbolShowCommandHandler(),
             host.ResponseWriter);
@@ -345,10 +375,22 @@ internal static class CliApplication
         {
             Description = "One explicit C# document path or canonical symbol/v2 identity.",
         };
+        var outlineSolution = new Option<string?>("--solution")
+        {
+            Description = "Reuse the selected solution scope for a symbol target.",
+        };
+        var outlineProject = new Option<string?>("--project")
+        {
+            Description = "Reuse the selected project scope for a symbol target.",
+        };
         var outlinePaths = new Option<string[]>("--path")
         {
             AllowMultipleArgumentsPerToken = false,
             Description = "Reuse an explicit symbol-search scope, including external paths.",
+        };
+        var outlineIncludeTests = new Option<bool>("--include-tests")
+        {
+            Description = "Resolve test-only declarations for a symbol target.",
         };
         var outlineIncludeGenerated = new Option<bool>("--include-generated")
         {
@@ -364,7 +406,10 @@ internal static class CliApplication
             Description = "Return every outline item without a count limit.",
         };
         outlineCommand.Arguments.Add(outlineTarget);
+        outlineCommand.Options.Add(outlineSolution);
+        outlineCommand.Options.Add(outlineProject);
         outlineCommand.Options.Add(outlinePaths);
+        outlineCommand.Options.Add(outlineIncludeTests);
         outlineCommand.Options.Add(outlineIncludeGenerated);
         outlineCommand.Options.Add(outlineLimit);
         outlineCommand.Options.Add(outlineFull);
@@ -380,7 +425,10 @@ internal static class CliApplication
         outlineCommand.BindHandler(
             result => OutlineCommandRequest.Create(
                 result.GetValue(outlineTarget)!,
+                result.GetValue(outlineSolution),
+                result.GetValue(outlineProject),
                 result.GetValue(outlinePaths) ?? [],
+                result.GetValue(outlineIncludeTests),
                 result.GetValue(outlineIncludeGenerated),
                 result.GetValue(outlineLimit),
                 result.Tokens.Any(token => token.Value == "--limit"),

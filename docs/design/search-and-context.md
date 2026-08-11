@@ -246,14 +246,22 @@ type-name query does not flood results with all of that type's members. Ties
 follow the shared deterministic result ordering.
 
 The command supports repeatable `--kind` and `--accessibility` filters.
-`--namespace` includes the exact namespace and descendants. `--project`
-selects a passively discovered ownership candidate and scopes traversal to its
-directory; it does not evaluate project items. `--path` and
-`--include-generated` use the shared traversal policy. Tests are excluded by
-default and `--include-tests` restores declarations whose nearest passive
-project owners are all test-named projects; a shared file with a production
-owner remains eligible. These classifications are syntax and path candidates,
-not semantic claims.
+`--namespace` includes the exact namespace and descendants. `--solution` and
+`--project` use shared workspace entry-point selection; solution membership is
+read passively and project selection does not evaluate project items. `--path`
+constrains that selected traversal and `--include-generated` uses the shared
+traversal policy. Tests are excluded by default and `--include-tests` restores
+declarations whose nearest effective passive project owners are all test-named
+projects; a shared file with a production owner remains eligible. These
+classifications and all owner variants remain syntax and path candidates, not
+semantic claims.
+
+The effective solution, de-duplicated project owners, explicit paths, and
+test/generated eligibility form one structural scope descriptor shared by
+declaration search and ID resolution. They participate in the workspace
+snapshot even when the selected traversal is empty. Evidence reports those
+effective values, so a caller can distinguish production-only evidence from a
+test/generated-inclusive result without inferring policy from a command line.
 
 Default rows include kind, name, file, and line. Candidate ID, namespace,
 fully qualified name, signature, accessibility, ownership, test/generated
@@ -321,7 +329,10 @@ project/type, source location, documentation preview, applicable body preview,
 and cheap relationship summaries.
 
 The command accepts one canonical `symbol/v2` identity from `search symbol`
-and resolves it through the same passive syntax traversal. `--max-chars`
+and resolves it through the same passive syntax traversal. It accepts the same
+applicable `--solution`, `--project`, `--path`, `--include-tests`, and
+`--include-generated` scope inputs; an ID outside that effective eligibility is
+not silently resolved. `--max-chars`
 defaults to 1,000 Unicode scalar values and applies independently to the
 documentation and body previews. Each preview reports its included, total,
 and omitted character counts; a truncated preview includes a complete command
@@ -330,10 +341,11 @@ empty preview. Cheap summaries are syntax-local counts for attributes,
 parameters, type parameters, members, base types, and sibling overloads; they
 do not claim semantic relationship evidence.
 
-An ID discovered through an explicit `search symbol --path` scope reuses that
-scope through one or more `show symbol --path` options. This keeps external
-files and explicitly selected build output available without retaining tool
-state. Truncation and replacement commands preserve the supplied paths.
+An ID discovered through an explicit symbol-search scope reuses that complete
+scope with `show symbol`. This keeps external files and explicitly selected
+build output available without retaining tool state. Truncation, stale, and
+ambiguous recovery commands preserve the effective entry-point selector,
+paths, and test/generated eligibility.
 
 Current primary-constructor identities include their parameter signature.
 Resolution also recognizes `symbol/v2` primary-constructor fingerprints emitted
@@ -395,9 +407,11 @@ inclusion.
 
 `outline` returns imports, namespace, types, members, signatures, and relevant
 attributes through Roslyn syntax. It accepts one explicit C# document path or
-one canonical `symbol/v2` identity. Symbol targets accept repeated `--path`
-values to preserve an explicit declaration-search scope; document targets do
-not reinterpret those scope paths.
+one canonical `symbol/v2` identity. Symbol targets use the same solution,
+project, path, test, and generated scope as declaration search and symbol show;
+document targets do not reinterpret those workspace-scope inputs. Symbol
+truncation and resolution recovery commands preserve the complete effective
+scope.
 
 The output is a flat source-ordered sequence whose `depth` reconstructs syntax
 nesting without duplicating parent declarations. Each item reports a stable

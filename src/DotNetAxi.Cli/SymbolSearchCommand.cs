@@ -8,11 +8,8 @@ internal sealed record SymbolSearchCommandRequest(
     string Query,
     IReadOnlyList<string> Kinds,
     string? Namespace,
-    string? Project,
-    IReadOnlyList<string> Paths,
+    SymbolWorkspaceScopeRequest Scope,
     IReadOnlyList<string> Accessibilities,
-    bool IncludeTests,
-    bool IncludeGenerated,
     int Limit,
     bool LimitSpecified,
     bool Full,
@@ -46,6 +43,7 @@ internal sealed record SymbolSearchCommandRequest(
         string query,
         IReadOnlyList<string> kinds,
         string? namespaceFilter,
+        string? solution,
         string? project,
         IReadOnlyList<string> paths,
         IReadOnlyList<string> accessibilities,
@@ -92,14 +90,6 @@ internal sealed record SymbolSearchCommandRequest(
                 "Provide a project selector or remove --project.");
         }
 
-        if (paths.Any(string.IsNullOrWhiteSpace))
-        {
-            throw Usage(
-                "usage.symbol_path",
-                "A --path value cannot be blank.",
-                "Provide one or more non-blank paths.");
-        }
-
         if (limit < 0 || (full && limitSpecified))
         {
             throw Usage(
@@ -129,11 +119,14 @@ internal sealed record SymbolSearchCommandRequest(
             query,
             kinds,
             namespaceFilter,
-            project,
-            paths,
+            SymbolWorkspaceScopeRequest.Create(
+                solution,
+                project,
+                paths,
+                includeTests,
+                includeGenerated,
+                "usage.symbol_path"),
             accessibilities,
-            includeTests,
-            includeGenerated,
             limit,
             limitSpecified,
             full,
@@ -181,47 +174,20 @@ internal sealed class SymbolSearchCommandHandler :
         cancellationToken.ThrowIfCancellationRequested();
 
         var workspace = new WorkspaceDiscoverer().Discover(Directory.GetCurrentDirectory());
-        string? selectedProject = null;
-        string? projectDirectory = null;
-        if (request.Project is not null)
-        {
-            try
-            {
-                selectedProject = new WorkspaceEntryPointSelector()
-                    .Select(workspace, new WorkspaceSelectionRequest(project: request.Project))
-                    .Path;
-                projectDirectory = DirectoryPath(selectedProject);
-            }
-            catch (WorkspaceSelectionUsageException exception)
-            {
-                throw new CommandUsageException(
-                    exception.Code,
-                    exception.Message,
-                    exception.Correction);
-            }
-        }
-
-        var traversal = new WorkspaceTraversalRequest(
-            workspace.RootPath,
-            explicitPaths: request.Paths,
-            includeGenerated: request.IncludeGenerated,
-            currentDirectory: workspace.CurrentDirectory);
-        var traverser = new ProjectScopedTraverser(
-            new WorkspacePathTraverser(),
-            projectDirectory);
-        var ownership = new WorkspaceProjectOwnershipResolver(
-            workspace.RootPath,
-            workspace.Projects.Select(static project => project.Path));
-        var result = await new SymbolDeclarationSearcher(traverser, ownership)
+        var scope = SymbolWorkspaceScopeResolver.Resolve(workspace, request.Scope);
+        var result = await new SymbolDeclarationSearcher(
+                scope.Traverser,
+                scope.Ownership)
             .SearchAsync(
                 new SymbolDeclarationSearchRequest(
                     request.Query,
-                    traversal,
+                    scope.Traversal,
                     request.Kinds,
                     request.Namespace,
-                    selectedProject,
+                    project: null,
                     request.Accessibilities,
-                    request.IncludeTests),
+                    request.Scope.IncludeTests,
+                    scope.DeclarationScope),
                 cancellationToken)
             .ConfigureAwait(false);
 
@@ -233,7 +199,7 @@ internal sealed class SymbolSearchCommandHandler :
                 Project(included, fields, cancellationToken),
                 result.Matches.Count,
                 totalKnown: true,
-                RetrievalCommand(request, selectedProject));
+                RetrievalCommand(request, scope));
         var payload = new SymbolSearchPayload(
             bounded.Count,
             bounded.TotalKnown,
@@ -253,12 +219,7 @@ internal sealed class SymbolSearchCommandHandler :
                 excluded: 0,
                 failed: 0),
             EvidenceConfidence.Candidate,
-            new EvidenceScope(
-                workspace.RootPath,
-                request.Paths.Count == 0
-                    ? "eligible C# declaration paths"
-                    : "eligible explicitly selected C# declaration paths",
-                projects: selectedProject is null ? null : [selectedProject]));
+            scope.EvidenceScope);
 
         return CommandResult<SymbolSearchPayload>.Success(
             "search symbol",
@@ -280,7 +241,7 @@ internal sealed class SymbolSearchCommandHandler :
 
     private static string RetrievalCommand(
         SymbolSearchCommandRequest request,
-        string? selectedProject)
+        ResolvedSymbolWorkspaceScope scope)
     {
         var arguments = new List<string>
         {
@@ -301,68 +262,25 @@ internal sealed class SymbolSearchCommandHandler :
             arguments.Add(Quote(request.Namespace));
         }
 
-        if (selectedProject is not null)
-        {
-            arguments.Add("--project");
-            arguments.Add(Quote(selectedProject));
-        }
-
-        foreach (var path in request.Paths)
-        {
-            arguments.Add("--path");
-            arguments.Add(Quote(path));
-        }
+        var command = string.Join(' ', arguments)
+            + scope.CanonicalArguments();
 
         foreach (var accessibility in request.Accessibilities)
         {
-            arguments.Add("--accessibility");
-            arguments.Add(Quote(accessibility));
+            command += " --accessibility " + Quote(accessibility);
         }
 
-        if (request.IncludeTests) arguments.Add("--include-tests");
-        if (request.IncludeGenerated) arguments.Add("--include-generated");
         if (request.Fields.Count > 0)
         {
-            arguments.Add("--fields");
-            arguments.Add(Quote(OutputFieldSelection.CanonicalValue(request.Fields)));
+            command += " --fields "
+                + Quote(OutputFieldSelection.CanonicalValue(request.Fields));
         }
 
-        arguments.Add("--full");
-        return CanonicalInvocation.OneShot(string.Join(' ', arguments));
-    }
-
-    private static string DirectoryPath(string projectPath)
-    {
-        var separator = projectPath.LastIndexOf('/');
-        return separator < 0 ? string.Empty : projectPath[..separator];
+        return CanonicalInvocation.OneShot(command + " --full");
     }
 
     private static string Quote(string value) =>
         "'" + value.Replace("'", "'\\''", StringComparison.Ordinal) + "'";
-
-    private static bool MatchesProject(WorkspaceTraversalPath path, string? directory)
-    {
-        if (directory is null || path.IsExternal)
-        {
-            return directory is null;
-        }
-
-        return directory.Length == 0
-            || path.RelativePath.StartsWith(directory + "/", StringComparison.Ordinal);
-    }
-
-    private sealed class ProjectScopedTraverser(
-        IWorkspacePathTraverser inner,
-        string? projectDirectory) : IWorkspacePathTraverser
-    {
-        public IReadOnlyList<WorkspaceTraversalPath> Traverse(
-            WorkspaceTraversalRequest request,
-            CancellationToken cancellationToken = default) =>
-            Array.AsReadOnly(
-                inner.Traverse(request, cancellationToken)
-                    .Where(path => MatchesProject(path, projectDirectory))
-                    .ToArray());
-    }
 
     private static readonly OutputFieldSet<SymbolDeclarationMatch> SymbolFields = new(
     [

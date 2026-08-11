@@ -1669,62 +1669,7 @@ public sealed class MsBuildProjectGraphEvaluator
     {
         try
         {
-            var extension = Path.GetExtension(solutionPath);
-            var solutionDirectory = Path.GetDirectoryName(solutionPath)!;
-            if (extension.Equals(".slnx", StringComparison.OrdinalIgnoreCase))
-            {
-                using var stream = File.OpenRead(solutionPath);
-                using var reader = XmlReader.Create(
-                    stream,
-                    new XmlReaderSettings
-                    {
-                        DtdProcessing = DtdProcessing.Prohibit,
-                        XmlResolver = null,
-                    });
-                return XDocument.Load(reader)
-                    .Descendants()
-                    .Where(static element => element.Name.LocalName.Equals(
-                        "Project",
-                        StringComparison.Ordinal))
-                    .Select(static element => element.Attributes()
-                        .FirstOrDefault(attribute => attribute.Name.LocalName.Equals(
-                            "Path",
-                            StringComparison.OrdinalIgnoreCase))?.Value)
-                    .Where(static path => !string.IsNullOrWhiteSpace(path))
-                    .Select(path => Path.GetFullPath(
-                        path!
-                            .Replace('/', Path.DirectorySeparatorChar)
-                            .Replace('\\', Path.DirectorySeparatorChar),
-                        solutionDirectory))
-                    .Where(static path => Path.GetExtension(path).EndsWith(
-                        "proj",
-                        StringComparison.OrdinalIgnoreCase))
-                    .Distinct(PathComparer())
-                    .ToArray();
-            }
-
-            if (extension.Equals(".sln", StringComparison.OrdinalIgnoreCase))
-            {
-                return File.ReadLines(solutionPath)
-                    .Where(static line => line.StartsWith(
-                        "Project(\"",
-                        StringComparison.Ordinal))
-                    .Select(static line => line.Split('"'))
-                    .Where(static fields => fields.Length >= 6)
-                    .Select(static fields => fields[5])
-                    .Where(static path => !string.IsNullOrWhiteSpace(path))
-                    .Where(static path => Path.GetExtension(path).EndsWith(
-                        "proj",
-                        StringComparison.OrdinalIgnoreCase))
-                    .Select(path => Path.GetFullPath(
-                        path.Replace('\\', Path.DirectorySeparatorChar),
-                        solutionDirectory))
-                    .Where(static path => !path.EndsWith(
-                        ".sln",
-                        StringComparison.OrdinalIgnoreCase))
-                    .Distinct(PathComparer())
-                    .ToArray();
-            }
+            return PassiveSolutionProjectReader.ReadProjectPaths(solutionPath);
         }
         catch (Exception exception)
             when (exception is IOException
