@@ -326,8 +326,26 @@ bounded replacement candidates and the existing full symbol-search correction.
 An identity that resolves to multiple current declarations returns bounded
 candidates and remains explicitly ambiguous.
 
-`show document` defaults to an outline and bounded preview instead of dumping
-a large file.
+`show document` accepts one explicit file path and returns the normalized path,
+the stable `file/v1` identity also emitted by file search, passive project
+ownership, external and generated markers, content-derived snapshot evidence,
+encoding and byte-order-mark detail, byte size, an outline reference, and a
+bounded preview instead of dumping a large file. External files are available
+because the positional path is explicit and remain visibly external and
+unowned. Generated files remain excluded unless `--include-generated` is
+present.
+
+The preview defaults to 1,000 Unicode scalar values. `--max-chars` selects a
+different bound and `--full` explicitly returns the whole document; the two
+options cannot be combined. Truncation reports included, total, and omitted
+character counts plus a complete `--full` retrieval command. Supported text
+encodings are strict UTF-8 with or without a byte-order mark and byte-order
+marked little- or big-endian UTF-16. Binary, undecodable, unsupported, missing,
+and unreadable documents return structured failures without leaking partial
+content. Source syntax need not parse successfully for the document text to be
+shown. Until the `outline` command ships, the outline reference preserves the
+normalized document path and reports that the capability is unavailable
+instead of advertising a command that cannot execute.
 
 `outline` returns imports, namespace, types, members, signatures, and relevant
 attributes through Roslyn syntax.
