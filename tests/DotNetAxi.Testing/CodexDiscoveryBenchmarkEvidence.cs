@@ -9,7 +9,7 @@ internal sealed class CodexDiscoveryEvidenceStore : IAgentBenchmarkRunSink
     internal const string ReportSchema =
         "dotnet-axi/codex-discovery-report/v3";
     internal const string SummarySchema =
-        "dotnet-axi/codex-discovery-summary/v4";
+        "dotnet-axi/codex-discovery-summary/v5";
 
     private readonly string _evidenceDirectory;
     private readonly string _runsDirectory;
@@ -633,7 +633,7 @@ internal static class CodexDiscoveryEvidenceValidator
                 $"Run '{scheduled.RunId}' version or hash pins drifted from the preparation.");
         }
 
-        var reconciliation = ReconcileRaw(run, task);
+        var reconciliation = ReconcileRaw(context, run, task);
         if (!reconciliation.Passed)
         {
             throw new AgentBenchmarkException(
@@ -691,6 +691,7 @@ internal static class CodexDiscoveryEvidenceValidator
     }
 
     private static CodexDiscoveryRawReconciliation ReconcileRaw(
+        CodexDiscoveryPreparedContext context,
         AgentBenchmarkRunResult run,
         AgentTaskDefinition task)
     {
@@ -706,6 +707,8 @@ internal static class CodexDiscoveryEvidenceValidator
         var state = EvidenceProviderState.AwaitingThread;
         var completedItems = new HashSet<string>(StringComparer.Ordinal);
         var toolCalls = new List<AgentBenchmarkToolCall>();
+        var rawCommandOutputs =
+            new Dictionary<int, CodexDiscoveryRawCommandOutput>();
         var files = new SortedSet<string>(StringComparer.Ordinal);
         var projects = new SortedSet<string>(StringComparer.Ordinal);
         int? startedProcess = null;
@@ -953,6 +956,18 @@ internal static class CodexDiscoveryEvidenceValidator
                                 command,
                                 run.Sandbox,
                                 task.Execution.PermittedTools);
+                            rawCommandOutputs.Add(
+                                toolCalls.Count,
+                                new CodexDiscoveryRawCommandOutput(
+                                    command,
+                                    outputText,
+                                    commandExit,
+                                    TryGetRawString(
+                                        item,
+                                        "status",
+                                        out var rawCommandStatus)
+                                            ? rawCommandStatus
+                                            : null));
                             toolCalls.Add(new AgentBenchmarkToolCall(
                                 toolCalls.Count,
                                 toolClass,
@@ -1095,6 +1110,25 @@ internal static class CodexDiscoveryEvidenceValidator
                 reconstructedStatus,
                 StringComparison.Ordinal);
         var toolCallsMatch = toolCalls.SequenceEqual(run.ToolCalls);
+        var normalizedRoute = ReconcileTaskRoute(
+            task,
+            run.ToolCalls,
+            RawCommandOutputs(run),
+            context.Request.Product.PackageId,
+            context.Request.Product.PackageVersion,
+            context.Request.Product.PackageSource.Path,
+            context.Request.DnxExecutable.Path);
+        var rawRoute = ReconcileTaskRoute(
+            task,
+            toolCalls,
+            rawCommandOutputs,
+            context.Request.Product.PackageId,
+            context.Request.Product.PackageVersion,
+            context.Request.Product.PackageSource.Path,
+            context.Request.DnxExecutable.Path);
+        var routeOutcomesMatch = CanonicalEquals(
+            normalizedRoute,
+            rawRoute);
         var scopeMatches = files.SequenceEqual(run.InspectedScope.Files)
                            && projects.SequenceEqual(
                                run.InspectedScope.Projects);
@@ -1107,6 +1141,7 @@ internal static class CodexDiscoveryEvidenceValidator
             outputTokens == run.OutputTokens,
             turns == run.Turns,
             toolCallsMatch,
+            routeOutcomesMatch,
             answerMatches,
             scopeMatches,
             files.ToArray(),
@@ -1119,6 +1154,7 @@ internal static class CodexDiscoveryEvidenceValidator
             && outputTokens == run.OutputTokens
             && turns == run.Turns
             && toolCallsMatch
+            && routeOutcomesMatch
             && answerMatches
             && scopeMatches
             && processExit);
@@ -1271,112 +1307,25 @@ internal static class CodexDiscoveryEvidenceValidator
     {
         var runActivations = runs.Select(run =>
         {
-            var vector = CodexBenchmarkCommandEvidence.MatchTaskRouteVector(
-                task.Id,
+            var reconciliation = ReconcileTaskRoute(
+                task,
                 run.ToolCalls,
+                RawCommandOutputs(run),
                 packageId,
                 packageVersion,
                 packageSource,
-                CodexDiscoveryBenchmarkPreparation
-                    .PackageSourceEnvironmentVariable,
                 dnxExecutablePath);
-            var rawCommands = RawCommandOutputs(run);
-            var expectedConsidered = ExpectedConsidered(task.Id);
-            var steps = vector.Steps.Select((step, ordinal) =>
-            {
-                rawCommands.TryGetValue(step.Sequence, out var raw);
-                var outputScope = raw is null
-                    ? CodexDiscoveryRawScopeEvidence.Empty
-                    : ReadScopeEvidence(raw.Output);
-                var selectorReconciled =
-                    step.Invocation.SelectorKind == "default"
-                        ? outputScope.SelectorKind is null
-                        : string.Equals(
-                            outputScope.SelectorKind,
-                            step.Invocation.SelectorKind,
-                            StringComparison.Ordinal)
-                          && string.Equals(
-                            NormalizeScopeValue(outputScope.SelectorValue),
-                            NormalizeScopeValue(step.Invocation.SelectorValue),
-                            StringComparison.Ordinal);
-                var eligibilityReconciled = step.Invocation.Route
-                    == "show document"
-                        ? outputScope.IncludeTests is null
-                          && outputScope.IncludeGenerated
-                          == step.Invocation.IncludeGenerated
-                        : outputScope.IncludeTests
-                          == step.Invocation.IncludeTests
-                          && outputScope.IncludeGenerated
-                          == step.Invocation.IncludeGenerated;
-                var scopeReconciled =
-                    outputScope.Considered == expectedConsidered
-                    && selectorReconciled
-                    && eligibilityReconciled;
-                var identityReconciled = ordinal == 0
-                    || !IsSymbolIdentityRoute(step.Invocation.Route)
-                    || rawCommands.TryGetValue(
-                        vector.Steps[ordinal - 1].Sequence,
-                        out var priorRaw)
-                    && ContainsExactSymbolId(
-                        priorRaw.Output,
-                        step.Invocation.Target!);
-                var outputCode = raw is null
-                    ? null
-                    : ReadErrorCode(raw.Output);
-                var expectedErrorCode = ExpectedErrorCode(task.Id);
-                var outcomeReconciled = expectedErrorCode is null
-                    ? step.Succeeded && outputCode is null
-                    : !step.Succeeded
-                      && string.Equals(
-                          outputCode,
-                          expectedErrorCode,
-                          StringComparison.Ordinal);
-                return new CodexDiscoveryActivationStep(
-                    ordinal,
-                    step.Sequence,
-                    step.Invocation.Route,
-                    ExactMatch: true,
-                    step.Succeeded,
-                    step.Invocation.SelectorKind,
-                    step.Invocation.SelectorValue,
-                    step.Invocation.IncludeTests,
-                    step.Invocation.IncludeGenerated,
-                    outputScope.SelectorKind,
-                    outputScope.SelectorValue,
-                    outputScope.IncludeTests,
-                    outputScope.IncludeGenerated,
-                    outputScope.Considered,
-                    scopeReconciled,
-                    identityReconciled,
-                    outputCode,
-                    outcomeReconciled);
-            }).ToArray();
-            var scopeReconciled = vector.Exact
-                                  && steps.Length == vector.Steps.Count
-                                  && steps.All(static step =>
-                                      step.ScopeReconciled);
-            var identityReconciled = vector.Exact
-                                     && steps.Length == vector.Steps.Count
-                                     && steps.All(static step =>
-                                         step.IdentityReconciled);
-            var outcomeReconciled = vector.Exact
-                                    && steps.Length == vector.Steps.Count
-                                    && steps.All(static step =>
-                                        step.OutcomeReconciled);
             return new CodexDiscoveryRunActivation(
                 run.ExecutionOrder,
                 run.Repetition,
-                vector.Exact,
-                vector.Successful,
-                scopeReconciled,
-                identityReconciled,
-                outcomeReconciled,
+                reconciliation.ExactVectorObserved,
+                reconciliation.CommandSuccessfulVector,
+                reconciliation.ScopeReconciled,
+                reconciliation.IdentityReconciled,
+                reconciliation.OutcomeReconciled,
                 run.Success
-                && vector.Exact
-                && scopeReconciled
-                && identityReconciled
-                && outcomeReconciled,
-                steps);
+                && reconciliation.Passed,
+                reconciliation.Steps);
         }).ToArray();
 
         return new CodexDiscoveryRouteActivation(
@@ -1385,6 +1334,260 @@ internal static class CodexDiscoveryEvidenceValidator
             runActivations.Count(static run => run.ExactVectorObserved),
             runActivations.Count(static run => run.SuccessfulActivation),
             runActivations);
+    }
+
+    internal static CodexDiscoveryRouteReconciliation ReconcileTaskRoute(
+        AgentTaskDefinition task,
+        IReadOnlyList<AgentBenchmarkToolCall> toolCalls,
+        IReadOnlyDictionary<int, CodexDiscoveryRawCommandOutput> rawCommands,
+        string packageId,
+        string packageVersion,
+        string packageSource,
+        string dnxExecutablePath)
+    {
+        ArgumentNullException.ThrowIfNull(task);
+        ArgumentNullException.ThrowIfNull(toolCalls);
+        ArgumentNullException.ThrowIfNull(rawCommands);
+        var vector = CodexBenchmarkCommandEvidence.MatchTaskRouteVector(
+            task.Id,
+            toolCalls,
+            packageId,
+            packageVersion,
+            packageSource,
+            CodexDiscoveryBenchmarkPreparation
+                .PackageSourceEnvironmentVariable,
+            dnxExecutablePath);
+        var expectedDiagnostic = ExpectedDiagnosticOutcome(task);
+        var expectedConsidered = ExpectedConsidered(task.Id);
+        var steps = vector.Steps.Select((step, ordinal) =>
+        {
+            rawCommands.TryGetValue(step.Sequence, out var raw);
+            var output = raw is null
+                ? CodexBenchmarkStructuredOutput.Empty
+                : CodexBenchmarkStructuredOutputReader.Read(raw.Output);
+            var outputScope = output.Scope;
+            var selectorReconciled =
+                step.Invocation.SelectorKind == "default"
+                    ? outputScope.SelectorKind is null
+                    : string.Equals(
+                        outputScope.SelectorKind,
+                        step.Invocation.SelectorKind,
+                        StringComparison.Ordinal)
+                      && string.Equals(
+                        NormalizeScopeValue(outputScope.SelectorValue),
+                        NormalizeScopeValue(step.Invocation.SelectorValue),
+                        StringComparison.Ordinal);
+            var eligibilityReconciled = step.Invocation.Route
+                == "show document"
+                    ? outputScope.IncludeTests is null
+                      && outputScope.IncludeGenerated
+                      == step.Invocation.IncludeGenerated
+                    : outputScope.IncludeTests
+                      == step.Invocation.IncludeTests
+                      && outputScope.IncludeGenerated
+                      == step.Invocation.IncludeGenerated;
+            var scopeReconciled =
+                outputScope.Considered == expectedConsidered
+                && selectorReconciled
+                && eligibilityReconciled;
+            var identityReconciled = expectedDiagnostic is not null
+                ? string.Equals(
+                    step.Invocation.Target,
+                    expectedDiagnostic.RequestedIdentity,
+                    StringComparison.Ordinal)
+                : ordinal == 0
+                  || !IsSymbolIdentityRoute(step.Invocation.Route)
+                  || rawCommands.TryGetValue(
+                      vector.Steps[ordinal - 1].Sequence,
+                      out var priorRaw)
+                  && ContainsExactSymbolId(
+                      priorRaw.Output,
+                      step.Invocation.Target!);
+            var envelopeReconciled = output.WellFormed
+                                     && string.Equals(
+                                         output.Schema,
+                                         CodexDiscoveryBenchmarkPreparation
+                                             .ProductSchema,
+                                         StringComparison.Ordinal)
+                                     && string.Equals(
+                                         output.Command,
+                                         step.Invocation.Route,
+                                         StringComparison.Ordinal);
+            var correctionReconciled = expectedDiagnostic is null
+                || ReconcileCorrection(output, expectedDiagnostic);
+            var diagnosticExitReconciled = expectedDiagnostic is null
+                || raw is
+                {
+                    ExitCode: 1,
+                    ItemStatus: "completed",
+                };
+            var outcomeReconciled = expectedDiagnostic is null
+                ? step.Succeeded
+                  && envelopeReconciled
+                  && output.Status is "success" or "partial"
+                  && output.ErrorCode is null
+                : !step.Succeeded
+                  && diagnosticExitReconciled
+                  && envelopeReconciled
+                  && string.Equals(
+                      output.Status,
+                      "failed",
+                      StringComparison.Ordinal)
+                  && string.Equals(
+                      output.ErrorCode,
+                      expectedDiagnostic.ErrorCode,
+                      StringComparison.Ordinal)
+                  && correctionReconciled;
+            return new CodexDiscoveryActivationStep(
+                ordinal,
+                step.Sequence,
+                step.Invocation.Route,
+                ExactMatch: true,
+                step.Succeeded,
+                raw?.ExitCode,
+                raw?.ItemStatus,
+                step.Invocation.SelectorKind,
+                step.Invocation.SelectorValue,
+                step.Invocation.IncludeTests,
+                step.Invocation.IncludeGenerated,
+                output.Schema,
+                output.Command,
+                output.Status,
+                output.WellFormed,
+                outputScope.SelectorKind,
+                outputScope.SelectorValue,
+                outputScope.IncludeTests,
+                outputScope.IncludeGenerated,
+                outputScope.Considered,
+                scopeReconciled,
+                identityReconciled,
+                output.ErrorCode,
+                output.Correction,
+                correctionReconciled,
+                outcomeReconciled);
+        }).ToArray();
+        var completeVector = vector.Exact
+                             && steps.Length == vector.Steps.Count;
+        var scopeReconciled = completeVector
+                              && steps.All(static step =>
+                                  step.ScopeReconciled);
+        var identityReconciled = completeVector
+                                 && steps.All(static step =>
+                                     step.IdentityReconciled);
+        var outcomeReconciled = completeVector
+                                && steps.All(static step =>
+                                    step.OutcomeReconciled);
+        return new CodexDiscoveryRouteReconciliation(
+            vector.Exact,
+            vector.Successful,
+            scopeReconciled,
+            identityReconciled,
+            outcomeReconciled,
+            completeVector
+            && scopeReconciled
+            && identityReconciled
+            && outcomeReconciled,
+            steps);
+    }
+
+    private static bool ReconcileCorrection(
+        CodexBenchmarkStructuredOutput output,
+        CodexDiscoveryExpectedDiagnostic expected)
+    {
+        var expectedQuery =
+            "dnaxi search symbol '"
+            + expected.CorrectionTarget
+            + "' --project 'src/Core/Core.csproj'"
+            + " --fields 'id,signature,owning_projects,variant_count,variants'"
+            + " --full";
+        if (!string.Equals(
+                output.Query,
+                expectedQuery,
+                StringComparison.Ordinal)
+            || !string.Equals(
+                output.Correction,
+                expectedQuery,
+                StringComparison.Ordinal)
+            || output.CandidateCount != expected.CandidateCount
+            || output.Candidates.Count != expected.CandidateCount)
+        {
+            return false;
+        }
+
+        if (!output.Candidates.All(candidate =>
+                candidate.Id is not null
+                && CodexBenchmarkStructuredOutputReader.IsCanonicalSymbolId(
+                    candidate.Id,
+                    candidate.Name)
+                && candidate.File is not null
+                && candidate.Line is > 0
+                && string.Equals(
+                    candidate.Name,
+                    expected.CorrectionTarget,
+                    StringComparison.Ordinal)
+                && string.Equals(
+                    candidate.Signature,
+                    expected.ReplacementSignature
+                    ?? expected.CorrectionTarget,
+                    StringComparison.Ordinal))
+            || output.Candidates
+                    .Select(static candidate => candidate.Id)
+                    .Distinct(StringComparer.Ordinal)
+                    .Count()
+                != expected.CandidateCount)
+        {
+            return false;
+        }
+
+        return output.Candidates
+            .Select(static candidate => candidate.File!)
+            .Order(StringComparer.Ordinal)
+            .SequenceEqual(
+                expected.CandidateFiles.Order(StringComparer.Ordinal),
+                StringComparer.Ordinal);
+    }
+
+    private static CodexDiscoveryExpectedDiagnostic?
+        ExpectedDiagnosticOutcome(AgentTaskDefinition task)
+    {
+        return task.Id switch
+        {
+            "stale-symbol-correction" when
+                ExpectedFact(task, "status") == "stale" =>
+                new CodexDiscoveryExpectedDiagnostic(
+                    CodexBenchmarkCommandEvidence.ExpectedStaleSymbolId,
+                    "evidence.stale_id",
+                    ExpectedFact(task, "correction-target"),
+                    ExpectedFact(task, "replacement"),
+                    CandidateCount: 1,
+                    CandidateFiles: ["src/Core/StaleService.cs"]),
+            "ambiguous-symbol-correction" when
+                ExpectedFact(task, "status") == "ambiguous" =>
+                new CodexDiscoveryExpectedDiagnostic(
+                    CodexBenchmarkCommandEvidence.ExpectedAmbiguousSymbolId,
+                    "evidence.ambiguous_id",
+                    "RelocatedWidget",
+                    ReplacementSignature: null,
+                    int.Parse(
+                        ExpectedFact(task, "candidate-count"),
+                        System.Globalization.CultureInfo.InvariantCulture),
+                    CandidateFiles:
+                    [
+                        "src/Core/moved/RelocatedWidget1.cs",
+                        "src/Core/moved/RelocatedWidget2.cs",
+                    ]),
+            _ => null,
+        };
+    }
+
+    private static string ExpectedFact(
+        AgentTaskDefinition task,
+        string name)
+    {
+        var prefix = name + ": ";
+        return task.SuccessOracle.ExpectedFacts
+            .Single(fact => fact.StartsWith(prefix, StringComparison.Ordinal))
+            [prefix.Length..];
     }
 
     private static IReadOnlyDictionary<int, CodexDiscoveryRawCommandOutput>
@@ -1410,7 +1613,7 @@ internal static class CodexDiscoveryEvidenceValidator
                     continue;
                 }
 
-                if (itemType == "file_change")
+                if (itemType is "file_change" or "mcp_tool_call" or "web_search")
                 {
                     toolSequence++;
                     continue;
@@ -1432,7 +1635,16 @@ internal static class CodexDiscoveryEvidenceValidator
                     : string.Empty;
                 outputs.Add(
                     toolSequence,
-                    new CodexDiscoveryRawCommandOutput(command, output));
+                    new CodexDiscoveryRawCommandOutput(
+                        command,
+                        output,
+                        item.TryGetProperty("exit_code", out var exit)
+                        && exit.TryGetInt32(out var exitCode)
+                            ? exitCode
+                            : null,
+                        TryGetRawString(item, "status", out var itemStatus)
+                            ? itemStatus
+                            : null));
                 toolSequence++;
             }
             catch (JsonException)
@@ -1442,112 +1654,6 @@ internal static class CodexDiscoveryEvidenceValidator
         }
 
         return outputs;
-    }
-
-    private static CodexDiscoveryRawScopeEvidence ReadScopeEvidence(
-        string output)
-    {
-        string? selectorKind = null;
-        string? selectorValue = null;
-        bool? includeTests = null;
-        bool? includeGenerated = null;
-        int? considered = null;
-        var inScope = false;
-        foreach (var rawLine in output.Split('\n'))
-        {
-            var line = rawLine.TrimEnd('\r');
-            var value = line.Trim();
-            if (string.Equals(value, "scope:", StringComparison.Ordinal))
-            {
-                inScope = true;
-                continue;
-            }
-
-            if (inScope
-                && line.Length > 0
-                && !char.IsWhiteSpace(line[0]))
-            {
-                inScope = false;
-            }
-
-            if (!inScope)
-            {
-                if (TryReadScopeBoolean(
-                        value,
-                        "generated:",
-                        out var documentGenerated))
-                {
-                    includeGenerated = documentGenerated;
-                }
-
-                continue;
-            }
-
-            if (TryReadScopeValue(value, "solution:", out var solution))
-            {
-                selectorKind = "solution";
-                selectorValue = solution;
-            }
-            else if (TryReadScopeValue(value, "project:", out var project)
-                     || TryReadScopeValue(
-                         value,
-                         "projects[1]:",
-                         out project))
-            {
-                selectorKind = "project";
-                selectorValue = project;
-            }
-            else if (TryReadScopeValue(value, "path:", out var path)
-                     || TryReadScopeValue(value, "paths[1]:", out path))
-            {
-                selectorKind = "path";
-                selectorValue = path;
-            }
-            else if (TryReadScopeBoolean(
-                         value,
-                         "include_tests:",
-                         out var tests))
-            {
-                includeTests = tests;
-            }
-            else if (TryReadScopeBoolean(
-                         value,
-                         "include_generated:",
-                         out var generated))
-            {
-                includeGenerated = generated;
-            }
-            else if (value.StartsWith("considered:", StringComparison.Ordinal)
-                && int.TryParse(
-                    value.AsSpan("considered:".Length).Trim(),
-                    System.Globalization.NumberStyles.None,
-                    System.Globalization.CultureInfo.InvariantCulture,
-                    out var parsed)
-                && parsed >= 0)
-            {
-                considered = parsed;
-            }
-        }
-
-        return new CodexDiscoveryRawScopeEvidence(
-            selectorKind,
-            selectorValue,
-            includeTests,
-            includeGenerated,
-            considered);
-    }
-
-    private static string? ReadErrorCode(string output)
-    {
-        foreach (var line in output.Split('\n'))
-        {
-            if (TryReadScopeValue(line.Trim(), "code:", out var code))
-            {
-                return code;
-            }
-        }
-
-        return null;
     }
 
     internal static bool ContainsExactSymbolId(
@@ -1581,40 +1687,16 @@ internal static class CodexDiscoveryEvidenceValidator
     private static bool IsSymbolIdentityRoute(string route) =>
         route is "show symbol" or "outline" or "context symbol";
 
-    private static string? ExpectedErrorCode(string taskId) => taskId switch
+    private static string? NormalizeScopeValue(string? value)
     {
-        "stale-symbol-correction" => "evidence.stale_id",
-        "ambiguous-symbol-correction" => "evidence.ambiguous_id",
-        _ => null,
-    };
-
-    private static bool TryReadScopeValue(
-        string line,
-        string prefix,
-        out string value)
-    {
-        value = string.Empty;
-        if (!line.StartsWith(prefix, StringComparison.Ordinal))
+        var normalized = value?.Replace('\\', '/');
+        while (normalized?.StartsWith("./", StringComparison.Ordinal) == true)
         {
-            return false;
+            normalized = normalized[2..];
         }
 
-        value = line[prefix.Length..].Trim().Trim('"');
-        return value.Length > 0;
+        return normalized;
     }
-
-    private static bool TryReadScopeBoolean(
-        string line,
-        string prefix,
-        out bool value)
-    {
-        value = false;
-        return line.StartsWith(prefix, StringComparison.Ordinal)
-               && bool.TryParse(line[prefix.Length..].Trim(), out value);
-    }
-
-    private static string? NormalizeScopeValue(string? value) =>
-        value?.Replace('\\', '/').TrimStart('.', '/');
 
     private static int ExpectedConsidered(string taskId) => taskId switch
     {
@@ -1755,16 +1837,31 @@ internal sealed record CodexDiscoveryRunActivation(
     bool SuccessfulActivation,
     IReadOnlyList<CodexDiscoveryActivationStep> Steps);
 
+internal sealed record CodexDiscoveryRouteReconciliation(
+    bool ExactVectorObserved,
+    bool CommandSuccessfulVector,
+    bool ScopeReconciled,
+    bool IdentityReconciled,
+    bool OutcomeReconciled,
+    bool Passed,
+    IReadOnlyList<CodexDiscoveryActivationStep> Steps);
+
 internal sealed record CodexDiscoveryActivationStep(
     int Ordinal,
     int ToolSequence,
     string Route,
     bool ExactMatch,
     bool CommandSucceeded,
+    int? CommandExitCode,
+    string? CommandItemStatus,
     string SelectorKind,
     string? SelectorValue,
     bool IncludeTests,
     bool IncludeGenerated,
+    string? OutputSchema,
+    string? OutputCommand,
+    string? OutputStatus,
+    bool OutputWellFormed,
     string? OutputSelectorKind,
     string? OutputSelectorValue,
     bool? OutputIncludeTests,
@@ -1773,11 +1870,23 @@ internal sealed record CodexDiscoveryActivationStep(
     bool ScopeReconciled,
     bool IdentityReconciled,
     string? OutputCode,
+    string? OutputCorrection,
+    bool CorrectionReconciled,
     bool OutcomeReconciled);
+
+internal sealed record CodexDiscoveryExpectedDiagnostic(
+    string RequestedIdentity,
+    string ErrorCode,
+    string CorrectionTarget,
+    string? ReplacementSignature,
+    int CandidateCount,
+    IReadOnlyList<string> CandidateFiles);
 
 internal sealed record CodexDiscoveryRawCommandOutput(
     string Command,
-    string Output);
+    string Output,
+    int? ExitCode,
+    string? ItemStatus);
 
 internal sealed record CodexDiscoveryRawScopeEvidence(
     string? SelectorKind,
@@ -1835,6 +1944,7 @@ internal sealed record CodexDiscoveryRawReconciliation(
     bool OutputTokens,
     bool Turns,
     bool ToolCalls,
+    bool RouteOutcomes,
     bool FinalAnswer,
     bool Scope,
     IReadOnlyList<string> Files,

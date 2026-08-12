@@ -258,6 +258,17 @@ public sealed partial class SymbolContextCorpusTests
             "show", "symbol", staleId,
             "--project", "src/Core/Core.csproj");
         Assert.Equal(1, stale.ExitCode);
+        AssertBenchmarkStructuredOutput(stale.Output);
+        var staleEnvelope = CodexBenchmarkStructuredOutputReader.Read(
+            stale.Output);
+        var staleCandidate = Assert.Single(staleEnvelope.Candidates);
+        Assert.True(CodexBenchmarkStructuredOutputReader.IsCanonicalSymbolId(
+            staleCandidate.Id,
+            staleCandidate.Name));
+        Assert.Equal("Reconcile", staleCandidate.Name);
+        Assert.Equal("Reconcile(string)", staleCandidate.Signature);
+        Assert.Equal("src/Core/StaleService.cs", staleCandidate.File);
+        Assert.Equal(5, staleCandidate.Line);
         Assert.Contains("code: evidence.stale_id", stale.Output);
         Assert.Contains("Reconcile(string)", stale.Output);
         Assert.Contains("search symbol 'Reconcile'", stale.Output);
@@ -287,6 +298,35 @@ public sealed partial class SymbolContextCorpusTests
             "show", "symbol", ambiguousId,
             "--project", "src/Core/Core.csproj");
         Assert.Equal(1, ambiguous.ExitCode);
+        AssertBenchmarkStructuredOutput(ambiguous.Output);
+        var ambiguousEnvelope = CodexBenchmarkStructuredOutputReader.Read(
+            ambiguous.Output);
+        Assert.Equal(2, ambiguousEnvelope.Candidates.Count);
+        Assert.All(
+            ambiguousEnvelope.Candidates,
+            candidate =>
+            {
+                Assert.True(
+                    CodexBenchmarkStructuredOutputReader.IsCanonicalSymbolId(
+                        candidate.Id,
+                        candidate.Name));
+                Assert.Equal("RelocatedWidget", candidate.Name);
+                Assert.Equal("RelocatedWidget", candidate.Signature);
+                Assert.Equal(3, candidate.Line);
+            });
+        Assert.Equal(
+            ambiguousEnvelope.Candidates.Count,
+            ambiguousEnvelope.Candidates
+                .Select(static candidate => candidate.Id)
+                .Distinct(StringComparer.Ordinal)
+                .Count());
+        Assert.Equal(
+            [
+                "src/Core/moved/RelocatedWidget1.cs",
+                "src/Core/moved/RelocatedWidget2.cs",
+            ],
+            ambiguousEnvelope.Candidates.Select(static candidate =>
+                candidate.File));
         Assert.Contains("code: evidence.ambiguous_id", ambiguous.Output);
         Assert.Contains("candidate_count: 2", ambiguous.Output);
         var ambiguousCode = SectionScalar(ambiguous.Output, "error", "code");
@@ -414,8 +454,16 @@ public sealed partial class SymbolContextCorpusTests
             unsupported.Output);
     }
 
-    private static void AssertSuccess((int ExitCode, string Output) result) =>
+    private static void AssertSuccess((int ExitCode, string Output) result)
+    {
         Assert.True(result.ExitCode == 0, result.Output);
+        AssertBenchmarkStructuredOutput(result.Output);
+    }
+
+    private static void AssertBenchmarkStructuredOutput(string output) =>
+        Assert.True(
+            CodexBenchmarkStructuredOutputReader.Read(output).WellFormed,
+            output);
 
     private static void AssertTaskFacts(
         AgentTaskCorpus corpus,

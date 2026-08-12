@@ -7,6 +7,258 @@ namespace DotNetAxi.Testing.Tests;
 
 public sealed class CodexDiscoveryBenchmarkTests
 {
+    private const string StaleCandidateId =
+        "symbol/v2/UmVjb25jaWxl/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+    private const string AmbiguousCandidate1Id =
+        "symbol/v2/UmVsb2NhdGVkV2lkZ2V0/cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc/dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd";
+    private const string AmbiguousCandidate2Id =
+        "symbol/v2/UmVsb2NhdGVkV2lkZ2V0/cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc/eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
+
+    [Theory]
+    [InlineData("path-complete.toon", "syntax-candidate-partial-verification", 0, "completed", true)]
+    [InlineData("path-partial.toon", "syntax-candidate-partial-verification", 0, "completed", true)]
+    [InlineData("stale.toon", "stale-symbol-correction", 1, "completed", true)]
+    [InlineData("ambiguous.toon", "ambiguous-symbol-correction", 1, "completed", true)]
+    [InlineData("unexpected-error.toon", "syntax-candidate-partial-verification", 1, "completed", false)]
+    [InlineData("malformed-output.toon", "syntax-candidate-partial-verification", 0, "completed", false)]
+    [InlineData("wrong-error-code.toon", "stale-symbol-correction", 1, "completed", false)]
+    [InlineData("missing-correction.toon", "stale-symbol-correction", 1, "completed", false)]
+    [InlineData("wrong-scope.toon", "syntax-candidate-partial-verification", 0, "completed", false)]
+    [InlineData("wrong-identity.toon", "stale-symbol-correction", 1, "completed", false)]
+    [InlineData("wrong-route.toon", "stale-symbol-correction", 1, "completed", false)]
+    [InlineData("wrong-project.toon", "stale-symbol-correction", 1, "completed", false)]
+    [InlineData("wrong-candidate.toon", "stale-symbol-correction", 1, "completed", false)]
+    [InlineData("wrong-ambiguous-candidate.toon", "ambiguous-symbol-correction", 1, "completed", false)]
+    [InlineData("trailing-prose.toon", "syntax-candidate-partial-verification", 0, "completed", false)]
+    [InlineData("misnested-scope.toon", "syntax-candidate-partial-verification", 0, "completed", false)]
+    [InlineData("inconsistent-candidates.toon", "stale-symbol-correction", 1, "completed", false)]
+    [InlineData("signature-outside-candidates.toon", "stale-symbol-correction", 1, "completed", false)]
+    [InlineData("unknown-nested-root-data.toon", "syntax-candidate-partial-verification", 0, "completed", false)]
+    [InlineData("misnested-nested-root-data.toon", "syntax-candidate-partial-verification", 0, "completed", false)]
+    [InlineData("wrong-command-root.toon", "syntax-candidate-partial-verification", 0, "completed", false)]
+    [InlineData("candidate-depth-six.toon", "stale-symbol-correction", 1, "completed", false)]
+    [InlineData("duplicate-candidate-identity.toon", "ambiguous-symbol-correction", 1, "completed", false)]
+    [InlineData("wrong-candidate-file.toon", "stale-symbol-correction", 1, "completed", false)]
+    [InlineData("invalid-candidate-id.toon", "stale-symbol-correction", 1, "completed", false)]
+    [InlineData("stale.toon", "stale-symbol-correction", 2, "completed", false)]
+    [InlineData("stale.toon", "stale-symbol-correction", 73, "completed", false)]
+    [InlineData("stale.toon", "stale-symbol-correction", null, "completed", false)]
+    [InlineData("stale.toon", "stale-symbol-correction", 1, null, false)]
+    [InlineData("stale.toon", "stale-symbol-correction", 1, "failed", false)]
+    [InlineData("stale.toon", "stale-symbol-correction", 0, "failed", false)]
+    public async Task Normalized_route_reconciliation_uses_live_shaped_fixtures(
+        string fixture,
+        string taskId,
+        int? exitCode,
+        string? itemStatus,
+        bool expected)
+    {
+        var corpus = await AgentTaskCorpusLoader.LoadAsync(Path.Combine(
+            AppContext.BaseDirectory,
+            "Fixtures",
+            "AgentTasks",
+            "symbol-context",
+            "corpus.json"));
+        var task = corpus.Tasks.Single(candidate => candidate.Id == taskId);
+        const string prefix =
+            "dnx dnaxi@0.5.0 --source \"$DNAXI_LOCAL_FEED\" --verbosity quiet -- ";
+        var route = FixtureRoute(taskId, fixture);
+        var commandSucceeded = exitCode == 0
+                               && itemStatus is null or "completed";
+        var unrelated = new AgentBenchmarkToolCall(
+            0,
+            "source-search",
+            "rg benchmark-marker",
+            "fixture-prefix",
+            false);
+        var call = new AgentBenchmarkToolCall(
+            1,
+            "source-search",
+            prefix + route,
+            "fixture",
+            commandSucceeded);
+        var output = await File.ReadAllTextAsync(RouteFixturePath(fixture));
+
+        var result = CodexDiscoveryEvidenceValidator.ReconcileTaskRoute(
+            task,
+            [unrelated, call],
+            new Dictionary<int, CodexDiscoveryRawCommandOutput>
+            {
+                [0] = new(
+                    unrelated.Name,
+                    string.Empty,
+                    1,
+                    "completed"),
+                [1] = new(
+                    call.Name,
+                    output,
+                    exitCode,
+                    itemStatus),
+            },
+            "dnaxi",
+            "0.5.0",
+            "/tmp/feed",
+            "/tmp/raw-tools/dnx");
+
+        Assert.Equal(expected, result.Passed);
+    }
+
+    [Theory]
+    [InlineData("trailing-prose.toon")]
+    [InlineData("misnested-scope.toon")]
+    [InlineData("duplicate-selectors.toon")]
+    [InlineData("missing-candidates.toon")]
+    [InlineData("inconsistent-candidates.toon")]
+    [InlineData("signature-outside-candidates.toon")]
+    [InlineData("unknown-nested-root-data.toon")]
+    [InlineData("misnested-nested-root-data.toon")]
+    [InlineData("wrong-command-root.toon")]
+    [InlineData("candidate-depth-six.toon")]
+    [InlineData("invalid-candidate-id.toon")]
+    public async Task Structured_output_reader_rejects_invalid_live_envelopes(
+        string fixture)
+    {
+        var output = await File.ReadAllTextAsync(RouteFixturePath(fixture));
+
+        var parsed = CodexBenchmarkStructuredOutputReader.Read(output);
+
+        Assert.False(parsed.WellFormed);
+    }
+
+    [Theory]
+    [InlineData("path-complete.toon", "search syntax invocation")]
+    [InlineData("path-partial.toon", "search syntax invocation")]
+    [InlineData("path-complete.toon", "search syntax class")]
+    [InlineData("path-partial.toon", "search syntax class")]
+    [InlineData("path-complete.toon", "search syntax catch")]
+    [InlineData("path-partial.toon", "search syntax catch")]
+    [InlineData("path-complete.toon", "search syntax object-creation")]
+    [InlineData("path-partial.toon", "search syntax object-creation")]
+    public async Task Structured_output_reader_accepts_path_scoped_syntax_family(
+        string fixture,
+        string command)
+    {
+        var output = await File.ReadAllTextAsync(RouteFixturePath(fixture));
+        output = output.Replace(
+            "command: search syntax invocation",
+            $"command: {command}",
+            StringComparison.Ordinal);
+
+        var parsed = CodexBenchmarkStructuredOutputReader.Read(output);
+
+        Assert.True(parsed.WellFormed);
+        Assert.Equal(command, parsed.Command);
+    }
+
+    [Fact]
+    public async Task Structured_output_reader_retains_live_candidate_identities()
+    {
+        var stale = CodexBenchmarkStructuredOutputReader.Read(
+            await File.ReadAllTextAsync(RouteFixturePath("stale.toon")));
+        var staleCandidate = Assert.Single(stale.Candidates);
+        Assert.True(stale.WellFormed);
+        Assert.Equal(StaleCandidateId, staleCandidate.Id);
+        Assert.Equal("src/Core/StaleService.cs", staleCandidate.File);
+        Assert.Equal(5, staleCandidate.Line);
+
+        var ambiguous = CodexBenchmarkStructuredOutputReader.Read(
+            await File.ReadAllTextAsync(RouteFixturePath("ambiguous.toon")));
+        Assert.True(ambiguous.WellFormed);
+        Assert.Equal(
+            [AmbiguousCandidate1Id, AmbiguousCandidate2Id],
+            ambiguous.Candidates.Select(static candidate => candidate.Id));
+        Assert.Equal(
+            [
+                "src/Core/moved/RelocatedWidget1.cs",
+                "src/Core/moved/RelocatedWidget2.cs",
+            ],
+            ambiguous.Candidates.Select(static candidate => candidate.File));
+        Assert.All(
+            ambiguous.Candidates,
+            static candidate => Assert.Equal(3, candidate.Line));
+    }
+
+    [Fact]
+    public async Task Raw_validator_replays_the_live_route_fixture_matrix()
+    {
+        using var prepared = await PreparedFixture.CreateAsync();
+        var context = await CodexDiscoveryBenchmarkPreparation.PrepareAsync(
+            prepared.RequestPath);
+        (string Fixture, string TaskId, int? ExitCode, string? ItemStatus,
+            bool Expected)[]
+            cases =
+            [
+                ("path-complete.toon", "syntax-candidate-partial-verification", 0, "completed", true),
+                ("path-partial.toon", "syntax-candidate-partial-verification", 0, "completed", true),
+                ("stale.toon", "stale-symbol-correction", 1, "completed", true),
+                ("ambiguous.toon", "ambiguous-symbol-correction", 1, "completed", true),
+                ("unexpected-error.toon", "syntax-candidate-partial-verification", 1, "completed", false),
+                ("malformed-output.toon", "syntax-candidate-partial-verification", 0, "completed", false),
+                ("wrong-error-code.toon", "stale-symbol-correction", 1, "completed", false),
+                ("missing-correction.toon", "stale-symbol-correction", 1, "completed", false),
+                ("wrong-scope.toon", "syntax-candidate-partial-verification", 0, "completed", false),
+                ("wrong-identity.toon", "stale-symbol-correction", 1, "completed", false),
+                ("wrong-route.toon", "stale-symbol-correction", 1, "completed", false),
+                ("wrong-project.toon", "stale-symbol-correction", 1, "completed", false),
+                ("wrong-candidate.toon", "stale-symbol-correction", 1, "completed", false),
+                ("wrong-ambiguous-candidate.toon", "ambiguous-symbol-correction", 1, "completed", false),
+                ("trailing-prose.toon", "syntax-candidate-partial-verification", 0, "completed", false),
+                ("misnested-scope.toon", "syntax-candidate-partial-verification", 0, "completed", false),
+                ("inconsistent-candidates.toon", "stale-symbol-correction", 1, "completed", false),
+                ("signature-outside-candidates.toon", "stale-symbol-correction", 1, "completed", false),
+                ("unknown-nested-root-data.toon", "syntax-candidate-partial-verification", 0, "completed", false),
+                ("misnested-nested-root-data.toon", "syntax-candidate-partial-verification", 0, "completed", false),
+                ("wrong-command-root.toon", "syntax-candidate-partial-verification", 0, "completed", false),
+                ("candidate-depth-six.toon", "stale-symbol-correction", 1, "completed", false),
+                ("duplicate-candidate-identity.toon", "ambiguous-symbol-correction", 1, "completed", false),
+                ("wrong-candidate-file.toon", "stale-symbol-correction", 1, "completed", false),
+                ("invalid-candidate-id.toon", "stale-symbol-correction", 1, "completed", false),
+                ("stale.toon", "stale-symbol-correction", 2, "completed", false),
+                ("stale.toon", "stale-symbol-correction", 73, "completed", false),
+                ("stale.toon", "stale-symbol-correction", null, "completed", false),
+                ("stale.toon", "stale-symbol-correction", 1, null, false),
+                ("stale.toon", "stale-symbol-correction", 1, "failed", false),
+                ("stale.toon", "stale-symbol-correction", 0, "failed", false),
+            ];
+
+        foreach (var testCase in cases)
+        {
+            var scheduled = context.Preparation.Schedule.First(run =>
+                run.Condition is AgentBenchmarkCondition.Candidate
+                && run.TaskId == testCase.TaskId);
+            var runs = context.Preparation.Schedule
+                .Take(scheduled.ExecutionOrder + 1)
+                .Select(run => run.ExecutionOrder == scheduled.ExecutionOrder
+                    ? CreateRouteFixtureRun(
+                        context,
+                        run,
+                        testCase.Fixture,
+                        testCase.ExitCode,
+                        testCase.ItemStatus)
+                    : CreateSuccessfulRun(context, run))
+                .ToArray();
+            var report = new CodexDiscoverySeriesReport(
+                CodexDiscoveryEvidenceStore.ReportSchema,
+                context.Preparation.RequestHash,
+                context.Preparation.Manifest,
+                context.Preparation.Schedule.Count,
+                Complete: false,
+                Failure: null,
+                runs);
+
+            CodexDiscoveryEvidenceValidator.ValidateReport(context, report);
+            var summary = CodexDiscoveryEvidenceValidator.CreateSummary(
+                context,
+                report,
+                new string('d', 64));
+            var route = summary.RouteActivations.Single(candidate =>
+                candidate.TaskId == testCase.TaskId);
+            var activation = route.Runs.Single(candidate =>
+                candidate.ExecutionOrder == scheduled.ExecutionOrder);
+            Assert.Equal(testCase.Expected, activation.SuccessfulActivation);
+        }
+    }
+
     [Fact]
     public void Codex_local_probe_timeout_leaves_parallel_ci_headroom()
     {
@@ -292,7 +544,7 @@ public sealed class CodexDiscoveryBenchmarkTests
     public async Task Preparation_rejects_the_previous_harness_identity()
     {
         using var fixture = await PreparedFixture.CreateAsync(
-            harnessVersion: "2.3.0");
+            harnessVersion: "2.6.0");
 
         var exception = await Assert.ThrowsAsync<AgentBenchmarkException>(() =>
             CodexDiscoveryBenchmarkPreparation.PrepareAsync(
@@ -1594,12 +1846,37 @@ public sealed class CodexDiscoveryBenchmarkTests
                 var identity = task.Id switch
                 {
                     "fresh-symbol-identity-show" => "symbol/v2/test-format",
-                    "bounded-symbol-show" or "symbol-outline"
+                    "symbol-owner-framework-variants"
+                        or "bounded-symbol-show" or "symbol-outline"
                         or "context-whole-section-truncation" =>
                         "symbol/v2/test-ledger",
                     _ => null,
                 };
-                var output = task.Id switch
+                var outputCommand = candidateRoute switch
+                {
+                    _ when candidateRoute.StartsWith(
+                        "search syntax invocation",
+                        StringComparison.Ordinal) =>
+                        "search syntax invocation",
+                    _ when candidateRoute.StartsWith(
+                        "search symbol",
+                        StringComparison.Ordinal) => "search symbol",
+                    _ when candidateRoute.StartsWith(
+                        "show symbol",
+                        StringComparison.Ordinal) => "show symbol",
+                    _ when candidateRoute.StartsWith(
+                        "show document",
+                        StringComparison.Ordinal) => "show document",
+                    _ when candidateRoute.StartsWith(
+                        "context symbol",
+                        StringComparison.Ordinal) => "context symbol",
+                    _ when candidateRoute.StartsWith(
+                        "outline",
+                        StringComparison.Ordinal) => "outline",
+                    _ => throw new InvalidOperationException(
+                        $"Unexpected fixture route '{candidateRoute}'."),
+                };
+                var outputBody = task.Id switch
                 {
                     "test-symbol-explicit-scope" =>
                         "scope:\n  solution: Workspace.slnx\n  eligibility:\n    include_tests: true\n    include_generated: false\n  considered: 6\n",
@@ -1607,16 +1884,26 @@ public sealed class CodexDiscoveryBenchmarkTests
                         "scope:\n  paths[1]: loose/UnownedCandidate.cs\n  eligibility:\n    include_tests: false\n    include_generated: false\n  considered: 1\n",
                     "document-exact-line-span" =>
                         "scope:\n  analyzed_portion: one explicitly selected workspace document\n  considered: 1\npath: docs/Runbook.txt\ngenerated: false\n",
-                    "stale-symbol-correction" or
-                        "ambiguous-symbol-correction" =>
-                        $"scope:\n  projects[1]: src/Core/Core.csproj\n  eligibility:\n    include_tests: false\n    include_generated: false\n  considered: 4\nerror:\n  code: {expectedErrorCode}\n",
+                    "stale-symbol-correction" =>
+                        $"scope:\n  projects[1]: src/Core/Core.csproj\n  eligibility:\n    include_tests: false\n    include_generated: false\n  considered: 4\nquery: {JsonSerializer.Serialize("dnaxi search symbol 'Reconcile' --project 'src/Core/Core.csproj' --fields 'id,signature,owning_projects,variant_count,variants' --full")}\ncandidate_count: 1\ncandidates[1]{{id,kind,name,signature,file,line}}:\n  {StaleCandidateId},method,Reconcile,Reconcile(string),src/Core/StaleService.cs,5\nerror:\n  code: {expectedErrorCode}\n  message: The symbol ID is stale.\n  correction: {JsonSerializer.Serialize("dnaxi search symbol 'Reconcile' --project 'src/Core/Core.csproj' --fields 'id,signature,owning_projects,variant_count,variants' --full")}\n",
+                    "ambiguous-symbol-correction" =>
+                        $"scope:\n  projects[1]: src/Core/Core.csproj\n  eligibility:\n    include_tests: false\n    include_generated: false\n  considered: 4\nquery: {JsonSerializer.Serialize("dnaxi search symbol 'RelocatedWidget' --project 'src/Core/Core.csproj' --fields 'id,signature,owning_projects,variant_count,variants' --full")}\ncandidate_count: 2\ncandidates[2]{{id,kind,name,signature,file,line}}:\n  {AmbiguousCandidate1Id},class,RelocatedWidget,RelocatedWidget,src/Core/moved/RelocatedWidget1.cs,3\n  {AmbiguousCandidate2Id},class,RelocatedWidget,RelocatedWidget,src/Core/moved/RelocatedWidget2.cs,3\nerror:\n  code: {expectedErrorCode}\n  message: The symbol ID is ambiguous.\n  correction: {JsonSerializer.Serialize("dnaxi search symbol 'RelocatedWidget' --project 'src/Core/Core.csproj' --fields 'id,signature,owning_projects,variant_count,variants' --full")}\n",
                     _ when candidateRoute.StartsWith(
                         "search symbol",
                         StringComparison.Ordinal) =>
                         $"scope:\n  projects[1]: src/Core/Core.csproj\n  eligibility:\n    include_tests: false\n    include_generated: false\n  considered: 4\nmatches[1]:\n  - id: {identity}\n    file: src/Core/LedgerService.cs\n    owning_projects[1]: src/Core/Core.csproj\n    variants[2]{{configuration,framework,meaning,project}}:\n      null,net10.0,unresolved,src/Core/Core.csproj\n      null,net8.0,unresolved,src/Core/Core.csproj\n",
-                    _ =>
+                    _ when outputCommand == "show symbol" =>
+                        "scope:\n  projects[1]: src/Core/Core.csproj\n  eligibility:\n    include_tests: false\n    include_generated: false\n  considered: 4\nlocation:\n  file: src/Core/LedgerService.cs\n  line: 4\n",
+                    _ when outputCommand == "outline" =>
                         "scope:\n  projects[1]: src/Core/Core.csproj\n  eligibility:\n    include_tests: false\n    include_generated: false\n  considered: 4\npath: src/Core/LedgerService.cs\ngenerated: false\n",
+                    _ when outputCommand == "context symbol" =>
+                        "scope:\n  projects[1]: src/Core/Core.csproj\n  eligibility:\n    include_tests: false\n    include_generated: false\n  considered: 4\ntarget:\n  id: symbol/v2/test-ledger\n  document_ref: file/v1/test-ledger\n  location:\n    file: src/Core/LedgerService.cs\n    line: 4\n",
+                    _ => throw new InvalidOperationException(
+                        $"Unexpected fixture output command '{outputCommand}'."),
                 };
+                var output =
+                    $"schema: dotnet-axi/v1\ncommand: {outputCommand}\nstatus: {(task.Id == "syntax-candidate-partial-verification" ? "partial" : expectedErrorCode is null ? "success" : "failed")}\n"
+                    + outputBody;
                 var toolPayload = JsonSerializer.Serialize(new
                 {
                     type = "item.completed",
@@ -1626,7 +1913,7 @@ public sealed class CodexDiscoveryBenchmarkTests
                         type = "command_execution",
                         command,
                         aggregated_output = output,
-                        exit_code = commandSucceeded ? 0 : 2,
+                        exit_code = commandSucceeded ? 0 : 1,
                         status = "completed",
                     },
                 });
@@ -1855,6 +2142,129 @@ public sealed class CodexDiscoveryBenchmarkTests
             rawEvents);
     }
 
+    private static AgentBenchmarkRunResult CreateRouteFixtureRun(
+        CodexDiscoveryPreparedContext context,
+        AgentBenchmarkScheduledRun scheduled,
+        string fixture,
+        int? exitCode,
+        string? itemStatus)
+    {
+        var run = CreateSuccessfulRun(context, scheduled);
+        var route = FixtureRoute(scheduled.TaskId, fixture);
+        var command =
+            $"dnx {context.Request.Product.PackageId}@{context.Request.Product.PackageVersion} --source \"${CodexDiscoveryBenchmarkPreparation.PackageSourceEnvironmentVariable}\" --verbosity quiet -- {route}";
+        var output = File.ReadAllText(RouteFixturePath(fixture));
+        var unrelatedPayload = JsonSerializer.Serialize(new
+        {
+            type = "item.completed",
+            item = new
+            {
+                id = "route-prefix",
+                type = "command_execution",
+                command = "rg benchmark-marker",
+                aggregated_output = string.Empty,
+                exit_code = 1,
+                status = "completed",
+            },
+        });
+        var itemNode = new JsonObject
+        {
+            ["id"] = "route-fixture",
+            ["type"] = "command_execution",
+            ["command"] = command,
+            ["aggregated_output"] = output,
+        };
+        if (exitCode is not null)
+        {
+            itemNode["exit_code"] = exitCode.Value;
+        }
+
+        if (itemStatus is not null)
+        {
+            itemNode["status"] = itemStatus;
+        }
+
+        var payload = new JsonObject
+        {
+            ["type"] = "item.completed",
+            ["item"] = itemNode,
+        }.ToJsonString();
+        var rawEvents = run.RawEvents.Take(3)
+            .Append(Raw(3, "item.completed", unrelatedPayload))
+            .Append(Raw(4, "item.completed", payload))
+            .Concat(run.RawEvents.Skip(3).Select((raw, index) =>
+                Raw(index + 5, raw.Kind, raw.Payload)))
+            .ToArray();
+        using var unrelatedDocument = JsonDocument.Parse(unrelatedPayload);
+        var unrelatedItem = unrelatedDocument.RootElement.GetProperty("item");
+        var unrelatedToolCall = new AgentBenchmarkToolCall(
+            0,
+            "source-search",
+            "rg benchmark-marker",
+            AgentBenchmarkHash.Compute(unrelatedItem.GetRawText()),
+            false);
+        using var document = JsonDocument.Parse(payload);
+        var item = document.RootElement.GetProperty("item");
+        var commandSucceeded = exitCode == 0
+                               && itemStatus is null or "completed";
+        var toolCall = new AgentBenchmarkToolCall(
+            1,
+            "source-search",
+            command,
+            AgentBenchmarkHash.Compute(item.GetRawText()),
+            commandSucceeded);
+        var workspacePath = Path.GetDirectoryName(
+            context.Request.Corpus.Artifact.Path)!;
+        var files = new SortedSet<string>(StringComparer.Ordinal);
+        var projects = new SortedSet<string>(StringComparer.Ordinal);
+        if (!CodexBenchmarkCommandEvidence.ObserveCommandScope(
+                command,
+                workspacePath,
+                files,
+                projects)
+            || !CodexBenchmarkCommandEvidence.ObserveOutputScope(
+                output,
+                workspacePath,
+                files,
+                projects))
+        {
+            throw new InvalidOperationException(
+                $"Route fixture '{fixture}' contains invalid inspected scope.");
+        }
+
+        return WithObservedEvidence(
+            run,
+            [unrelatedToolCall, toolCall],
+            new AgentBenchmarkInspectedScope(
+                files.ToArray(),
+                projects.ToArray()),
+            rawEvents);
+    }
+
+    private static string FixtureRoute(string taskId, string fixture) =>
+        taskId switch
+        {
+            "syntax-candidate-partial-verification" =>
+                "search syntax invocation --name MissingAudit --path loose/UnownedCandidate.cs --verify --full",
+            "stale-symbol-correction" =>
+                "show symbol "
+                + (fixture == "wrong-identity.toon"
+                    ? "symbol/v2/wrong-identity"
+                    : CodexBenchmarkCommandEvidence.ExpectedStaleSymbolId)
+                + " --project src/Core/Core.csproj",
+            "ambiguous-symbol-correction" =>
+                $"show symbol {CodexBenchmarkCommandEvidence.ExpectedAmbiguousSymbolId} --project src/Core/Core.csproj",
+            _ => throw new InvalidOperationException(
+                $"Unexpected fixture task '{taskId}'."),
+        };
+
+    private static string RouteFixturePath(string fixture) => Path.Combine(
+        AppContext.BaseDirectory,
+        "Fixtures",
+        "CodexDiscovery",
+        "RouteReconciliation",
+        fixture);
+
     private static AgentBenchmarkRunResult WithRawEvents(
         AgentBenchmarkRunResult run,
         IReadOnlyList<AgentBenchmarkRawEvent> rawEvents) =>
@@ -2004,7 +2414,7 @@ public sealed class CodexDiscoveryBenchmarkTests
             string candidateVersion = "0.5.0",
             bool includeBoundedReader = true,
             bool boundedReaderSucceeds = true,
-            string harnessVersion = "2.6.0",
+            string harnessVersion = "2.7.0",
             bool includeRawDotnet = true,
             bool includeRawSourceSearch = true,
             bool rawDotnetSucceeds = true,

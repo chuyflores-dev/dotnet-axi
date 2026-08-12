@@ -119,6 +119,31 @@ public sealed class SemanticSyntaxVerificationCommandTests
     }
 
     [Fact]
+    public async Task Verify_partial_output_retains_the_normalized_path_selector()
+    {
+        using var workspace = new TestWorkspace();
+        await workspace.WriteAsync(
+            "loose/UnownedCandidate.cs",
+            "sealed class C { static void Run() => MissingAudit(); }");
+
+        var result = await workspace.RunAsync(
+            "search", "syntax", "invocation", "--name", "MissingAudit",
+            "--path", "./loose/../loose/UnownedCandidate.cs",
+            "--verify", "--full");
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Contains("status: partial", result.Output);
+        Assert.Contains("resolution: semantic", result.Output);
+        Assert.Contains(
+            "paths[1]: loose/UnownedCandidate.cs",
+            result.Output);
+        Assert.Contains("include_tests: false", result.Output);
+        Assert.Contains("include_generated: false", result.Output);
+        Assert.Contains("considered: 1", result.Output);
+        Assert.Contains("partial_reason: ownership.not_found", result.Output);
+    }
+
+    [Fact]
     public async Task Verify_without_an_owner_is_partial_instead_of_inventing_meaning()
     {
         using var workspace = new TestWorkspace();
@@ -319,6 +344,8 @@ public sealed class SemanticSyntaxVerificationCommandTests
             full: true,
             limit: 5,
             "dnaxi search syntax invocation --name Target --verify --full",
+            paths: [],
+            includeGenerated: false,
             verifier,
             CancellationToken.None);
     }

@@ -112,6 +112,8 @@ internal sealed class AttributedClassSyntaxCommandHandler :
                     request.Full,
                     request.Limit,
                     retrievalCommand,
+                    request.Paths,
+                    request.IncludeGenerated,
                     cancellationToken)
                 .ConfigureAwait(false);
         }
@@ -143,8 +145,10 @@ internal sealed class AttributedClassSyntaxCommandHandler :
                 excluded: 0,
                 failed: 0),
             EvidenceConfidence.Candidate,
-            new EvidenceScope(
-                workspace.RootPath,
+            SyntaxCommandScope.Create(
+                workspace,
+                request.Paths,
+                request.IncludeGenerated,
                 request.Paths.Count == 0
                     ? "eligible C# workspace paths"
                     : "eligible explicitly selected C# paths"));

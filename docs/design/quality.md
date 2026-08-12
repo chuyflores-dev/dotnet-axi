@@ -536,19 +536,26 @@ are not accepted.
 The corrected `0.4.0` Codex discovery protocol uses version 2 retained-run and
 report schemas, version 3 summaries, Codex adapter version 1.7, and harness
 version 2.3. Reconciliation corrections do not relabel retained adapter
-evidence. The `0.5.0` symbol-context protocol uses request and preparation
-version 4, retained-run and report version 3, and summary version 4. The first
+evidence. The initial `0.5.0` symbol-context protocol uses request and
+preparation version 4, retained-run and report version 3, and summary version
+4. The first
 retained series used harness 2.4 and remains failed/incomparable. The initial
 repaired release-gate series used harness 2.5 and corpus 1.0.1; it also remains
 failed/incomparable because the prompt contract left fact value grammar and
 exact whitespace under-specified while a grep-backed `rg` wrapper rejected
-common Codex arguments. The subsequent release-gate series uses harness 2.6
-and corpus 1.0.2. Every prompt defines the condition-neutral value grammar,
+common Codex arguments. The subsequent retained release-gate series used
+harness 2.6 and corpus 1.0.2. Every prompt defines the condition-neutral value
+grammar,
 literal prefix, required single space, and ordering without disclosing the
 evidence values to discover. The `ordinal-sequence/v1` normalizer preserves
 line order and duplicates, so reordered or repeated facts fail the exact
 oracle without reinterpreting retained series that used `ordinal-lines/v1`.
-It schedules five
+That 2.6 / 1.0.2 evidence remains immutable, failed, and incomparable: its
+path-scoped partial syntax routes did not expose the requested selector in
+structured output, and expected ambiguity was not fully reconciled as a
+structured diagnostic outcome. The corrected protocol uses harness 2.7,
+summary schema version 5, and the unchanged corpus 1.0.2 for future evidence;
+it does not rewrite, relabel, or pool the retained 2.6 series. It schedules five
 repetitions for each applicable condition: four shared tasks produce 20
 baseline and 20 candidate runs, and six candidate-only tasks produce 30 more
 candidate runs, for 70 randomized runs and a 9,000-second agent-timeout budget.
@@ -593,21 +600,41 @@ multi-solution test-symbol task retains its `search symbol` selector with
 `--solution Workspace.slnx --include-tests`. Exact vector observation is
 reported independently from command success. Normal success-returning tasks
 require successful commands before they can become successful activations.
-The stale and ambiguous tasks instead require their exact fixture identity and
-the expected structured nonzero error code; only then can a successful task run
-count as a successful activation even though its command-success vector is
-false.
+The stale and ambiguous tasks instead require their exact fixture identity,
+the public diagnostic exit code `1`, and a completed command item. Schema,
+command, failed status, error code, the exact `dnaxi search symbol` correction
+for the expected unqualified name and `src/Core/Core.csproj` scope, the declared
+field set and `--full`, candidate count and identity data, requested identity,
+and scope must all reconcile with the task's expected facts; only then can a
+successful task run count as a successful activation even though its
+command-success vector is false. An arbitrary nonzero exit, malformed output,
+unexpected or wrong error code, missing correction data, scope drift, or
+identity drift remains an unsuccessful activation.
+Candidate identity reconciliation requires canonical public `symbol/v2` IDs,
+positive line locations, and the exact controlled fixture files. Ambiguous
+candidates must have distinct IDs and cover both relocated declarations;
+duplicated identities do not reconcile even when names, signatures, and counts
+match. The story-scoped structured reader rejects root fields not owned by the
+declared command and rejects unknown or misnested fields and containers at
+every parsed depth while accepting the live route shapes used by the controlled
+corpus.
 Every retained step records its order, route, selector, test and generated
 eligibility, and the command's `scope.considered` value derived from raw output.
-Reconciliation requires every applicable output selector and eligibility field
-to explain the effective scope; missing evidence does not reconcile. Top-level
-payload paths are not reinterpreted as scope selectors. The controlled counts
+Reconciliation compares every explicit requested selector with its structured
+output selector and requires every applicable eligibility field to explain the
+effective scope; missing evidence does not reconcile. Path-scoped syntax output
+therefore retains its normalized repository-relative `scope.paths` selector in
+both complete and partial semantic results. Top-level payload paths are not
+reinterpreted as scope selectors. The controlled counts
 are six eligible C# files for `Workspace.slnx --include-tests`, four for
 `src/Core/Core.csproj`, and one for `loose/UnownedCandidate.cs`; generated
 eligibility is false in the controlled fixture. Successful activation means a
 successful task run with the exact reconciled vector; command success remains a
 separate per-step fact because stale and ambiguous identity tasks intentionally
-exercise structured nonzero command outcomes.
+exercise structured nonzero command outcomes. Summary generation from
+normalized adapter results and independent raw-event replay both call the same
+structured-output and route reconciler, so neither path can accept a weaker
+diagnostic, scope, or identity trajectory.
 
 Activation reconciliation accepts one or more valid leading POSIX environment
 assignments before the invoked `dnx` executable, including quoted or escaped

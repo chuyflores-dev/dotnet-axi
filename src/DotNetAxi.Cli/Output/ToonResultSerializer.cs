@@ -211,7 +211,8 @@ public sealed class ToonResultSerializer
     private static bool AnalyzedPortionIsImplied(string value) =>
         value is "workspace paths"
             or "eligible workspace paths"
-            or "eligible C# workspace paths";
+            or "eligible C# workspace paths"
+            or "eligible explicitly selected C# paths";
 
     private static void AddPayload(JsonObject document, object? payload)
     {
