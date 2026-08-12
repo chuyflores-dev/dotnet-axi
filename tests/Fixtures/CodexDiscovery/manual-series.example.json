@@ -1,6 +1,6 @@
 {
-  "schema": "dotnet-axi/codex-discovery-request/v3",
-  "seriesId": "codex-040-dnx-discovery-20260807",
+  "schema": "dotnet-axi/codex-discovery-request/v4",
+  "seriesId": "codex-050-symbol-context-20260811",
   "codexExecutable": {
     "path": "/absolute/path/to/version-pinned/codex-executable-not-a-symlink",
     "sha256": "replace-with-64-lowercase-hex-codex-executable-hash"
@@ -15,29 +15,28 @@
     "sha256": "replace-with-64-lowercase-hex-settings-hash"
   },
   "corpus": {
-    "id": "source-discovery",
+    "id": "symbol-context",
     "version": "1.0.0",
-    "productMilestone": "0.3.0",
+    "productMilestone": "0.5.0",
     "artifact": {
-      "path": "/absolute/path/to/source-discovery/corpus.json",
+      "path": "/absolute/path/to/symbol-context/corpus.json",
       "sha256": "replace-with-64-lowercase-hex-corpus-hash"
     },
     "availableCapabilities": [
-      "search.file",
-      "search.syntax.attributed-class",
-      "search.syntax.catch",
-      "search.syntax.invocation",
-      "search.syntax.object-creation",
-      "search.text.literal",
-      "search.text.regex"
+      "context.symbol",
+      "outline.syntax",
+      "search.symbol.declaration",
+      "search.syntax.verify",
+      "show.document",
+      "show.symbol.identity"
     ]
   },
   "product": {
     "packageId": "dnaxi",
-    "packageVersion": "0.4.0",
+    "packageVersion": "0.5.0",
     "productSchema": "dotnet-axi/v1",
     "package": {
-      "path": "/absolute/path/to/local-feed/dnaxi.0.4.0.nupkg",
+      "path": "/absolute/path/to/local-feed/dnaxi.0.5.0.nupkg",
       "sha256": "replace-with-64-lowercase-hex-package-hash"
     },
     "packageSource": {
@@ -51,17 +50,17 @@
   },
   "priorSeries": {
     "summary": {
-      "path": "/absolute/path/to/retained-0.3.0-summary.json",
+      "path": "/absolute/path/to/retained-0.4.0-summary.json",
       "sha256": "replace-with-64-lowercase-hex-retained-summary-hash"
     },
-    "requestHash": "replace-with-retained-0.3.0-request-hash",
-    "reportHash": "replace-with-retained-0.3.0-report-hash"
+    "requestHash": "replace-with-retained-0.4.0-request-hash",
+    "reportHash": "replace-with-retained-0.4.0-report-hash"
   },
   "runsPerTask": 5,
-  "randomizationSeed": 20260806,
+  "randomizationSeed": 20260811,
   "maximumStartAttempts": 1,
   "cleanupTimeoutSeconds": 10,
-  "harnessVersion": "2.3.0",
+  "harnessVersion": "2.4.0",
   "fixtureCommit": "replace-with-40-or-64-lowercase-hex-fixture-commit",
   "productCommit": "replace-with-40-or-64-lowercase-hex-product-commit",
   "baseline": {

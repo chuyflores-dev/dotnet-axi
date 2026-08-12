@@ -230,7 +230,7 @@ static int DnxDiscoveryProbe(
     }
 
     if (values.Count != 7
-        || !string.Equals(values[0], "dnaxi@0.4.0", StringComparison.Ordinal)
+        || !string.Equals(values[0], "dnaxi@0.5.0", StringComparison.Ordinal)
         || !string.Equals(values[1], "--source", StringComparison.Ordinal)
         || string.IsNullOrWhiteSpace(values[2])
         || !string.Equals(values[3], "--verbosity", StringComparison.Ordinal)
@@ -259,7 +259,7 @@ static int DnxDiscoveryProbe(
     Console.WriteLine("command: version");
     Console.WriteLine("status: success");
     Console.WriteLine("tool: dotnet-axi");
-    Console.WriteLine("tool_version: 0.4.0");
+    Console.WriteLine("tool_version: 0.5.0");
     Console.WriteLine("output_schema: dotnet-axi/v1");
     Console.WriteLine("capabilities:");
     Console.WriteLine("  sdk:");

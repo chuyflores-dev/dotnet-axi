@@ -469,12 +469,17 @@ context truncation. A fixed multi-solution fixture and exact fact oracles keep
 the prompts condition-neutral while deterministic pull-request tests prove the
 success, stale, ambiguous, partial-coverage, truncated, and unsupported
 outcomes without dispatching a paid agent. Relationship and mutation
-capabilities remain invalid for pre-`0.6.0` corpus tasks.
+capabilities remain invalid for pre-`0.6.0` corpus tasks. All ten tasks apply to
+the candidate. Four tasks also apply to the raw-tool baseline: explicit
+test-symbol scope, owner/framework variants, partial semantic verification,
+and exact document-line retrieval. The other six tasks are candidate-only
+because their required identity, bounded-show, outline, or composed-context
+behavior does not have an equivalent raw-tool condition.
 
 Codex discovery series are prepared and dispatched only through the manual
 `DotNetAxi.CodexBenchmark` console. A strict request pins the candidate package
 and skill, instruction and tool artifacts, authenticated `CODEX_HOME` path
-identity, executables, settings, commits, and the exact seven-task corpus.
+identity, executables, settings, commits, and the exact selected corpus.
 `prepare` recomputes every artifact hash, hashes every executable-search
 directory, verifies the exact CLI version and active ChatGPT authentication
 with bounded local `codex --version` and `codex login status` probes, and seals
@@ -519,10 +524,15 @@ package resolution remains local and network-disabled. The CLI is not
 represented as an MCP server, and API-key authentication or API-key artifacts
 are not accepted.
 
-The corrected Codex discovery protocol uses version 2 retained-run and report
-schemas, version 3 summaries, and Codex adapter version 1.7. Reconciliation
-corrections do not relabel retained adapter evidence; newly prepared series pin
-harness version 2.3.
+The corrected `0.4.0` Codex discovery protocol uses version 2 retained-run and
+report schemas, version 3 summaries, Codex adapter version 1.7, and harness
+version 2.3. Reconciliation corrections do not relabel retained adapter
+evidence. The `0.5.0` symbol-context protocol uses request and preparation
+version 4, retained-run and report version 3, summary version 4, and harness
+version 2.4. It schedules five repetitions for each applicable condition: four
+shared tasks produce 20 baseline and 20 candidate runs, and six candidate-only
+tasks produce 30 more candidate runs, for 70 randomized runs and a 9,000-second
+agent-timeout budget.
 
 The shared sealed raw-tool path contains both the pinned `dnx` executable and
 an executable `sed` reader. Preparation runs the bounded `sed -n 1,110p` form
@@ -549,6 +559,31 @@ invocations is labeled `zero-activation`; a discovery task with no successful
 activated candidate run is labeled `activation-gap`. Either blocks the release
 and cannot support an improvement claim.
 
+For the `0.5.0` series, activation is a task-specific ordered vector rather
+than merely the last command. Fresh and bounded symbol-show tasks retain
+`search symbol -> show symbol`; symbol outline retains `search symbol ->
+outline`; symbol context retains `search symbol -> context symbol`; stale and
+ambiguous fixture identities may begin with `show symbol`. The explicit
+multi-solution test-symbol task retains its `search symbol` selector with
+`--solution Workspace.slnx --include-tests`. Exact vector observation is
+reported independently from command success. Normal success-returning tasks
+require successful commands before they can become successful activations.
+The stale and ambiguous tasks instead require their exact fixture identity and
+the expected structured nonzero error code; only then can a successful task run
+count as a successful activation even though its command-success vector is
+false.
+Every retained step records its order, route, selector, test and generated
+eligibility, and the command's `scope.considered` value derived from raw output.
+Reconciliation requires every applicable output selector and eligibility field
+to explain the effective scope; missing evidence does not reconcile. Top-level
+payload paths are not reinterpreted as scope selectors. The controlled counts
+are six eligible C# files for `Workspace.slnx --include-tests`, four for
+`src/Core/Core.csproj`, and one for `loose/UnownedCandidate.cs`; generated
+eligibility is false in the controlled fixture. Successful activation means a
+successful task run with the exact reconciled vector; command success remains a
+separate per-step fact because stale and ambiguous identity tasks intentionally
+exercise structured nonzero command outcomes.
+
 Activation reconciliation accepts one or more valid leading POSIX environment
 assignments before the invoked `dnx` executable, including quoted or escaped
 values. A leading `PATH` assignment remains invalid because it can substitute
@@ -557,10 +592,14 @@ Unicode whitespace that POSIX shells retain within a word, and POSIX
 assignment syntax inside a PowerShell wrapper do not move the executable
 boundary.
 
-The version 3 summary also pins and identifies the retained `0.3.0` summary.
-That historical result remains failed and incomparable and is neither pooled
-with the corrected series nor reclassified. Its artifact, request, and report
-hashes, status, and conclusion remain unchanged.
+The version 3 `0.4.0` summary remains immutable historical evidence. The
+`0.5.0` request pins its artifact and the known request and report identities,
+strictly validates the complete 70-run summary shape, and requires its recorded
+`complete` / `no-improvement` conclusion without reclassification. Its runs and
+metrics are never pooled with the symbol-context series. Within `0.5.0`, regression and
+improvement thresholds use only the four shared tasks. Completion, safety,
+success, and activation for each of the six candidate-only tasks are reported
+separately and cannot improve or dilute the comparable cohort.
 
 Exact fact sets must be nonempty, unique, and stored in ordinal order. Strict
 corpus loading rejects unknown fields, duplicate or unsorted outcomes, fixture
