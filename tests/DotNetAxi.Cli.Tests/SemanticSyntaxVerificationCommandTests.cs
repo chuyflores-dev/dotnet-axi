@@ -1,3 +1,10 @@
+using DotNetAxi.Contracts;
+using DotNetAxi.Roslyn;
+using DotNetAxi.Structural;
+using DotNetAxi.Workspaces;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.MSBuild;
+
 namespace DotNetAxi.Cli.Tests;
 
 public sealed class SemanticSyntaxVerificationCommandTests
@@ -129,6 +136,112 @@ public sealed class SemanticSyntaxVerificationCommandTests
         Assert.Contains("ownership.not_found", result.Output);
     }
 
+    [Fact]
+    public async Task Verify_owned_explicit_path_returns_semantic_evidence()
+    {
+        using var workspace = new TestWorkspace();
+        await workspace.WriteAsync(
+            "App.csproj",
+            """
+            <Project Sdk="Microsoft.NET.Sdk">
+              <PropertyGroup><TargetFramework>net10.0</TargetFramework></PropertyGroup>
+            </Project>
+            """);
+        await workspace.WriteAsync(
+            "Code.cs",
+            """
+            static class C
+            {
+                static void Target() { }
+                static void Run() => Target();
+            }
+            """);
+
+        var result = await workspace.RunAsync(
+            "search", "syntax", "invocation", "--name", "Target",
+            "--path", "Code.cs", "--verify", "--limit", "5");
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.DoesNotContain("internal.unhandled", result.Output);
+        Assert.Contains("status: success", result.Output);
+        Assert.Contains("classification: executing", result.Output);
+        Assert.Contains("resolution: semantic", result.Output);
+        Assert.Contains("coverage: complete", result.Output);
+        Assert.Contains("discovered: 1", result.Output);
+        Assert.Contains("verified: 1", result.Output);
+        Assert.Contains("Code.cs", result.Output);
+        Assert.Contains("App.csproj", result.Output);
+        Assert.Contains("net10.0", result.Output);
+    }
+
+    [Fact]
+    public async Task Verify_project_load_timeout_returns_partial_scoped_evidence()
+    {
+        using var workspace = new TestWorkspace();
+        await workspace.WriteAsync(
+            "App.csproj",
+            """
+            <Project Sdk="Microsoft.NET.Sdk">
+              <PropertyGroup><TargetFramework>net10.0</TargetFramework></PropertyGroup>
+            </Project>
+            """);
+        await workspace.WriteAsync(
+            "Code.cs",
+            """
+            static class C
+            {
+                static void Target() { }
+                static void Run() => Target();
+            }
+            """);
+
+        var result = await ExecuteWithProjectLoaderAsync(
+            workspace,
+            static (_, _, _) => Task.FromException<Project>(
+                new TimeoutException("Injected project-load timeout.")));
+        var output = new StringWriter();
+        var exitCode = await new CommandResponseWriter(output)
+            .WriteAsync(result);
+
+        Assert.Equal(0, exitCode);
+        Assert.Equal(ResultStatus.Partial, result.Status);
+        Assert.Equal(CoverageLevel.Partial, result.Evidence!.Coverage.Level);
+        Assert.Equal("project.load_failed", result.Evidence.Coverage.PartialReason);
+        Assert.Equal(["App.csproj"], result.Evidence.Scope.Projects);
+        Assert.Equal(["net10.0"], result.Evidence.Scope.Frameworks);
+        Assert.Contains(
+            "variants[1]{configuration,framework,project,reason,status,symbol}:",
+            output.ToString());
+        Assert.Contains(
+            "Debug,net10.0,App.csproj,project.load_failed,unresolved,null",
+            output.ToString());
+    }
+
+    [Fact]
+    public async Task Verify_project_load_cancellation_propagates()
+    {
+        using var workspace = new TestWorkspace();
+        await workspace.WriteAsync(
+            "App.csproj",
+            """
+            <Project Sdk="Microsoft.NET.Sdk">
+              <PropertyGroup><TargetFramework>net10.0</TargetFramework></PropertyGroup>
+            </Project>
+            """);
+        await workspace.WriteAsync(
+            "Code.cs",
+            "static class C { static void Run() => Target(); }");
+        var expected = new OperationCanceledException(
+            "Injected project-load cancellation.");
+
+        var actual = await Assert.ThrowsAsync<OperationCanceledException>(() =>
+            ExecuteWithProjectLoaderAsync(
+                workspace,
+                (_, _, _) => Task.FromException<Project>(expected)));
+
+        Assert.Same(expected, actual);
+    }
+
     [Theory]
     [InlineData("invocation", "--name", "Hit")]
     [InlineData("class", "--attribute", "Marker")]
@@ -167,6 +280,47 @@ public sealed class SemanticSyntaxVerificationCommandTests
         Assert.Equal(
             DotNetAxi.Contracts.OperationClassification.Executing,
             host.ResolvePolicy(executing).Classification);
+    }
+
+    private static async Task<ICommandResult> ExecuteWithProjectLoaderAsync(
+        TestWorkspace workspace,
+        Func<MSBuildWorkspace, string, CancellationToken, Task<Project>>
+            projectLoader)
+    {
+        var discovery = new WorkspaceDiscoverer().Discover(workspace.Root);
+        var projects = discovery.Projects
+            .Select(static project => project.Path)
+            .ToArray();
+        var query = new InvocationSyntaxQuery("Target");
+        var syntax = await new RoslynSyntaxEngine(new WorkspacePathTraverser())
+            .QueryAsync(
+                new RoslynSyntaxQueryRequest(
+                    new WorkspaceTraversalRequest(workspace.Root)),
+                query);
+        var verifier = new RoslynSemanticCandidateVerifier(
+            new WorkspaceProjectOwnershipResolver(workspace.Root, projects),
+            projects,
+            projectLoader);
+        var fields = new OutputFieldSet<StructuralCandidate>(
+            [
+                new(
+                    "file",
+                    static candidate => candidate.Range.Start.Path,
+                    includedByDefault: true),
+            ])
+            .Select();
+
+        return await SemanticSyntaxVerificationCommand.ExecuteAsync(
+            "search syntax invocation",
+            discovery,
+            syntax,
+            query,
+            fields,
+            full: true,
+            limit: 5,
+            "dnaxi search syntax invocation --name Target --verify --full",
+            verifier,
+            CancellationToken.None);
     }
 
     private sealed class TestWorkspace : IDisposable
