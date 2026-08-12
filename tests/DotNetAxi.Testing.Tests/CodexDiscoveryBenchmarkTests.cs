@@ -164,6 +164,70 @@ public sealed class CodexDiscoveryBenchmarkTests
     }
 
     [Fact]
+    public async Task Preparation_rejects_a_missing_raw_dotnet_command()
+    {
+        using var fixture = await PreparedFixture.CreateAsync(
+            includeRawDotnet: false);
+
+        var exception = await Assert.ThrowsAsync<AgentBenchmarkException>(
+            async () => await CodexDiscoveryBenchmarkPreparation.PrepareAsync(
+                fixture.RequestPath));
+
+        Assert.Contains(
+            "raw 'dotnet'",
+            exception.Message,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Preparation_rejects_a_missing_raw_source_search_command()
+    {
+        using var fixture = await PreparedFixture.CreateAsync(
+            includeRawSourceSearch: false);
+
+        var exception = await Assert.ThrowsAsync<AgentBenchmarkException>(
+            async () => await CodexDiscoveryBenchmarkPreparation.PrepareAsync(
+                fixture.RequestPath));
+
+        Assert.Contains(
+            "equivalent 'grep'",
+            exception.Message,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Preparation_rejects_an_unusable_raw_dotnet_command()
+    {
+        using var fixture = await PreparedFixture.CreateAsync(
+            rawDotnetSucceeds: false);
+
+        var exception = await Assert.ThrowsAsync<AgentBenchmarkException>(
+            async () => await CodexDiscoveryBenchmarkPreparation.PrepareAsync(
+                fixture.RequestPath));
+
+        Assert.Contains(
+            "cannot evaluate",
+            exception.Message,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Preparation_rejects_an_unusable_raw_source_search_command()
+    {
+        using var fixture = await PreparedFixture.CreateAsync(
+            rawSourceSearchSucceeds: false);
+
+        var exception = await Assert.ThrowsAsync<AgentBenchmarkException>(
+            async () => await CodexDiscoveryBenchmarkPreparation.PrepareAsync(
+                fixture.RequestPath));
+
+        Assert.Contains(
+            "cannot find an exact line",
+            exception.Message,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task Preparation_rejects_the_previous_harness_identity()
     {
         using var fixture = await PreparedFixture.CreateAsync(
@@ -1879,7 +1943,11 @@ public sealed class CodexDiscoveryBenchmarkTests
             string candidateVersion = "0.5.0",
             bool includeBoundedReader = true,
             bool boundedReaderSucceeds = true,
-            string harnessVersion = "2.4.0",
+            string harnessVersion = "2.5.0",
+            bool includeRawDotnet = true,
+            bool includeRawSourceSearch = true,
+            bool rawDotnetSucceeds = true,
+            bool rawSourceSearchSucceeds = true,
             bool canonicalPriorSummary = true)
         {
             var root = Path.Combine(
@@ -1908,6 +1976,34 @@ public sealed class CodexDiscoveryBenchmarkTests
                 if (!boundedReaderSucceeds)
                 {
                     File.WriteAllText(reader, "not an executable reader");
+                }
+            }
+            if (includeRawDotnet)
+            {
+                InstallProcessProbe(rawToolsPath, "dotnet");
+                File.WriteAllText(
+                    Path.Combine(rawToolsPath, "dotnet.raw-probe-enabled"),
+                    "enabled");
+                if (!rawDotnetSucceeds)
+                {
+                    File.WriteAllText(
+                        Path.Combine(
+                            rawToolsPath,
+                            "dotnet.raw-probe-exit-code"),
+                        "73");
+                }
+            }
+            if (includeRawSourceSearch)
+            {
+                InstallProcessProbe(rawToolsPath, "rg");
+                File.WriteAllText(
+                    Path.Combine(rawToolsPath, "rg.raw-probe-enabled"),
+                    "enabled");
+                if (!rawSourceSearchSucceeds)
+                {
+                    File.WriteAllText(
+                        Path.Combine(rawToolsPath, "rg.raw-probe-exit-code"),
+                        "73");
                 }
             }
             if (persistentDnaxiOnPath)

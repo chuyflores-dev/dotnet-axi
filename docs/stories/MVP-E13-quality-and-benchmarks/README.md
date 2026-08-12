@@ -67,6 +67,7 @@ testing until the end.
 - [MVP-E13-S33 — Measure the 0.5.0 Codex symbol-context subset](MVP-E13-S33-measure-0.5.0-codex-symbol-context.md)
 - [MVP-E13-S34 — Separate Agent Skill installation from NuGet packaging](MVP-E13-S34-separate-skill-distribution.md)
 - [MVP-E13-S35 — Remove cross-agent skill activation noise](MVP-E13-S35-cross-agent-skill-activation.md)
+- [MVP-E13-S36 — Repair the 0.5.0 Codex symbol-context release gate](MVP-E13-S36-repair-0.5.0-codex-release-gate.md)
 
 ## Complete when
 

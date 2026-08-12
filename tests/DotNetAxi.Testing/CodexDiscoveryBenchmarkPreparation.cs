@@ -32,11 +32,11 @@ internal static partial class CodexDiscoveryBenchmarkPreparation
     internal const string AuthenticationMethod = "chatgpt";
     internal const string ProductMilestone = "0.5.0";
     internal const string CorpusId = "symbol-context";
-    internal const string CorpusVersion = "1.0.0";
+    internal const string CorpusVersion = "1.0.1";
     internal const string PackageId = "dnaxi";
     internal const string PackageVersion = "0.5.0";
     internal const string ProductSchema = "dotnet-axi/v1";
-    internal const string HarnessVersion = "2.4.0";
+    internal const string HarnessVersion = "2.5.0";
     internal const string PackageSourceEnvironmentVariable =
         "DNAXI_LOCAL_FEED";
     internal const string ExactCandidateInvocation =
@@ -235,6 +235,10 @@ internal static partial class CodexDiscoveryBenchmarkPreparation
             request,
             baselineTools,
             cancellationToken);
+        await ValidateBaselineRawToolsAsync(
+            request,
+            baselineTools,
+            cancellationToken);
         await ValidateFilePinAsync(
             request.Baseline.Instructions,
             "baseline instructions",
@@ -291,10 +295,11 @@ internal static partial class CodexDiscoveryBenchmarkPreparation
                     StringComparison.Ordinal)
                 || task.Execution.PermittedTools.Contains(
                     "workspace-write",
-                    StringComparer.Ordinal)))
+                    StringComparer.Ordinal)
+                || !HasExactFactPrefixContract(task)))
         {
             throw new AgentBenchmarkException(
-                "The request does not select the exact ten candidate and four baseline 0.5.0 symbol-context tasks.");
+                "The request does not select the exact ten candidate and four baseline 0.5.0 symbol-context tasks with explicit oracle fact prefixes.");
         }
 
         var selectedCorpus = corpus with
@@ -1023,6 +1028,102 @@ internal static partial class CodexDiscoveryBenchmarkPreparation
             throw new AgentBenchmarkException(
                 "The pinned bounded skill reader could not load the complete portable SKILL.md before paid execution.");
         }
+    }
+
+    private static async ValueTask ValidateBaselineRawToolsAsync(
+        CodexDiscoveryBenchmarkRequest request,
+        CodexDiscoveryToolConfiguration tools,
+        CancellationToken cancellationToken)
+    {
+        var rawToolDirectory = tools.ExecutableSearchPathEntries[0].Path;
+        var dotnetPath = ResolveExecutableCommand(rawToolDirectory, "dotnet");
+        var searchPath = ResolveExecutableCommand(rawToolDirectory, "rg")
+                         ?? ResolveExecutableCommand(rawToolDirectory, "grep");
+        if (dotnetPath is null || searchPath is null)
+        {
+            throw new AgentBenchmarkException(
+                "The shared sealed raw-tool path must contain executable raw 'dotnet' and 'rg' or equivalent 'grep' commands.");
+        }
+
+        var corpusDirectory = Path.GetDirectoryName(request.Corpus.Artifact.Path)
+                              ?? throw new AgentBenchmarkException(
+                                  "The pinned corpus must have a parent directory.");
+        var manifestPath = Path.Combine(corpusDirectory, "fixture.json");
+        await using var fixture = await new RepositoryFixtureFactory()
+            .CreateAsync(manifestPath, cancellationToken: cancellationToken);
+
+        const string expectedSourceLine =
+            "6:line six is the bounded preview target";
+        var searchResult = await new ProcessRunner().RunAsync(
+            new ProcessRunRequest(
+                searchPath,
+                fixture.WorkspacePath,
+                [
+                    "-n",
+                    "-F",
+                    "line six is the bounded preview target",
+                    "docs/Runbook.txt",
+                ],
+                fixture.EnvironmentVariables,
+                new ProcessOutputLimits(4 * 1024, 4 * 1024),
+                TimeSpan.FromSeconds(10)),
+            cancellationToken);
+        if (!IsSuccessfulProbe(searchResult)
+            || !string.Equals(
+                searchResult.StandardOutput.Text.Trim(),
+                expectedSourceLine,
+                StringComparison.Ordinal))
+        {
+            throw new AgentBenchmarkException(
+                "The pinned baseline source-search command cannot find an exact line in the materialized benchmark fixture.");
+        }
+
+        var dotnetResult = await new ProcessRunner().RunAsync(
+            new ProcessRunRequest(
+                dotnetPath,
+                fixture.WorkspacePath,
+                [
+                    "msbuild",
+                    "src/Core/Core.csproj",
+                    "-nologo",
+                    "-getProperty:TargetFrameworks",
+                ],
+                fixture.EnvironmentVariables,
+                new ProcessOutputLimits(4 * 1024, 4 * 1024),
+                TimeSpan.FromSeconds(30)),
+            cancellationToken);
+        if (!IsSuccessfulProbe(dotnetResult)
+            || !dotnetResult.StandardOutput.Text.Split(
+                    ['\r', '\n'],
+                    StringSplitOptions.RemoveEmptyEntries
+                    | StringSplitOptions.TrimEntries)
+                .Contains("net8.0;net10.0", StringComparer.Ordinal))
+        {
+            throw new AgentBenchmarkException(
+                "The pinned baseline dotnet command cannot evaluate the benchmark fixture's target frameworks through MSBuild.");
+        }
+    }
+
+    private static bool IsSuccessfulProbe(ProcessRunResult result) =>
+        result.Lifecycle is ProcessLifecycle.Completed
+        && result.Outcome is ProcessRunOutcome.Completed
+        && result.Exit?.ExitCode == 0
+        && !result.StandardOutput.LimitExceeded
+        && !result.StandardError.LimitExceeded;
+
+    private static bool HasExactFactPrefixContract(AgentTaskDefinition task)
+    {
+        var prefixes = task.SuccessOracle.ExpectedFacts.Select(static fact =>
+        {
+            var separator = fact.IndexOf(':');
+            return separator < 0 ? string.Empty : fact[..(separator + 1)];
+        }).ToArray();
+        var suffix =
+            "Return exactly one newline-delimited fact for each of these prefixes, in this order: "
+            + string.Join(", ", prefixes.Select(static prefix => $"`{prefix}`"))
+            + ".";
+        return prefixes.All(static prefix => prefix.Length > 1)
+               && task.Prompt.EndsWith(suffix, StringComparison.Ordinal);
     }
 
     private static string? ResolveExecutableCommand(

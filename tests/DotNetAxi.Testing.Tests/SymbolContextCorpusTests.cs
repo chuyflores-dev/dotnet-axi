@@ -12,7 +12,7 @@ public sealed partial class SymbolContextCorpusTests
         var corpus = await AgentTaskCorpusLoader.LoadAsync(CorpusPath());
 
         Assert.Equal("symbol-context", corpus.Id);
-        Assert.Equal("1.0.0", corpus.Version);
+        Assert.Equal("1.0.1", corpus.Version);
         Assert.Equal(10, corpus.Tasks.Count);
         Assert.Equal(
             [
@@ -41,6 +41,16 @@ public sealed partial class SymbolContextCorpusTests
                 Assert.Equal("exact-fact-set", task.SuccessOracle.Kind);
                 Assert.Equal("ordinal-lines/v1", task.SuccessOracle.Normalizer);
                 Assert.Null(task.SuccessOracle.ModelJudge);
+                var prefixes = task.SuccessOracle.ExpectedFacts.Select(
+                    static fact => fact[..(fact.IndexOf(':') + 1)]);
+                Assert.EndsWith(
+                    "Return exactly one newline-delimited fact for each of these prefixes, in this order: "
+                    + string.Join(
+                        ", ",
+                        prefixes.Select(static prefix => $"`{prefix}`"))
+                    + ".",
+                    task.Prompt,
+                    StringComparison.Ordinal);
                 Assert.Equal(
                     task.SuccessOracle.ExpectedFacts.Order(StringComparer.Ordinal),
                     task.SuccessOracle.ExpectedFacts);
