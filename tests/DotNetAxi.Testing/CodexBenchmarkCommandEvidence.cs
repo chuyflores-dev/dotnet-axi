@@ -1,3 +1,5 @@
+using System.Globalization;
+using System.Text;
 using System.Text.RegularExpressions;
 
 namespace DotNetAxi.Testing;
@@ -1080,8 +1082,48 @@ internal static partial class CodexBenchmarkCommandEvidence
         ISet<string> projects)
     {
         var remaining = new List<string>();
+        IReadOnlyList<int> compactPathColumns = [];
+        var compactColumnCount = 0;
+        var compactRowsRemaining = 0;
         foreach (var line in value.Split('\n'))
         {
+            if (TryReadCompactOutputPathTableHeader(
+                    line,
+                    out var pathColumns,
+                    out var columnCount,
+                    out var rowCount))
+            {
+                compactPathColumns = pathColumns;
+                compactColumnCount = columnCount;
+                compactRowsRemaining = rowCount;
+                continue;
+            }
+
+            if (compactRowsRemaining > 0)
+            {
+                if (TryObserveCompactOutputPathRow(
+                        line,
+                        compactColumnCount,
+                        compactPathColumns,
+                        workspacePath,
+                        files,
+                        projects,
+                        out var valid))
+                {
+                    if (!valid)
+                    {
+                        return false;
+                    }
+
+                    compactRowsRemaining--;
+                    continue;
+                }
+
+                compactPathColumns = [];
+                compactColumnCount = 0;
+                compactRowsRemaining = 0;
+            }
+
             if (!TryObserveStructuredOutputPathLine(
                     line,
                     workspacePath,
@@ -1124,6 +1166,11 @@ internal static partial class CodexBenchmarkCommandEvidence
         ISet<string> projects)
     {
         var value = line.Trim();
+        if (value.StartsWith("- ", StringComparison.Ordinal))
+        {
+            value = value[2..].TrimStart();
+        }
+
         var separator = value.IndexOf(':');
         if (separator <= 0)
         {
@@ -1133,7 +1180,10 @@ internal static partial class CodexBenchmarkCommandEvidence
         var key = value[..separator];
         if (key is not "path" and not "file" and not "project"
             && !key.StartsWith("paths[", StringComparison.Ordinal)
-            && !key.StartsWith("projects[", StringComparison.Ordinal))
+            && !key.StartsWith("projects[", StringComparison.Ordinal)
+            && !key.StartsWith(
+                "owning_projects[",
+                StringComparison.Ordinal))
         {
             return false;
         }
@@ -1159,6 +1209,238 @@ internal static partial class CodexBenchmarkCommandEvidence
             }
         }
 
+        return true;
+    }
+
+    private static bool TryReadCompactOutputPathTableHeader(
+        string line,
+        out IReadOnlyList<int> pathColumns,
+        out int columnCount,
+        out int rowCount)
+    {
+        pathColumns = [];
+        columnCount = 0;
+        rowCount = 0;
+
+        var value = line.Trim();
+        if (value.StartsWith("- ", StringComparison.Ordinal))
+        {
+            value = value[2..].TrimStart();
+        }
+
+        var openBracket = value.IndexOf('[');
+        var closeBracket = value.IndexOf(']', openBracket + 1);
+        var openBrace = value.IndexOf('{', closeBracket + 1);
+        var closeBrace = value.IndexOf('}', openBrace + 1);
+        var key = openBracket > 0 ? value[..openBracket] : string.Empty;
+        if (key.Length == 0
+            || key[0] is not ('_' or >= 'A' and <= 'Z' or >= 'a' and <= 'z')
+            || key.Any(character =>
+                character is not ('_' or >= 'A' and <= 'Z'
+                    or >= 'a' and <= 'z' or >= '0' and <= '9'))
+            || closeBracket <= openBracket + 1
+            || openBrace != closeBracket + 1
+            || closeBrace <= openBrace + 1
+            || !string.Equals(
+                value[(closeBrace + 1)..].Trim(),
+                ":",
+                StringComparison.Ordinal)
+            || !int.TryParse(
+                value[(openBracket + 1)..closeBracket],
+                NumberStyles.None,
+                CultureInfo.InvariantCulture,
+                out rowCount))
+        {
+            return false;
+        }
+
+        var columns = value[(openBrace + 1)..closeBrace].Split(
+            ',',
+            StringSplitOptions.TrimEntries);
+        if (columns.Length == 0 || columns.Any(string.IsNullOrEmpty))
+        {
+            return false;
+        }
+
+        var selected = new List<int>();
+        for (var index = 0; index < columns.Length; index++)
+        {
+            if (columns[index] is "path" or "file" or "project"
+                || columns[index].EndsWith("_path", StringComparison.Ordinal)
+                || columns[index].EndsWith("_file", StringComparison.Ordinal)
+                || columns[index].EndsWith("_project", StringComparison.Ordinal))
+            {
+                selected.Add(index);
+            }
+        }
+
+        if (selected.Count == 0 || rowCount <= 0)
+        {
+            return false;
+        }
+
+        pathColumns = selected;
+        columnCount = columns.Length;
+        return true;
+    }
+
+    private static bool TryObserveCompactOutputPathRow(
+        string line,
+        int expectedColumnCount,
+        IReadOnlyList<int> pathColumns,
+        string? workspacePath,
+        ISet<string> files,
+        ISet<string> projects,
+        out bool valid)
+    {
+        valid = true;
+        if (!TryParseCompactOutputRow(
+                line,
+                expectedColumnCount,
+                out var fields))
+        {
+            return false;
+        }
+
+        foreach (var pathColumn in pathColumns)
+        {
+            if (!ObservePath(
+                    fields[pathColumn],
+                    workspacePath,
+                    files,
+                    projects))
+            {
+                valid = false;
+                return true;
+            }
+        }
+
+        return true;
+    }
+
+    private static bool TryParseCompactOutputRow(
+        string line,
+        int expectedColumnCount,
+        out IReadOnlyList<string> fields)
+    {
+        var parsed = new List<string>(expectedColumnCount);
+        var current = new StringBuilder();
+        var value = line.Trim();
+        var quoted = false;
+        var closedQuote = false;
+
+        for (var index = 0; index < value.Length; index++)
+        {
+            var character = value[index];
+            if (quoted)
+            {
+                if (character == '"')
+                {
+                    quoted = false;
+                    closedQuote = true;
+                    continue;
+                }
+
+                if (character != '\\')
+                {
+                    current.Append(character);
+                    continue;
+                }
+
+                if (++index >= value.Length)
+                {
+                    fields = [];
+                    return false;
+                }
+
+                var escaped = value[index];
+                if (escaped == 'u')
+                {
+                    if (index + 4 >= value.Length
+                        || !ushort.TryParse(
+                            value.AsSpan(index + 1, 4),
+                            NumberStyles.HexNumber,
+                            CultureInfo.InvariantCulture,
+                            out var codeUnit))
+                    {
+                        fields = [];
+                        return false;
+                    }
+
+                    current.Append((char)codeUnit);
+                    index += 4;
+                    continue;
+                }
+
+                current.Append(escaped switch
+                {
+                    '\\' => '\\',
+                    '"' => '"',
+                    'n' => '\n',
+                    'r' => '\r',
+                    't' => '\t',
+                    _ => '\0',
+                });
+                if (current[^1] == '\0')
+                {
+                    fields = [];
+                    return false;
+                }
+
+                continue;
+            }
+
+            if (character == ',' && !closedQuote)
+            {
+                parsed.Add(current.ToString().Trim());
+                current.Clear();
+                continue;
+            }
+
+            if (character == ',' && closedQuote)
+            {
+                parsed.Add(current.ToString());
+                current.Clear();
+                closedQuote = false;
+                continue;
+            }
+
+            if (character == '"'
+                && current.Length == 0
+                && !closedQuote)
+            {
+                quoted = true;
+                continue;
+            }
+
+            if (closedQuote && !char.IsWhiteSpace(character))
+            {
+                fields = [];
+                return false;
+            }
+
+            if (!closedQuote)
+            {
+                current.Append(character);
+            }
+        }
+
+        if (quoted)
+        {
+            fields = [];
+            return false;
+        }
+
+        parsed.Add(closedQuote
+            ? current.ToString()
+            : current.ToString().Trim());
+        if (parsed.Count != expectedColumnCount)
+        {
+            fields = [];
+            return false;
+        }
+
+        fields = parsed;
         return true;
     }
 

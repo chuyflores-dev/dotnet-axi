@@ -1488,7 +1488,7 @@ public sealed class CodexDiscoveryBenchmarkTests
                     _ when candidateRoute.StartsWith(
                         "search symbol",
                         StringComparison.Ordinal) =>
-                        $"scope:\n  projects[1]: src/Core/Core.csproj\n  eligibility:\n    include_tests: false\n    include_generated: false\n  considered: 4\nid: {identity}\n",
+                        $"scope:\n  projects[1]: src/Core/Core.csproj\n  eligibility:\n    include_tests: false\n    include_generated: false\n  considered: 4\nmatches[1]:\n  - id: {identity}\n    file: src/Core/LedgerService.cs\n    owning_projects[1]: src/Core/Core.csproj\n    variants[2]{{configuration,framework,meaning,project}}:\n      null,net10.0,unresolved,src/Core/Core.csproj\n      null,net8.0,unresolved,src/Core/Core.csproj\n",
                     _ =>
                         "scope:\n  projects[1]: src/Core/Core.csproj\n  eligibility:\n    include_tests: false\n    include_generated: false\n  considered: 4\npath: src/Core/LedgerService.cs\ngenerated: false\n",
                 };
