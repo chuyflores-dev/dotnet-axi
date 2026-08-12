@@ -1,20 +1,16 @@
 schema: dotnet-axi/v1
 command: search syntax invocation
 status: success
-snapshot: ws_abc9c397e2c16cc069677c05083c2a518c771c4058205a8fce0b4026c6b342b0
+snapshot: ws_fixture
 resolution: syntax
 coverage: complete
 scope:
-  root: <workspace>
-  paths[1]: Sample.cs
+  root: /workspace
+  paths[1]: loose/UnownedCandidate.cs
   eligibility:
     include_tests: false
     include_generated: false
   considered: 1
 count: 1
-total_known: true
-total: 1
-omitted: 0
-truncated: false
 matches[1]{file,line}:
-  Sample.cs,5
+  loose/UnownedCandidate.cs,5

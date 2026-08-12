@@ -48,6 +48,11 @@ nondefault, and partial coverage facts remain explicit.
 Partial semantic or graph results report projects and frameworks considered,
 analyzed, remaining when known, excluded or failed, and why coverage is
 partial. Complete results name the scope within which completeness is claimed.
+Path-scoped syntax results always emit the effective `scope.paths` selector as
+normalized repository-relative paths, together with test and generated
+eligibility. The selector remains present when semantic verification makes the
+result partial; owning projects and frameworks supplement rather than replace
+the requested path scope.
 
 Response confidence is omitted when the evidence contract already implies it:
 verified text evidence and stable syntax candidates. Other confidence remains
@@ -325,10 +330,14 @@ scope:
   analyzed_portion: owning project and framework variants for discovered syntax candidates
   projects[1]: src/Orders/Orders.csproj
   frameworks[2]: net8.0,net10.0
-considered: 2
-analyzed: 1
-failed: 1
-partial_reason: metadata.missing
+  paths[1]: src/Orders/OrderRepository.cs
+  eligibility:
+    include_tests: false
+    include_generated: false
+  considered: 2
+  analyzed: 1
+  failed: 1
+  partial_reason: metadata.missing
 discovered: 1
 verified: 1
 rejected: 0

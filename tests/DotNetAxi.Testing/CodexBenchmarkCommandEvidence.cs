@@ -967,8 +967,16 @@ internal static partial class CodexBenchmarkCommandEvidence
         return true;
     }
 
-    private static string? NormalizeRelativePath(string? value) =>
-        value?.Replace('\\', '/').TrimStart('.', '/');
+    private static string? NormalizeRelativePath(string? value)
+    {
+        var normalized = value?.Replace('\\', '/');
+        while (normalized?.StartsWith("./", StringComparison.Ordinal) == true)
+        {
+            normalized = normalized[2..];
+        }
+
+        return normalized;
+    }
 
     private static bool HasSingleNonBlankOption(
         IReadOnlyList<string> arguments,

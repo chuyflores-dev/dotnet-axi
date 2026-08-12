@@ -1,0 +1,23 @@
+schema: dotnet-axi/v1
+command: search syntax invocation
+status: partial
+snapshot: ws_fixture
+classification: executing
+resolution: semantic
+coverage: partial
+scope:
+  root: /workspace
+  projects[1]: src/Core/Core.csproj
+  frameworks[1]: net10.0
+  paths[1]: loose/UnownedCandidate.cs
+  eligibility:
+    include_tests: false
+    include_generated: false
+  considered: 1
+  analyzed: 0
+  failed: 1
+  partial_reason: ownership.not_found
+discovered: 1
+verified: 0
+rejected: 0
+unresolved: 1

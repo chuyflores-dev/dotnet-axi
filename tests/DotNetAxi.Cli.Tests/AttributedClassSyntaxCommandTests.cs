@@ -86,11 +86,17 @@ public sealed class AttributedClassSyntaxCommandTests
 
         Assert.Equal(0, normal.ExitCode);
         Assert.Contains("count: 1", normal.Output);
+        Assert.Contains("paths[1]: selected", normal.Output);
+        Assert.Contains("include_tests: false", normal.Output);
+        Assert.Contains("include_generated: false", normal.Output);
         Assert.Contains("selected/Selected.cs", normal.Output);
         Assert.DoesNotContain("other/Other.cs", normal.Output);
         Assert.DoesNotContain("Generated.g.cs", normal.Output);
         Assert.Equal(0, generated.ExitCode);
         Assert.Contains("count: 2", generated.Output);
+        Assert.Contains("paths[1]: selected", generated.Output);
+        Assert.Contains("include_tests: false", generated.Output);
+        Assert.Contains("include_generated: true", generated.Output);
         Assert.Contains("selected/Generated.g.cs", generated.Output);
     }
 

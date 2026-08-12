@@ -16,6 +16,8 @@ internal static class SemanticSyntaxVerificationCommand
         bool full,
         int limit,
         string retrievalCommand,
+        IReadOnlyList<string> paths,
+        bool includeGenerated,
         CancellationToken cancellationToken) =>
         ExecuteCoreAsync(
             command,
@@ -26,6 +28,8 @@ internal static class SemanticSyntaxVerificationCommand
             full,
             limit,
             retrievalCommand,
+            paths,
+            includeGenerated,
             verifier: null,
             cancellationToken);
 
@@ -38,6 +42,8 @@ internal static class SemanticSyntaxVerificationCommand
         bool full,
         int limit,
         string retrievalCommand,
+        IReadOnlyList<string> paths,
+        bool includeGenerated,
         RoslynSemanticCandidateVerifier verifier,
         CancellationToken cancellationToken) =>
         ExecuteCoreAsync(
@@ -49,6 +55,8 @@ internal static class SemanticSyntaxVerificationCommand
             full,
             limit,
             retrievalCommand,
+            paths,
+            includeGenerated,
             verifier,
             cancellationToken);
 
@@ -61,6 +69,8 @@ internal static class SemanticSyntaxVerificationCommand
         bool full,
         int limit,
         string retrievalCommand,
+        IReadOnlyList<string> paths,
+        bool includeGenerated,
         RoslynSemanticCandidateVerifier? verifier,
         CancellationToken cancellationToken)
     {
@@ -69,6 +79,7 @@ internal static class SemanticSyntaxVerificationCommand
         ArgumentNullException.ThrowIfNull(syntax);
         ArgumentNullException.ThrowIfNull(query);
         ArgumentNullException.ThrowIfNull(fields);
+        ArgumentNullException.ThrowIfNull(paths);
 
         var projects = workspace.Projects
             .Select(static project => project.Path)
@@ -135,8 +146,10 @@ internal static class SemanticSyntaxVerificationCommand
             EvidenceResolution.Semantic,
             coverage,
             EvidenceConfidence.Verified,
-            new EvidenceScope(
-                workspace.RootPath,
+            SyntaxCommandScope.Create(
+                workspace,
+                paths,
+                includeGenerated,
                 "owning project and framework variants for discovered syntax candidates",
                 projects: variants
                     .Select(static variant => variant.Project)
