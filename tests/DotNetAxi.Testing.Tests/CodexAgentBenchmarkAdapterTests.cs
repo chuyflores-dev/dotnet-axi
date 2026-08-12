@@ -468,6 +468,29 @@ public sealed class CodexAgentBenchmarkAdapterTests
     }
 
     [Fact]
+    public void Output_scope_ignores_null_compact_path_cells()
+    {
+        using var workspace = new TemporaryWorkspace();
+        var files = new HashSet<string>(StringComparer.Ordinal);
+        var projects = new HashSet<string>(StringComparer.Ordinal);
+        const string output =
+            "candidates[1]:\n"
+            + "  - file: loose/UnownedCandidate.cs\n"
+            + "    variants[1]{configuration,framework,project,reason,status,symbol}:\n"
+            + "      null,null,null,ownership.not_found,unresolved,null\n";
+
+        var valid = CodexBenchmarkCommandEvidence.ObserveOutputScope(
+            output,
+            workspace.Path,
+            files,
+            projects);
+
+        Assert.True(valid);
+        Assert.Equal(["loose/UnownedCandidate.cs"], files);
+        Assert.Empty(projects);
+    }
+
+    [Fact]
     public void Output_scope_preserves_comma_delimited_search_paths()
     {
         using var workspace = new TemporaryWorkspace();

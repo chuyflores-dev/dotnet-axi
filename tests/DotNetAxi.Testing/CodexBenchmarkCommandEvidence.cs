@@ -1304,6 +1304,14 @@ internal static partial class CodexBenchmarkCommandEvidence
 
         foreach (var pathColumn in pathColumns)
         {
+            if (string.Equals(
+                    fields[pathColumn],
+                    "null",
+                    StringComparison.Ordinal))
+            {
+                continue;
+            }
+
             if (!ObservePath(
                     fields[pathColumn],
                     workspacePath,
