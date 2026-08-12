@@ -1,9 +1,16 @@
+using System.Globalization;
+using System.Text;
 using System.Text.RegularExpressions;
 
 namespace DotNetAxi.Testing;
 
 internal static partial class CodexBenchmarkCommandEvidence
 {
+    internal const string ExpectedStaleSymbolId =
+        "symbol/v2/UmVjb25jaWxl/d7d5e6525f53c615e5e7d46a36dd2d0269248cf56534cbba2547b2de5f1c28bd/2206123742bcff880296a425da1e816f4a04d13a63713a1cbbc1de38be31274c";
+    internal const string ExpectedAmbiguousSymbolId =
+        "symbol/v2/UmVsb2NhdGVkV2lkZ2V0/fb7c47ef95fe7df477afd00aa0fbb4b91ee03cdc6d4103f6310194cbb3ac60b9/0a0d241c410272d0c47d80f4991f2b8f28a6f6f35c414659e21ba3be210a23d6";
+
     public static string Classify(
         string command,
         string sandbox,
@@ -274,6 +281,24 @@ internal static partial class CodexBenchmarkCommandEvidence
             case "search.syntax.object-creation":
                 route = ["search", "syntax", "object-creation"];
                 break;
+            case "search.symbol.declaration":
+                route = ["search", "symbol"];
+                break;
+            case "show.symbol.identity":
+                route = ["show", "symbol"];
+                break;
+            case "search.syntax.verify":
+                route = ["search", "syntax", "invocation"];
+                break;
+            case "show.document":
+                route = ["show", "document"];
+                break;
+            case "outline.syntax":
+                route = ["outline"];
+                break;
+            case "context.symbol":
+                route = ["context", "symbol"];
+                break;
             default:
                 return false;
         }
@@ -290,6 +315,29 @@ internal static partial class CodexBenchmarkCommandEvidence
             return HasSingleNonBlankOption(
                 arguments.Skip(route.Length).ToArray(),
                 "--attribute");
+        }
+
+        if (capability == "search.syntax.verify")
+        {
+            return TryGetBooleanOption(
+                       arguments.Skip(route.Length).ToArray(),
+                       "--verify",
+                       out var verifyPresent,
+                       out var verifyEnabled)
+                   && verifyPresent
+                   && verifyEnabled;
+        }
+
+        if (capability is "search.symbol.declaration"
+            or "show.symbol.identity"
+            or "show.document"
+            or "outline.syntax"
+            or "context.symbol")
+        {
+            return arguments.Count > route.Length
+                   && !arguments[route.Length].StartsWith(
+                       "-",
+                       StringComparison.Ordinal);
         }
 
         if (capability is not ("search.text.literal" or "search.text.regex"))
@@ -310,6 +358,617 @@ internal static partial class CodexBenchmarkCommandEvidence
             ? regexPresent && regexEnabled
             : !regexPresent || !regexEnabled;
     }
+
+    public static bool TryParsePinnedDnxInvocation(
+        string command,
+        string packageId,
+        string packageVersion,
+        string packageSource,
+        string packageSourceEnvironmentVariable,
+        string expectedDnxExecutablePath,
+        out CodexBenchmarkDnxInvocation? invocation)
+    {
+        invocation = null;
+        if (!IsPinnedDnxInvocation(
+                command,
+                packageId,
+                packageVersion,
+                packageSource,
+                packageSourceEnvironmentVariable,
+                expectedDnxExecutablePath: expectedDnxExecutablePath)
+            || !TryGetDnxArguments(command, out var arguments)
+            || !TryGetRoute(arguments, out var route, out var routeLength))
+        {
+            return false;
+        }
+
+        var routeArguments = arguments.Skip(routeLength).ToArray();
+        if (!TryGetRouteTarget(route, routeArguments, out var target)
+            || !TryGetSelector(
+                routeArguments,
+                out var selectorKind,
+                out var selectorValue)
+            || !TryGetBooleanOption(
+                routeArguments,
+                "--include-tests",
+                out _,
+                out var includeTests)
+            || !TryGetBooleanOption(
+                routeArguments,
+                "--include-generated",
+                out _,
+                out var includeGenerated))
+        {
+            return false;
+        }
+
+        invocation = new CodexBenchmarkDnxInvocation(
+            route,
+            target,
+            selectorKind,
+            selectorValue,
+            includeTests,
+            includeGenerated,
+            Array.AsReadOnly(arguments.ToArray()));
+        return true;
+    }
+
+    private static bool TryGetRouteTarget(
+        string route,
+        IReadOnlyList<string> arguments,
+        out string? target)
+    {
+        target = null;
+        for (var index = 0; index < arguments.Count; index++)
+        {
+            var argument = arguments[index];
+            if (!argument.StartsWith("--", StringComparison.Ordinal))
+            {
+                if (target is not null)
+                {
+                    return false;
+                }
+
+                target = argument;
+                continue;
+            }
+
+            var equals = argument.IndexOf('=');
+            if (equals > 2)
+            {
+                if (RouteOptionArity(argument[..equals]) < 0)
+                {
+                    return false;
+                }
+
+                continue;
+            }
+
+            var arity = RouteOptionArity(argument);
+            if (arity < 0)
+            {
+                return false;
+            }
+
+            if (arity == 0)
+            {
+                if (index + 1 < arguments.Count
+                    && bool.TryParse(arguments[index + 1], out _))
+                {
+                    index++;
+                }
+
+                continue;
+            }
+
+            if (index + 1 >= arguments.Count)
+            {
+                return false;
+            }
+
+            if (arity == 1)
+            {
+                index++;
+                continue;
+            }
+
+            while (index + 1 < arguments.Count
+                   && !arguments[index + 1].StartsWith(
+                       "--",
+                       StringComparison.Ordinal))
+            {
+                index++;
+            }
+        }
+
+        var requiresTarget = route is "search symbol"
+            or "show symbol"
+            or "show document"
+            or "outline"
+            or "context symbol";
+        return requiresTarget ? target is not null : target is null;
+    }
+
+    private static int RouteOptionArity(string option) => option switch
+    {
+        "--full" or "--include-generated" or "--include-tests"
+            or "--verify" or "--regex" => 0,
+        "--limit" or "--namespace" or "--project" or "--solution"
+            or "--max-chars" or "--start-line" or "--end-line"
+            or "--name" or "--attribute" or "--type" => 1,
+        "--accessibility" or "--fields" or "--kind" or "--path"
+            or "--include" => int.MaxValue,
+        _ => -1,
+    };
+
+    public static CodexBenchmarkTaskRouteEvidence MatchTaskRouteVector(
+        string taskId,
+        IReadOnlyList<AgentBenchmarkToolCall> calls,
+        string packageId,
+        string packageVersion,
+        string packageSource,
+        string packageSourceEnvironmentVariable,
+        string expectedDnxExecutablePath)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(taskId);
+        ArgumentNullException.ThrowIfNull(calls);
+
+        var expected = ExpectedTaskRouteVector(taskId);
+        if (expected.Count == 0)
+        {
+            return CodexBenchmarkTaskRouteEvidence.None;
+        }
+
+        var parsed = calls
+            .OrderBy(static call => call.Sequence)
+            .Select(call =>
+            {
+                var matched = TryParsePinnedDnxInvocation(
+                    call.Name,
+                    packageId,
+                    packageVersion,
+                    packageSource,
+                    packageSourceEnvironmentVariable,
+                    expectedDnxExecutablePath,
+                    out var command);
+                return matched
+                    ? new CodexBenchmarkTaskRouteStep(
+                        call.Sequence,
+                        call.Succeeded,
+                        command!)
+                    : null;
+            })
+            .Where(static step => step is not null)
+            .Select(static step => step!)
+            .ToArray();
+
+        var exact = FindOrderedVector(parsed, expected, requireSuccess: false);
+        if (exact is null)
+        {
+            return CodexBenchmarkTaskRouteEvidence.None;
+        }
+
+        var successful = FindOrderedVector(parsed, expected, requireSuccess: true);
+        return new CodexBenchmarkTaskRouteEvidence(
+            true,
+            successful is not null,
+            successful ?? exact);
+    }
+
+    private static IReadOnlyList<CodexBenchmarkTaskRouteStep>?
+        FindOrderedVector(
+            IReadOnlyList<CodexBenchmarkTaskRouteStep> parsed,
+            IReadOnlyList<Func<CodexBenchmarkDnxInvocation, bool>> expected,
+            bool requireSuccess)
+    {
+        for (var start = 0; start < parsed.Count; start++)
+        {
+            var matched = new List<CodexBenchmarkTaskRouteStep>(
+                expected.Count);
+            var expectedIndex = 0;
+            for (var index = start;
+                 index < parsed.Count && expectedIndex < expected.Count;
+                 index++)
+            {
+                var step = parsed[index];
+                if ((!requireSuccess || step.Succeeded)
+                    && expected[expectedIndex](step.Invocation))
+                {
+                    matched.Add(step);
+                    expectedIndex++;
+                }
+            }
+
+            if (expectedIndex == expected.Count)
+            {
+                return Array.AsReadOnly(matched.ToArray());
+            }
+        }
+
+        return null;
+    }
+
+    private static IReadOnlyList<Func<CodexBenchmarkDnxInvocation, bool>>
+        ExpectedTaskRouteVector(string taskId) => taskId switch
+        {
+            "test-symbol-explicit-scope" =>
+            [
+                command => IsRoute(command, "search symbol", "ScopeProbe")
+                           && HasSelector(
+                               command,
+                               "solution",
+                               "Workspace.slnx")
+                           && command.IncludeTests
+                           && !command.IncludeGenerated,
+            ],
+            "symbol-owner-framework-variants" =>
+            [
+                command => IsRoute(command, "search symbol", "LedgerService")
+                           && IsCoreProjectScope(command),
+            ],
+            "fresh-symbol-identity-show" =>
+            [
+                command => IsRoute(command, "search symbol", "Format")
+                           && IsCoreProjectScope(command),
+                command => IsSymbolIdentityRoute(command, "show symbol")
+                           && IsCoreProjectScope(command),
+            ],
+            "stale-symbol-correction" =>
+            [
+                command => IsSymbolIdentityRoute(command, "show symbol")
+                           && IsCoreProjectScope(command)
+                           && string.Equals(
+                               command.Target,
+                               ExpectedStaleSymbolId,
+                               StringComparison.Ordinal),
+            ],
+            "ambiguous-symbol-correction" =>
+            [
+                command => IsSymbolIdentityRoute(command, "show symbol")
+                           && IsCoreProjectScope(command)
+                           && string.Equals(
+                               command.Target,
+                               ExpectedAmbiguousSymbolId,
+                               StringComparison.Ordinal),
+            ],
+            "syntax-candidate-partial-verification" =>
+            [
+                command => IsRoute(
+                               command,
+                               "search syntax invocation",
+                               targetFragment: null)
+                           && HasSelector(
+                               command,
+                               "path",
+                               "loose/UnownedCandidate.cs")
+                           && HasOptionValue(
+                               command.Arguments,
+                               "--name",
+                               "MissingAudit")
+                           && HasEnabledOption(
+                               command.Arguments,
+                               "--verify")
+                           && !command.IncludeTests
+                           && !command.IncludeGenerated,
+            ],
+            "bounded-symbol-show" =>
+            [
+                command => IsRoute(command, "search symbol", "LedgerService")
+                           && IsCoreProjectScope(command),
+                command => IsSymbolIdentityRoute(command, "show symbol")
+                           && IsCoreProjectScope(command)
+                           && HasOptionValue(
+                               command.Arguments,
+                               "--max-chars",
+                               "24"),
+            ],
+            "document-exact-line-span" =>
+            [
+                command => IsRoute(
+                               command,
+                               "show document",
+                               targetFragment: null)
+                           && string.Equals(
+                               NormalizeRelativePath(command.Target),
+                               "docs/Runbook.txt",
+                               StringComparison.Ordinal)
+                           && command.SelectorKind == "default"
+                           && HasOptionValue(
+                               command.Arguments,
+                               "--start-line",
+                               "5")
+                           && HasOptionValue(
+                               command.Arguments,
+                               "--end-line",
+                               "6")
+                           && !command.IncludeTests
+                           && !command.IncludeGenerated,
+            ],
+            "symbol-outline" =>
+            [
+                command => IsRoute(command, "search symbol", "LedgerService")
+                           && IsCoreProjectScope(command),
+                command => IsSymbolIdentityRoute(command, "outline")
+                           && IsCoreProjectScope(command),
+            ],
+            "context-whole-section-truncation" =>
+            [
+                command => IsRoute(command, "search symbol", "LedgerService")
+                           && IsCoreProjectScope(command),
+                command => IsSymbolIdentityRoute(command, "context symbol")
+                           && IsCoreProjectScope(command)
+                           && HasExactOptionValues(
+                               command.Arguments,
+                               "--include",
+                               ["declaration", "owner", "document", "outline"])
+                           && HasOptionValue(
+                               command.Arguments,
+                               "--max-chars",
+                               "0"),
+            ],
+            _ => [],
+        };
+
+    private static bool IsCoreProjectScope(
+        CodexBenchmarkDnxInvocation command) =>
+        HasSelector(command, "project", "src/Core/Core.csproj")
+        && !command.IncludeTests
+        && !command.IncludeGenerated;
+
+    private static bool IsSymbolIdentityRoute(
+        CodexBenchmarkDnxInvocation command,
+        string route) =>
+        string.Equals(command.Route, route, StringComparison.Ordinal)
+        && command.Target is not null
+        && command.Target.StartsWith("symbol/v2/", StringComparison.Ordinal);
+
+    private static bool IsRoute(
+        CodexBenchmarkDnxInvocation command,
+        string route,
+        string? targetFragment) =>
+        string.Equals(command.Route, route, StringComparison.Ordinal)
+        && (targetFragment is null
+            || MatchesSearchTarget(command.Target, targetFragment));
+
+    private static bool MatchesSearchTarget(
+        string? actual,
+        string expectedName)
+    {
+        var accepted = expectedName switch
+        {
+            "ScopeProbe" =>
+                new[] { "ScopeProbe", "SymbolContext.Tests.ScopeProbe" },
+            "LedgerService" =>
+                new[]
+                {
+                    "LedgerService",
+                    "SymbolContext.Product.LedgerService",
+                },
+            "Format" =>
+                new[]
+                {
+                    "Format",
+                    "LedgerService.Format",
+                    "SymbolContext.Product.LedgerService.Format",
+                },
+            _ => [expectedName],
+        };
+        return accepted.Contains(actual, StringComparer.Ordinal);
+    }
+
+    private static bool HasSelector(
+        CodexBenchmarkDnxInvocation command,
+        string kind,
+        string expectedValue) =>
+        string.Equals(command.SelectorKind, kind, StringComparison.Ordinal)
+        && string.Equals(
+            NormalizeRelativePath(command.SelectorValue),
+            NormalizeRelativePath(expectedValue),
+            StringComparison.Ordinal);
+
+    private static bool HasEnabledOption(
+        IReadOnlyList<string> arguments,
+        string option) =>
+        TryGetBooleanOption(
+            arguments,
+            option,
+            out var present,
+            out var enabled)
+        && present
+        && enabled;
+
+    private static bool HasOptionValue(
+        IReadOnlyList<string> arguments,
+        string option,
+        string expectedValue) =>
+        TryGetSingleOptionValue(
+            arguments,
+            option,
+            out var present,
+            out var value)
+        && present
+        && string.Equals(value, expectedValue, StringComparison.Ordinal);
+
+    private static bool HasExactOptionValues(
+        IReadOnlyList<string> arguments,
+        string option,
+        IReadOnlyList<string> expectedValues)
+    {
+        var values = new List<string>();
+        for (var index = 0; index < arguments.Count; index++)
+        {
+            if (!string.Equals(arguments[index], option, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            for (index++;
+                 index < arguments.Count
+                 && !arguments[index].StartsWith("--", StringComparison.Ordinal);
+                 index++)
+            {
+                values.AddRange(arguments[index].Split(
+                    ',',
+                    StringSplitOptions.RemoveEmptyEntries
+                    | StringSplitOptions.TrimEntries));
+            }
+
+            index--;
+        }
+
+        return values.Distinct(StringComparer.Ordinal).Order().SequenceEqual(
+            expectedValues.Distinct(StringComparer.Ordinal).Order(),
+            StringComparer.Ordinal);
+    }
+
+    private static bool TryGetDnxArguments(
+        string command,
+        out string[] arguments)
+    {
+        arguments = [];
+        var invocation = StripSupportedRedirections(UnwrapShell(command));
+        if (UsesPosixDirectAssignmentGrammar(command))
+        {
+            invocation = StripLeadingPosixEnvironmentAssignments(
+                invocation,
+                out _);
+        }
+
+        var tokens = CommandArgumentRegex().Matches(invocation)
+            .Select(static match => Unquote(match.Value))
+            .ToArray();
+        var executable = FindExecutable(tokens);
+        if (executable < 0)
+        {
+            return false;
+        }
+
+        var delimiter = Array.IndexOf(tokens, "--", executable + 2);
+        if (delimiter < 0 || delimiter + 1 >= tokens.Length)
+        {
+            return false;
+        }
+
+        arguments = tokens[(delimiter + 1)..];
+        return true;
+    }
+
+    private static bool TryGetRoute(
+        IReadOnlyList<string> arguments,
+        out string route,
+        out int routeLength)
+    {
+        route = string.Empty;
+        routeLength = 0;
+        string[] routeParts;
+        if (arguments.Count >= 3
+            && arguments[0] == "search"
+            && arguments[1] == "syntax")
+        {
+            routeParts = [arguments[0], arguments[1], arguments[2]];
+        }
+        else if (arguments.Count >= 2
+                 && arguments[0] is "search" or "show" or "context")
+        {
+            routeParts = [arguments[0], arguments[1]];
+        }
+        else if (arguments.Count >= 1 && arguments[0] == "outline")
+        {
+            routeParts = [arguments[0]];
+        }
+        else
+        {
+            return false;
+        }
+
+        route = string.Join(' ', routeParts);
+        routeLength = routeParts.Length;
+        return true;
+    }
+
+    private static bool TryGetSelector(
+        IReadOnlyList<string> arguments,
+        out string kind,
+        out string? value)
+    {
+        kind = "default";
+        value = null;
+        foreach (var candidate in new[] { "solution", "project", "path" })
+        {
+            if (!TryGetSingleOptionValue(
+                    arguments,
+                    $"--{candidate}",
+                    out var present,
+                    out var candidateValue))
+            {
+                return false;
+            }
+
+            if (!present)
+            {
+                continue;
+            }
+
+            if (kind != "default")
+            {
+                return false;
+            }
+
+            kind = candidate;
+            value = candidateValue;
+        }
+
+        return true;
+    }
+
+    private static bool TryGetSingleOptionValue(
+        IReadOnlyList<string> arguments,
+        string option,
+        out bool present,
+        out string? value)
+    {
+        present = false;
+        value = null;
+        for (var index = 0; index < arguments.Count; index++)
+        {
+            var argument = arguments[index];
+            string candidate;
+            if (string.Equals(argument, option, StringComparison.Ordinal))
+            {
+                if (++index >= arguments.Count)
+                {
+                    return false;
+                }
+
+                candidate = arguments[index];
+            }
+            else if (argument.StartsWith(
+                         $"{option}=",
+                         StringComparison.Ordinal))
+            {
+                candidate = argument[(option.Length + 1)..];
+            }
+            else
+            {
+                continue;
+            }
+
+            if (present
+                || string.IsNullOrWhiteSpace(candidate)
+                || candidate.StartsWith("-", StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            present = true;
+            value = candidate;
+        }
+
+        return true;
+    }
+
+    private static string? NormalizeRelativePath(string? value) =>
+        value?.Replace('\\', '/').TrimStart('.', '/');
 
     private static bool HasSingleNonBlankOption(
         IReadOnlyList<string> arguments,
@@ -422,10 +1081,68 @@ internal static partial class CodexBenchmarkCommandEvidence
         ISet<string> files,
         ISet<string> projects)
     {
-        var reportedPaths = ReportedScopePathRegex().Matches(value);
+        var remaining = new List<string>();
+        IReadOnlyList<int> compactPathColumns = [];
+        var compactColumnCount = 0;
+        var compactRowsRemaining = 0;
+        foreach (var line in value.Split('\n'))
+        {
+            if (TryReadCompactOutputPathTableHeader(
+                    line,
+                    out var pathColumns,
+                    out var columnCount,
+                    out var rowCount))
+            {
+                compactPathColumns = pathColumns;
+                compactColumnCount = columnCount;
+                compactRowsRemaining = rowCount;
+                continue;
+            }
+
+            if (compactRowsRemaining > 0)
+            {
+                if (TryObserveCompactOutputPathRow(
+                        line,
+                        compactColumnCount,
+                        compactPathColumns,
+                        workspacePath,
+                        files,
+                        projects,
+                        out var valid))
+                {
+                    if (!valid)
+                    {
+                        return false;
+                    }
+
+                    compactRowsRemaining--;
+                    continue;
+                }
+
+                compactPathColumns = [];
+                compactColumnCount = 0;
+                compactRowsRemaining = 0;
+            }
+
+            if (!TryObserveStructuredOutputPathLine(
+                    line,
+                    workspacePath,
+                    files,
+                    projects))
+            {
+                remaining.Add(line);
+            }
+        }
+
+        var unstructured = string.Join('\n', remaining);
+        var reportedPaths = ReportedScopePathRegex().Matches(unstructured);
         if (reportedPaths.Count == 0)
         {
-            return ObserveScopeText(value, workspacePath, files, projects);
+            return ObserveScopeText(
+                unstructured,
+                workspacePath,
+                files,
+                projects);
         }
 
         foreach (Match match in reportedPaths)
@@ -439,6 +1156,299 @@ internal static partial class CodexBenchmarkCommandEvidence
             }
         }
 
+        return true;
+    }
+
+    private static bool TryObserveStructuredOutputPathLine(
+        string line,
+        string? workspacePath,
+        ISet<string> files,
+        ISet<string> projects)
+    {
+        var value = line.Trim();
+        if (value.StartsWith("- ", StringComparison.Ordinal))
+        {
+            value = value[2..].TrimStart();
+        }
+
+        var separator = value.IndexOf(':');
+        if (separator <= 0)
+        {
+            return false;
+        }
+
+        var key = value[..separator];
+        if (key is not "path" and not "file" and not "project"
+            && !key.StartsWith("paths[", StringComparison.Ordinal)
+            && !key.StartsWith("projects[", StringComparison.Ordinal)
+            && !key.StartsWith(
+                "owning_projects[",
+                StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        var paths = value[(separator + 1)..].Split(
+            ',',
+            StringSplitOptions.RemoveEmptyEntries
+            | StringSplitOptions.TrimEntries);
+        foreach (var path in paths)
+        {
+            var normalized = path.Trim('"');
+            if (!normalized.EndsWith(".cs", StringComparison.OrdinalIgnoreCase)
+                && !normalized.EndsWith(
+                    ".csproj",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            if (!ObservePath(normalized, workspacePath, files, projects))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static bool TryReadCompactOutputPathTableHeader(
+        string line,
+        out IReadOnlyList<int> pathColumns,
+        out int columnCount,
+        out int rowCount)
+    {
+        pathColumns = [];
+        columnCount = 0;
+        rowCount = 0;
+
+        var value = line.Trim();
+        if (value.StartsWith("- ", StringComparison.Ordinal))
+        {
+            value = value[2..].TrimStart();
+        }
+
+        var openBracket = value.IndexOf('[');
+        var closeBracket = value.IndexOf(']', openBracket + 1);
+        var openBrace = value.IndexOf('{', closeBracket + 1);
+        var closeBrace = value.IndexOf('}', openBrace + 1);
+        var key = openBracket > 0 ? value[..openBracket] : string.Empty;
+        if (key.Length == 0
+            || key[0] is not ('_' or >= 'A' and <= 'Z' or >= 'a' and <= 'z')
+            || key.Any(character =>
+                character is not ('_' or >= 'A' and <= 'Z'
+                    or >= 'a' and <= 'z' or >= '0' and <= '9'))
+            || closeBracket <= openBracket + 1
+            || openBrace != closeBracket + 1
+            || closeBrace <= openBrace + 1
+            || !string.Equals(
+                value[(closeBrace + 1)..].Trim(),
+                ":",
+                StringComparison.Ordinal)
+            || !int.TryParse(
+                value[(openBracket + 1)..closeBracket],
+                NumberStyles.None,
+                CultureInfo.InvariantCulture,
+                out rowCount))
+        {
+            return false;
+        }
+
+        var columns = value[(openBrace + 1)..closeBrace].Split(
+            ',',
+            StringSplitOptions.TrimEntries);
+        if (columns.Length == 0 || columns.Any(string.IsNullOrEmpty))
+        {
+            return false;
+        }
+
+        var selected = new List<int>();
+        for (var index = 0; index < columns.Length; index++)
+        {
+            if (columns[index] is "path" or "file" or "project"
+                || columns[index].EndsWith("_path", StringComparison.Ordinal)
+                || columns[index].EndsWith("_file", StringComparison.Ordinal)
+                || columns[index].EndsWith("_project", StringComparison.Ordinal))
+            {
+                selected.Add(index);
+            }
+        }
+
+        if (selected.Count == 0 || rowCount <= 0)
+        {
+            return false;
+        }
+
+        pathColumns = selected;
+        columnCount = columns.Length;
+        return true;
+    }
+
+    private static bool TryObserveCompactOutputPathRow(
+        string line,
+        int expectedColumnCount,
+        IReadOnlyList<int> pathColumns,
+        string? workspacePath,
+        ISet<string> files,
+        ISet<string> projects,
+        out bool valid)
+    {
+        valid = true;
+        if (!TryParseCompactOutputRow(
+                line,
+                expectedColumnCount,
+                out var fields))
+        {
+            return false;
+        }
+
+        foreach (var pathColumn in pathColumns)
+        {
+            if (string.Equals(
+                    fields[pathColumn],
+                    "null",
+                    StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            if (!ObservePath(
+                    fields[pathColumn],
+                    workspacePath,
+                    files,
+                    projects))
+            {
+                valid = false;
+                return true;
+            }
+        }
+
+        return true;
+    }
+
+    private static bool TryParseCompactOutputRow(
+        string line,
+        int expectedColumnCount,
+        out IReadOnlyList<string> fields)
+    {
+        var parsed = new List<string>(expectedColumnCount);
+        var current = new StringBuilder();
+        var value = line.Trim();
+        var quoted = false;
+        var closedQuote = false;
+
+        for (var index = 0; index < value.Length; index++)
+        {
+            var character = value[index];
+            if (quoted)
+            {
+                if (character == '"')
+                {
+                    quoted = false;
+                    closedQuote = true;
+                    continue;
+                }
+
+                if (character != '\\')
+                {
+                    current.Append(character);
+                    continue;
+                }
+
+                if (++index >= value.Length)
+                {
+                    fields = [];
+                    return false;
+                }
+
+                var escaped = value[index];
+                if (escaped == 'u')
+                {
+                    if (index + 4 >= value.Length
+                        || !ushort.TryParse(
+                            value.AsSpan(index + 1, 4),
+                            NumberStyles.HexNumber,
+                            CultureInfo.InvariantCulture,
+                            out var codeUnit))
+                    {
+                        fields = [];
+                        return false;
+                    }
+
+                    current.Append((char)codeUnit);
+                    index += 4;
+                    continue;
+                }
+
+                current.Append(escaped switch
+                {
+                    '\\' => '\\',
+                    '"' => '"',
+                    'n' => '\n',
+                    'r' => '\r',
+                    't' => '\t',
+                    _ => '\0',
+                });
+                if (current[^1] == '\0')
+                {
+                    fields = [];
+                    return false;
+                }
+
+                continue;
+            }
+
+            if (character == ',' && !closedQuote)
+            {
+                parsed.Add(current.ToString().Trim());
+                current.Clear();
+                continue;
+            }
+
+            if (character == ',' && closedQuote)
+            {
+                parsed.Add(current.ToString());
+                current.Clear();
+                closedQuote = false;
+                continue;
+            }
+
+            if (character == '"'
+                && current.Length == 0
+                && !closedQuote)
+            {
+                quoted = true;
+                continue;
+            }
+
+            if (closedQuote && !char.IsWhiteSpace(character))
+            {
+                fields = [];
+                return false;
+            }
+
+            if (!closedQuote)
+            {
+                current.Append(character);
+            }
+        }
+
+        if (quoted)
+        {
+            fields = [];
+            return false;
+        }
+
+        parsed.Add(closedQuote
+            ? current.ToString()
+            : current.ToString().Trim());
+        if (parsed.Count != expectedColumnCount)
+        {
+            fields = [];
+            return false;
+        }
+
+        fields = parsed;
         return true;
     }
 
@@ -979,7 +1989,7 @@ internal static partial class CodexBenchmarkCommandEvidence
     private static partial Regex EnvironmentAssignmentRegex();
 
     [GeneratedRegex(
-        "(?:^|[\\s;'\"|&()])(?:rg|grep|find|fd)(?=$|[\\s;'\"|&()])|(?:^|[\\s;'\"|&()])dnaxi\\s+search(?=$|[\\s;'\"|&()])|(?:^|[\\s;'\"|&()])dnx\\s+\\S+[^\\r\\n;|&]*\\s--\\s+search(?=$|[\\s;'\"|&()])",
+        "(?:^|[\\s;'\"|&()])(?:rg|grep|find|fd)(?=$|[\\s;'\"|&()])|(?:^|[\\s;'\"|&()])dnaxi\\s+(?:search|show|outline|context)(?=$|[\\s;'\"|&()])|(?:^|[\\s;'\"|&()])dnx\\s+\\S+[^\\r\\n;|&]*\\s--\\s+(?:search|show|outline|context)(?=$|[\\s;'\"|&()])",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex SourceSearchCommandRegex();
 
@@ -999,4 +2009,27 @@ internal static partial class CodexBenchmarkCommandEvidence
         | RegexOptions.CultureInvariant
         | RegexOptions.Multiline)]
     private static partial Regex ReportedScopePathRegex();
+}
+
+internal sealed record CodexBenchmarkDnxInvocation(
+    string Route,
+    string? Target,
+    string SelectorKind,
+    string? SelectorValue,
+    bool IncludeTests,
+    bool IncludeGenerated,
+    IReadOnlyList<string> Arguments);
+
+internal sealed record CodexBenchmarkTaskRouteStep(
+    int Sequence,
+    bool Succeeded,
+    CodexBenchmarkDnxInvocation Invocation);
+
+internal sealed record CodexBenchmarkTaskRouteEvidence(
+    bool Exact,
+    bool Successful,
+    IReadOnlyList<CodexBenchmarkTaskRouteStep> Steps)
+{
+    public static CodexBenchmarkTaskRouteEvidence None { get; } =
+        new(false, false, Array.Empty<CodexBenchmarkTaskRouteStep>());
 }

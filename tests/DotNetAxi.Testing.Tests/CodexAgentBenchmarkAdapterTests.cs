@@ -404,6 +404,131 @@ public sealed class CodexAgentBenchmarkAdapterTests
         Assert.Empty(projects);
     }
 
+    [Fact]
+    public void Output_scope_observes_structured_ownership_and_variant_paths()
+    {
+        using var workspace = new TemporaryWorkspace();
+        var files = new HashSet<string>(StringComparer.Ordinal);
+        var projects = new HashSet<string>(StringComparer.Ordinal);
+        const string output =
+            "matches[1]:\n"
+            + "  - file: src/Core/LedgerService.cs\n"
+            + "    owning_projects[1]: src/Core/Core.csproj\n"
+            + "    variants[2]{configuration,framework,meaning,project}:\n"
+            + "      null,net10.0,unresolved,src/Core/Core.csproj\n"
+            + "      null,net8.0,unresolved,src/Core/Core.csproj\n";
+
+        var valid = CodexBenchmarkCommandEvidence.ObserveOutputScope(
+            output,
+            workspace.Path,
+            files,
+            projects);
+
+        Assert.True(valid);
+        Assert.Equal(["src/Core/LedgerService.cs"], files);
+        Assert.Equal(["src/Core/Core.csproj"], projects);
+    }
+
+    [Fact]
+    public void Output_scope_rejects_outside_paths_in_compact_rows()
+    {
+        using var workspace = new TemporaryWorkspace();
+        var files = new HashSet<string>(StringComparer.Ordinal);
+        var projects = new HashSet<string>(StringComparer.Ordinal);
+
+        var valid = CodexBenchmarkCommandEvidence.ObserveOutputScope(
+            "variants[1]{configuration,framework,meaning,project}:\n"
+            + "  null,net10.0,unresolved,\"/outside/Evil,Thing.csproj\"\n",
+            workspace.Path,
+            files,
+            projects);
+
+        Assert.False(valid);
+        Assert.Empty(files);
+        Assert.Empty(projects);
+    }
+
+    [Fact]
+    public void Output_scope_observes_quoted_compact_paths()
+    {
+        using var workspace = new TemporaryWorkspace();
+        var files = new HashSet<string>(StringComparer.Ordinal);
+        var projects = new HashSet<string>(StringComparer.Ordinal);
+
+        var valid = CodexBenchmarkCommandEvidence.ObserveOutputScope(
+            "variants[1]{configuration,framework,meaning,project}:\n"
+            + "  null,net10.0,unresolved,\"src/Core/Core,Legacy.csproj\"\n",
+            workspace.Path,
+            files,
+            projects);
+
+        Assert.True(valid);
+        Assert.Empty(files);
+        Assert.Equal(["src/Core/Core,Legacy.csproj"], projects);
+    }
+
+    [Fact]
+    public void Output_scope_ignores_null_compact_path_cells()
+    {
+        using var workspace = new TemporaryWorkspace();
+        var files = new HashSet<string>(StringComparer.Ordinal);
+        var projects = new HashSet<string>(StringComparer.Ordinal);
+        const string output =
+            "candidates[1]:\n"
+            + "  - file: loose/UnownedCandidate.cs\n"
+            + "    variants[1]{configuration,framework,project,reason,status,symbol}:\n"
+            + "      null,null,null,ownership.not_found,unresolved,null\n";
+
+        var valid = CodexBenchmarkCommandEvidence.ObserveOutputScope(
+            output,
+            workspace.Path,
+            files,
+            projects);
+
+        Assert.True(valid);
+        Assert.Equal(["loose/UnownedCandidate.cs"], files);
+        Assert.Empty(projects);
+    }
+
+    [Fact]
+    public void Output_scope_preserves_comma_delimited_search_paths()
+    {
+        using var workspace = new TemporaryWorkspace();
+        var files = new HashSet<string>(StringComparer.Ordinal);
+        var projects = new HashSet<string>(StringComparer.Ordinal);
+
+        var valid = CodexBenchmarkCommandEvidence.ObserveOutputScope(
+            "src/Program.cs:1:a,b,c,Other.cs\n",
+            workspace.Path,
+            files,
+            projects);
+
+        Assert.True(valid);
+        Assert.Equal(["src/Program.cs"], files);
+        Assert.Empty(projects);
+    }
+
+    [Fact]
+    public void Output_scope_does_not_treat_search_matches_as_table_headers()
+    {
+        using var workspace = new TemporaryWorkspace();
+        var files = new HashSet<string>(StringComparer.Ordinal);
+        var projects = new HashSet<string>(StringComparer.Ordinal);
+        const string output =
+            "src/Program.cs:1:// variants[1]{configuration,framework,meaning,project}:\n"
+            + "src/Program.cs:2:// null,net10.0,unresolved,src/Core/Core.csproj\n";
+
+        var valid = CodexBenchmarkCommandEvidence.ObserveOutputScope(
+            output,
+            workspace.Path,
+            files,
+            projects);
+
+        Assert.True(valid);
+        Assert.Equal(["src/Program.cs"], files);
+        Assert.Empty(projects);
+    }
+
     [Theory]
     [InlineData("permission-denied.jsonl", "emit", "1", "permission-denied", false, "error")]
     [InlineData("read-only.jsonl", "emit", "1", "permission-denied", false, "turn.failed")]

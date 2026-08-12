@@ -27,7 +27,7 @@ public sealed class CodexDiscoveryBenchmarkTests
 
         Assert.Equal(70, context.Preparation.Schedule.Count);
         Assert.Equal(70, context.Preparation.UsageBoundary.RunCount);
-        Assert.Equal(8_400,
+        Assert.Equal(9_000,
             context.Preparation.UsageBoundary.AgentTimeoutBudgetSeconds);
         Assert.Equal(1_400,
             context.Preparation.UsageBoundary.FinalizationBudgetSeconds);
@@ -53,6 +53,10 @@ public sealed class CodexDiscoveryBenchmarkTests
             context.Preparation.Schedule.GroupBy(run =>
                 (run.TaskId, run.Condition)),
             group => Assert.Equal(5, group.Count()));
+        Assert.Equal(20, context.Preparation.Schedule.Count(run =>
+            run.Condition is AgentBenchmarkCondition.Baseline));
+        Assert.Equal(50, context.Preparation.Schedule.Count(run =>
+            run.Condition is AgentBenchmarkCondition.Candidate));
         Assert.Equal(
             Enumerable.Range(0, 70),
             context.Preparation.Schedule.Select(run => run.ExecutionOrder));
@@ -163,7 +167,7 @@ public sealed class CodexDiscoveryBenchmarkTests
     public async Task Preparation_rejects_the_previous_harness_identity()
     {
         using var fixture = await PreparedFixture.CreateAsync(
-            harnessVersion: "2.2.0");
+            harnessVersion: "2.3.0");
 
         var exception = await Assert.ThrowsAsync<AgentBenchmarkException>(() =>
             CodexDiscoveryBenchmarkPreparation.PrepareAsync(
@@ -172,6 +176,23 @@ public sealed class CodexDiscoveryBenchmarkTests
 
         Assert.Contains(
             "approved harness identity",
+            exception.Message,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Preparation_rejects_a_truncated_prior_summary()
+    {
+        using var fixture = await PreparedFixture.CreateAsync(
+            canonicalPriorSummary: false);
+
+        var exception = await Assert.ThrowsAsync<AgentBenchmarkException>(() =>
+            CodexDiscoveryBenchmarkPreparation.PrepareAsync(
+                    fixture.RequestPath)
+                .AsTask());
+
+        Assert.Contains(
+            "immutable retained 0.4.0",
             exception.Message,
             StringComparison.Ordinal);
     }
@@ -232,16 +253,56 @@ public sealed class CodexDiscoveryBenchmarkTests
         Assert.Equal(-10m, summary.Thresholds.MedianTokenChangePercent);
         Assert.True(summary.Thresholds.ImprovementClaimSupported);
         Assert.Equal(0, summary.Baseline.DnxInvocationCount);
-        Assert.Equal(35, summary.Candidate.DnxActivatedRunCount);
-        Assert.Equal(35, summary.Candidate.SuccessfulDnxActivatedRunCount);
-        Assert.Equal(35, summary.Candidate.DnxInvocationCount);
-        Assert.Equal(35, summary.Candidate.SuccessfulDnxInvocationCount);
-        Assert.Equal(7, summary.RouteActivations.Count);
+        Assert.Equal(20, summary.Candidate.DnxActivatedRunCount);
+        Assert.Equal(20, summary.Candidate.SuccessfulDnxActivatedRunCount);
+        Assert.Equal(20, summary.Candidate.DnxInvocationCount);
+        Assert.Equal(20, summary.Candidate.SuccessfulDnxInvocationCount);
+        Assert.Equal(50, summary.AllCandidate.DnxActivatedRunCount);
+        Assert.Equal(40, summary.AllCandidate.SuccessfulDnxActivatedRunCount);
+        Assert.Equal(10, summary.RouteActivations.Count);
         Assert.All(summary.RouteActivations, static route =>
             Assert.Equal(5, route.SuccessfulActivatedRunCount));
+        Assert.All(summary.RouteActivations, route =>
+            Assert.All(route.Runs, run =>
+            {
+                Assert.True(run.ExactVectorObserved);
+                Assert.Equal(
+                    route.TaskId is not "stale-symbol-correction"
+                        and not "ambiguous-symbol-correction",
+                    run.CommandSuccessfulVector);
+                Assert.True(run.ScopeReconciled);
+                Assert.True(run.IdentityReconciled);
+                Assert.True(run.OutcomeReconciled);
+                Assert.True(run.SuccessfulActivation);
+            }));
+        var explicitScope = Assert.Single(
+            summary.RouteActivations,
+            static route => route.TaskId == "test-symbol-explicit-scope");
+        var explicitStep = Assert.Single(explicitScope.Runs[0].Steps);
+        Assert.Equal("solution", explicitStep.SelectorKind);
+        Assert.Equal("Workspace.slnx", explicitStep.SelectorValue);
+        Assert.True(explicitStep.IncludeTests);
+        Assert.False(explicitStep.IncludeGenerated);
+        Assert.Equal(6, explicitStep.Considered);
+        var composedShow = Assert.Single(
+            summary.RouteActivations,
+            static route => route.TaskId == "fresh-symbol-identity-show");
+        Assert.All(composedShow.Runs, static run =>
+            Assert.Equal(
+                ["search symbol", "show symbol"],
+                run.Steps.Select(static step => step.Route)));
+        Assert.Equal(4, summary.ComparableTaskIds.Count);
+        Assert.Equal(6, summary.CandidateOnlyTasks.Count);
+        Assert.All(summary.CandidateOnlyTasks, static task =>
+        {
+            Assert.Equal(5, task.CompletedCount);
+            Assert.Equal(5, task.SuccessCount);
+            Assert.Equal(5, task.SafeCount);
+            Assert.Equal(5, task.SuccessfulActivatedRunCount);
+        });
         Assert.False(summary.PriorSeries.Comparable);
-        Assert.Equal("failed", summary.PriorSeries.EvidenceStatus);
-        Assert.Equal("incomparable", summary.PriorSeries.Comparison);
+        Assert.Equal("complete", summary.PriorSeries.EvidenceStatus);
+        Assert.Equal("no-improvement", summary.PriorSeries.Comparison);
         Assert.True(CodexDiscoveryEvidenceValidator.CanonicalEquals(
             summary,
             validated));
@@ -685,6 +746,299 @@ public sealed class CodexDiscoveryBenchmarkTests
     }
 
     [Fact]
+    public void Symbol_context_activation_parses_route_scope_and_eligibility()
+    {
+        const string command =
+            "dnx dnaxi@0.5.0 --source \"$DNAXI_LOCAL_FEED\" --verbosity quiet -- search symbol ScopeProbe --solution Workspace.slnx --include-tests --include-generated=false";
+
+        Assert.True(CodexBenchmarkCommandEvidence.TryParsePinnedDnxInvocation(
+            command,
+            "dnaxi",
+            "0.5.0",
+            "/tmp/feed",
+            "DNAXI_LOCAL_FEED",
+            "/tmp/raw-tools/dnx",
+            out var invocation));
+        Assert.NotNull(invocation);
+        Assert.Equal("search symbol", invocation.Route);
+        Assert.Equal("ScopeProbe", invocation.Target);
+        Assert.Equal("solution", invocation.SelectorKind);
+        Assert.Equal("Workspace.slnx", invocation.SelectorValue);
+        Assert.True(invocation.IncludeTests);
+        Assert.False(invocation.IncludeGenerated);
+    }
+
+    [Theory]
+    [InlineData(
+        "search symbol LedgerService --project src/Core/Core.csproj",
+        "search.symbol.declaration")]
+    [InlineData(
+        "show symbol symbol/v2/example --project src/Core/Core.csproj",
+        "show.symbol.identity")]
+    [InlineData(
+        "search syntax invocation --name MissingAudit --path loose/UnownedCandidate.cs --verify",
+        "search.syntax.verify")]
+    [InlineData(
+        "show document docs/Runbook.txt --start-line 5 --end-line 6",
+        "show.document")]
+    [InlineData(
+        "outline symbol/v2/example --project src/Core/Core.csproj",
+        "outline.syntax")]
+    [InlineData(
+        "context symbol symbol/v2/example --project src/Core/Core.csproj --include declaration,owner",
+        "context.symbol")]
+    public void Symbol_context_capabilities_require_their_exact_route(
+        string route,
+        string capability)
+    {
+        var command =
+            $"dnx dnaxi@0.5.0 --source \"$DNAXI_LOCAL_FEED\" --verbosity quiet -- {route}";
+
+        Assert.True(CodexBenchmarkCommandEvidence.IsPinnedDnxInvocation(
+            command,
+            "dnaxi",
+            "0.5.0",
+            "/tmp/feed",
+            "DNAXI_LOCAL_FEED",
+            capability,
+            "/tmp/raw-tools/dnx"));
+        Assert.False(CodexBenchmarkCommandEvidence.IsPinnedDnxInvocation(
+            command.Replace(" -- ", " -- --help ", StringComparison.Ordinal),
+            "dnaxi",
+            "0.5.0",
+            "/tmp/feed",
+            "DNAXI_LOCAL_FEED",
+            capability,
+            "/tmp/raw-tools/dnx"));
+    }
+
+    [Fact]
+    public void Symbol_context_activation_matches_all_task_route_vectors()
+    {
+        const string prefix =
+            "dnx dnaxi@0.5.0 --source \"$DNAXI_LOCAL_FEED\" --verbosity quiet -- ";
+        var commands = new Dictionary<string, string[]>(StringComparer.Ordinal)
+        {
+            ["test-symbol-explicit-scope"] =
+            [
+                "search symbol SymbolContext.Tests.ScopeProbe --solution Workspace.slnx --include-tests",
+            ],
+            ["symbol-owner-framework-variants"] =
+            [
+                "search symbol SymbolContext.Product.LedgerService --project src/Core/Core.csproj",
+            ],
+            ["fresh-symbol-identity-show"] =
+            [
+                "search symbol LedgerService.Format --project src/Core/Core.csproj",
+                "show symbol symbol/v2/fresh --project src/Core/Core.csproj",
+            ],
+            ["stale-symbol-correction"] =
+            [
+                $"show symbol {CodexBenchmarkCommandEvidence.ExpectedStaleSymbolId} --project src/Core/Core.csproj",
+            ],
+            ["ambiguous-symbol-correction"] =
+            [
+                $"show symbol {CodexBenchmarkCommandEvidence.ExpectedAmbiguousSymbolId} --project src/Core/Core.csproj",
+            ],
+            ["syntax-candidate-partial-verification"] =
+            [
+                "search syntax invocation --name MissingAudit --path loose/UnownedCandidate.cs --verify",
+            ],
+            ["bounded-symbol-show"] =
+            [
+                "search symbol LedgerService --project src/Core/Core.csproj",
+                "show symbol symbol/v2/bounded --project src/Core/Core.csproj --max-chars 24",
+            ],
+            ["document-exact-line-span"] =
+            [
+                "show document docs/Runbook.txt --start-line 5 --end-line 6",
+            ],
+            ["symbol-outline"] =
+            [
+                "search symbol LedgerService --project src/Core/Core.csproj",
+                "outline symbol/v2/outline --project src/Core/Core.csproj",
+            ],
+            ["context-whole-section-truncation"] =
+            [
+                "search symbol LedgerService --project src/Core/Core.csproj",
+                "context symbol symbol/v2/context --project src/Core/Core.csproj --include declaration --include owner --include document --include outline --max-chars 0",
+            ],
+        };
+
+        foreach (var (taskId, taskCommands) in commands)
+        {
+            var calls = taskCommands
+                .Select((command, index) => new AgentBenchmarkToolCall(
+                    index + 10,
+                    "source-search",
+                    prefix + command,
+                    AgentBenchmarkHash.Compute(command),
+                    true))
+                .ToArray();
+            Assert.All(calls, call => Assert.True(
+                CodexBenchmarkCommandEvidence.IsPinnedDnxInvocation(
+                    call.Name,
+                    "dnaxi",
+                    "0.5.0",
+                    "/tmp/feed",
+                    "DNAXI_LOCAL_FEED",
+                    expectedDnxExecutablePath: "/tmp/raw-tools/dnx"),
+                taskId));
+            var activation = CodexBenchmarkCommandEvidence.MatchTaskRouteVector(
+                taskId,
+                calls,
+                "dnaxi",
+                "0.5.0",
+                "/tmp/feed",
+                "DNAXI_LOCAL_FEED",
+                "/tmp/raw-tools/dnx");
+
+            Assert.True(activation.Exact, taskId);
+            Assert.True(activation.Successful, taskId);
+            Assert.Equal(taskCommands.Length, activation.Steps.Count);
+            Assert.Equal(10, activation.Steps[0].Sequence);
+        }
+    }
+
+    [Fact]
+    public void Symbol_context_activation_keeps_exact_route_separate_from_success()
+    {
+        const string prefix =
+            "dnx dnaxi@0.5.0 --source \"$DNAXI_LOCAL_FEED\" --verbosity quiet -- ";
+        var calls = new[]
+        {
+            new AgentBenchmarkToolCall(
+                2,
+                "source-search",
+                prefix + "search symbol LedgerService --project src/Core/Core.csproj",
+                "search",
+                true),
+            new AgentBenchmarkToolCall(
+                3,
+                "repository-read",
+                prefix + "show symbol symbol/v2/bounded --project src/Core/Core.csproj --max-chars 24",
+                "show",
+                false),
+        };
+
+        var activation = CodexBenchmarkCommandEvidence.MatchTaskRouteVector(
+            "bounded-symbol-show",
+            calls,
+            "dnaxi",
+            "0.5.0",
+            "/tmp/feed",
+            "DNAXI_LOCAL_FEED",
+            "/tmp/raw-tools/dnx");
+
+        Assert.True(activation.Exact);
+        Assert.False(activation.Successful);
+        Assert.Equal([2, 3], activation.Steps.Select(static step => step.Sequence));
+        Assert.False(activation.Steps[1].Succeeded);
+    }
+
+    [Fact]
+    public void Symbol_context_activation_rejects_wrong_scope_and_route_order()
+    {
+        const string prefix =
+            "dnx dnaxi@0.5.0 --source \"$DNAXI_LOCAL_FEED\" --verbosity quiet -- ";
+        var calls = new[]
+        {
+            new AgentBenchmarkToolCall(
+                1,
+                "repository-read",
+                prefix + "show symbol symbol/v2/fresh --project src/Core/Core.csproj",
+                "show",
+                true),
+            new AgentBenchmarkToolCall(
+                2,
+                "source-search",
+                prefix + "search symbol LedgerService.Format --project src/Core/Core.csproj --include-generated",
+                "search",
+                true),
+        };
+
+        var activation = CodexBenchmarkCommandEvidence.MatchTaskRouteVector(
+            "fresh-symbol-identity-show",
+            calls,
+            "dnaxi",
+            "0.5.0",
+            "/tmp/feed",
+            "DNAXI_LOCAL_FEED",
+            "/tmp/raw-tools/dnx");
+
+        Assert.False(activation.Exact);
+        Assert.False(activation.Successful);
+        Assert.Empty(activation.Steps);
+
+        var wrongQuery = new[]
+        {
+            new AgentBenchmarkToolCall(
+                1,
+                "source-search",
+                prefix + "search symbol NotLedgerServiceWrong --project src/Core/Core.csproj",
+                "search",
+                true),
+            new AgentBenchmarkToolCall(
+                2,
+                "repository-read",
+                prefix + "show symbol symbol/v2/fresh --project src/Core/Core.csproj",
+                "show",
+                true),
+        };
+        var wrongQueryActivation =
+            CodexBenchmarkCommandEvidence.MatchTaskRouteVector(
+                "fresh-symbol-identity-show",
+                wrongQuery,
+                "dnaxi",
+                "0.5.0",
+                "/tmp/feed",
+                "DNAXI_LOCAL_FEED",
+                "/tmp/raw-tools/dnx");
+
+        Assert.False(wrongQueryActivation.Exact);
+
+        var optionBeforeTarget = new[]
+        {
+            new AgentBenchmarkToolCall(
+                1,
+                "source-search",
+                prefix + "search symbol --namespace LedgerService NotLedgerServiceWrong --project src/Core/Core.csproj",
+                "search",
+                true),
+            new AgentBenchmarkToolCall(
+                2,
+                "repository-read",
+                prefix + "show symbol symbol/v2/fresh --project src/Core/Core.csproj",
+                "show",
+                true),
+        };
+        var optionBeforeTargetActivation =
+            CodexBenchmarkCommandEvidence.MatchTaskRouteVector(
+                "fresh-symbol-identity-show",
+                optionBeforeTarget,
+                "dnaxi",
+                "0.5.0",
+                "/tmp/feed",
+                "DNAXI_LOCAL_FEED",
+                "/tmp/raw-tools/dnx");
+
+        Assert.False(optionBeforeTargetActivation.Exact);
+    }
+
+    [Fact]
+    public void Symbol_identity_handoff_requires_a_token_exact_id()
+    {
+        const string identity = "symbol/v2/name/declaration/workspace";
+
+        Assert.True(CodexDiscoveryEvidenceValidator.ContainsExactSymbolId(
+            $"matches[1]:\n  - id: {identity}\n",
+            identity));
+        Assert.False(CodexDiscoveryEvidenceValidator.ContainsExactSymbolId(
+            $"matches[1]:\n  - id: {identity}-extra\n",
+            identity));
+    }
+
+    [Fact]
     public async Task Failed_timed_out_and_missing_evidence_stays_incomparable()
     {
         using var fixture = await PreparedFixture.CreateAsync();
@@ -1026,14 +1380,17 @@ public sealed class CodexDiscoveryBenchmarkTests
             ? 10L
             : 9L;
         var processId = 10_000 + scheduled.ExecutionOrder;
+        var workspacePath = Path.GetDirectoryName(
+            context.Request.Corpus.Artifact.Path)!;
+        var files = new SortedSet<string>(StringComparer.Ordinal);
+        var projects = new SortedSet<string>(StringComparer.Ordinal);
         var rawEvents = new List<AgentBenchmarkRawEvent>
         {
             Raw(0, "adapter.process.started",
                 JsonSerializer.Serialize(new
                 {
                     processId,
-                    workspacePath = Path.GetDirectoryName(
-                        context.Request.Corpus.Artifact.Path),
+                    workspacePath,
                 })),
             Raw(1, "thread.started",
                 JsonSerializer.Serialize(new
@@ -1047,52 +1404,130 @@ public sealed class CodexDiscoveryBenchmarkTests
         var toolCalls = new List<AgentBenchmarkToolCall>();
         if (addToolCall)
         {
-            var candidateRoute = task.RequiredCapabilities.Single() switch
+            string[] candidateRoutes = task.Id switch
             {
-                "search.file" => "search file benchmark-marker",
-                "search.text.literal" => "search text benchmark-marker",
-                "search.text.regex" =>
-                    "search text benchmark-marker --regex",
-                "search.syntax.attributed-class" =>
-                    "search syntax class --attribute Benchmark",
-                "search.syntax.catch" =>
-                    "search syntax catch --name BenchmarkException",
-                "search.syntax.invocation" =>
-                    "search syntax invocation --name Benchmark",
-                "search.syntax.object-creation" =>
-                    "search syntax object-creation --name Benchmark",
-                var capability => throw new InvalidOperationException(
-                    $"Unexpected test capability '{capability}'."),
+                "test-symbol-explicit-scope" =>
+                [
+                    "search symbol SymbolContext.Tests.ScopeProbe --solution Workspace.slnx --include-tests",
+                ],
+                "symbol-owner-framework-variants" =>
+                [
+                    "search symbol SymbolContext.Product.LedgerService --project src/Core/Core.csproj",
+                ],
+                "fresh-symbol-identity-show" =>
+                [
+                    "search symbol Format --project src/Core/Core.csproj",
+                    "show symbol symbol/v2/test-format --project src/Core/Core.csproj",
+                ],
+                "stale-symbol-correction" =>
+                [
+                    $"show symbol {CodexBenchmarkCommandEvidence.ExpectedStaleSymbolId} --project src/Core/Core.csproj",
+                ],
+                "ambiguous-symbol-correction" =>
+                [
+                    $"show symbol {CodexBenchmarkCommandEvidence.ExpectedAmbiguousSymbolId} --project src/Core/Core.csproj",
+                ],
+                "syntax-candidate-partial-verification" =>
+                [
+                    "search syntax invocation --name MissingAudit --path loose/UnownedCandidate.cs --verify --full",
+                ],
+                "bounded-symbol-show" =>
+                [
+                    "search symbol SymbolContext.Product.LedgerService --project src/Core/Core.csproj",
+                    "show symbol symbol/v2/test-ledger --project src/Core/Core.csproj --max-chars 24",
+                ],
+                "document-exact-line-span" =>
+                [
+                    "show document docs/Runbook.txt --start-line 5 --end-line 6 --full",
+                ],
+                "symbol-outline" =>
+                [
+                    "search symbol SymbolContext.Product.LedgerService --project src/Core/Core.csproj",
+                    "outline symbol/v2/test-ledger --project src/Core/Core.csproj --full",
+                ],
+                "context-whole-section-truncation" =>
+                [
+                    "search symbol SymbolContext.Product.LedgerService --project src/Core/Core.csproj",
+                    "context symbol symbol/v2/test-ledger --project src/Core/Core.csproj --include declaration,owner,document,outline --max-chars 0",
+                ],
+                var taskId => throw new InvalidOperationException(
+                    $"Unexpected test task '{taskId}'."),
             };
-            var command = scheduled.Condition
-                is AgentBenchmarkCondition.Candidate
-                    ? $"dnx {context.Request.Product.PackageId}@{context.Request.Product.PackageVersion} --source \"${CodexDiscoveryBenchmarkPreparation.PackageSourceEnvironmentVariable}\" --verbosity quiet -- {candidateRoute}"
-                    : "rg benchmark-marker";
-            var toolPayload = JsonSerializer.Serialize(new
+            foreach (var candidateRoute in candidateRoutes)
             {
-                type = "item.completed",
-                item = new
+                var command = scheduled.Condition
+                    is AgentBenchmarkCondition.Candidate
+                        ? $"dnx {context.Request.Product.PackageId}@{context.Request.Product.PackageVersion} --source \"${CodexDiscoveryBenchmarkPreparation.PackageSourceEnvironmentVariable}\" --verbosity quiet -- {candidateRoute}"
+                        : "rg benchmark-marker";
+                var expectedErrorCode = task.Id switch
                 {
-                    id = "tool-0",
-                    type = "command_execution",
+                    "stale-symbol-correction" => "evidence.stale_id",
+                    "ambiguous-symbol-correction" => "evidence.ambiguous_id",
+                    _ => null,
+                };
+                var commandSucceeded = expectedErrorCode is null;
+                var identity = task.Id switch
+                {
+                    "fresh-symbol-identity-show" => "symbol/v2/test-format",
+                    "bounded-symbol-show" or "symbol-outline"
+                        or "context-whole-section-truncation" =>
+                        "symbol/v2/test-ledger",
+                    _ => null,
+                };
+                var output = task.Id switch
+                {
+                    "test-symbol-explicit-scope" =>
+                        "scope:\n  solution: Workspace.slnx\n  eligibility:\n    include_tests: true\n    include_generated: false\n  considered: 6\n",
+                    "syntax-candidate-partial-verification" =>
+                        "scope:\n  paths[1]: loose/UnownedCandidate.cs\n  eligibility:\n    include_tests: false\n    include_generated: false\n  considered: 1\n",
+                    "document-exact-line-span" =>
+                        "scope:\n  analyzed_portion: one explicitly selected workspace document\n  considered: 1\npath: docs/Runbook.txt\ngenerated: false\n",
+                    "stale-symbol-correction" or
+                        "ambiguous-symbol-correction" =>
+                        $"scope:\n  projects[1]: src/Core/Core.csproj\n  eligibility:\n    include_tests: false\n    include_generated: false\n  considered: 4\nerror:\n  code: {expectedErrorCode}\n",
+                    _ when candidateRoute.StartsWith(
+                        "search symbol",
+                        StringComparison.Ordinal) =>
+                        $"scope:\n  projects[1]: src/Core/Core.csproj\n  eligibility:\n    include_tests: false\n    include_generated: false\n  considered: 4\nmatches[1]:\n  - id: {identity}\n    file: src/Core/LedgerService.cs\n    owning_projects[1]: src/Core/Core.csproj\n    variants[2]{{configuration,framework,meaning,project}}:\n      null,net10.0,unresolved,src/Core/Core.csproj\n      null,net8.0,unresolved,src/Core/Core.csproj\n",
+                    _ =>
+                        "scope:\n  projects[1]: src/Core/Core.csproj\n  eligibility:\n    include_tests: false\n    include_generated: false\n  considered: 4\npath: src/Core/LedgerService.cs\ngenerated: false\n",
+                };
+                var toolPayload = JsonSerializer.Serialize(new
+                {
+                    type = "item.completed",
+                    item = new
+                    {
+                        id = $"tool-{toolCalls.Count}",
+                        type = "command_execution",
+                        command,
+                        aggregated_output = output,
+                        exit_code = commandSucceeded ? 0 : 2,
+                        status = "completed",
+                    },
+                });
+                rawEvents.Add(Raw(
+                    rawEvents.Count,
+                    "item.completed",
+                    toolPayload));
+                using var toolDocument = JsonDocument.Parse(toolPayload);
+                toolCalls.Add(new AgentBenchmarkToolCall(
+                    toolCalls.Count,
+                    "source-search",
                     command,
-                    aggregated_output = string.Empty,
-                    exit_code = 0,
-                    status = "completed",
-                },
-            });
-            rawEvents.Add(Raw(
-                rawEvents.Count,
-                "item.completed",
-                toolPayload));
-            using var toolDocument = JsonDocument.Parse(toolPayload);
-            toolCalls.Add(new AgentBenchmarkToolCall(
-                0,
-                "source-search",
-                command,
-                AgentBenchmarkHash.Compute(toolDocument.RootElement
-                    .GetProperty("item").GetRawText()),
-                true));
+                    AgentBenchmarkHash.Compute(toolDocument.RootElement
+                        .GetProperty("item").GetRawText()),
+                    commandSucceeded));
+                Assert.True(CodexBenchmarkCommandEvidence.ObserveCommandScope(
+                    command,
+                    workspacePath,
+                    files,
+                    projects));
+                Assert.True(CodexBenchmarkCommandEvidence.ObserveOutputScope(
+                    output,
+                    workspacePath,
+                    files,
+                    projects));
+            }
         }
 
         rawEvents.Add(Raw(
@@ -1144,7 +1579,9 @@ public sealed class CodexDiscoveryBenchmarkTests
             1,
             toolCalls,
             TimeSpan.FromMilliseconds(20),
-            new AgentBenchmarkInspectedScope([], []),
+            new AgentBenchmarkInspectedScope(
+                files.ToArray(),
+                projects.ToArray()),
             [
                 new("claims-supported", true, "reconciled"),
                 new("network-unused", true, "reconciled"),
@@ -1439,10 +1876,11 @@ public sealed class CodexDiscoveryBenchmarkTests
             bool descriptionCarriesInvocation = true,
             bool dnxProbeSucceeds = true,
             string? dnxProbeOutputMode = null,
-            string candidateVersion = "0.4.0",
+            string candidateVersion = "0.5.0",
             bool includeBoundedReader = true,
             bool boundedReaderSucceeds = true,
-            string harnessVersion = "2.3.0")
+            string harnessVersion = "2.4.0",
+            bool canonicalPriorSummary = true)
         {
             var root = Path.Combine(
                 Path.GetTempPath(),
@@ -1496,37 +1934,102 @@ public sealed class CodexDiscoveryBenchmarkTests
             }
             var candidateDescription = descriptionCarriesInvocation
                 ? "Use dotnet-axi for deterministic .NET repository evidence. "
-                  + "When a controlled benchmark supplies the local feed, route applicable source discovery through "
+                  + "When a controlled benchmark supplies the local feed, route applicable symbol and context discovery through "
                   + CodexDiscoveryBenchmarkPreparation.ExactCandidateInvocation
                   + "."
                 : "Use dotnet-axi for deterministic .NET repository evidence.";
             var candidateInstructions = Write(
                 Path.Combine(skillPath, "SKILL.md"),
-                $"---\nname: dotnet-axi\ndescription: {candidateDescription}\n---\n\nUse dnx dnaxi@{candidateVersion} --source \"$DNAXI_LOCAL_FEED\" --verbosity quiet -- <command> for source discovery.\n");
+                $"---\nname: dotnet-axi\ndescription: {candidateDescription}\n---\n\nUse dnx dnaxi@{candidateVersion} --source \"$DNAXI_LOCAL_FEED\" --verbosity quiet -- <command> for symbol and bounded-context discovery.\n");
             var packageSource = Directory.CreateDirectory(
                 Path.Combine(root, "package-source")).FullName;
             var package = WritePackage(
-                Path.Combine(packageSource, "dnaxi.0.4.0.nupkg"),
+                Path.Combine(packageSource, "dnaxi.0.5.0.nupkg"),
                 packageCarriesSkill ? candidateInstructions : null,
                 invalidPackageContents);
             var baselineInstructions = Write(
                 Path.Combine(root, "baseline-instructions.txt"),
                 "no product instructions");
-            var priorRequestHash = new string('d', 64);
-            var priorReportHash = new string('e', 64);
-            var priorSummary = await WriteJsonAsync(
-                Path.Combine(root, "prior-summary.json"),
-                new
+            var priorRequestHash =
+                CodexDiscoveryBenchmarkPreparation.PriorRequestHash;
+            var priorReportHash =
+                CodexDiscoveryBenchmarkPreparation.PriorReportHash;
+            object priorSummaryValue = canonicalPriorSummary
+                ? new
                 {
                     schema = CodexDiscoveryBenchmarkPreparation
                         .PriorSummarySchema,
                     requestHash = priorRequestHash,
                     reportHash = priorReportHash,
-                    evidenceStatus = "failed",
-                    comparison = "incomparable",
+                    evidenceStatus = "complete",
+                    comparison = "no-improvement",
                     expectedRunCount = 70,
                     retainedRunCount = 70,
-                });
+                    baseline = PriorMetrics(
+                        AgentBenchmarkCondition.Baseline,
+                        activatedRuns: 0,
+                        invocations: 0),
+                    candidate = PriorMetrics(
+                        AgentBenchmarkCondition.Candidate,
+                        activatedRuns: 34,
+                        invocations: 35),
+                    thresholds = new CodexDiscoveryThresholdEvaluation(
+                        0,
+                        0m,
+                        7.5511508951406649616368286400m,
+                        0m,
+                        false,
+                        false,
+                        false,
+                        false),
+                    routeActivations = new[]
+                    {
+                        "file-handler-paths",
+                        "literal-archive-status",
+                        "regex-handler-methods",
+                        "syntax-attributed-classes",
+                        "syntax-catch-timeout",
+                        "syntax-invocation-record",
+                        "syntax-object-creation-archive-client",
+                    }.Select(static taskId => new
+                    {
+                        taskId,
+                        candidateRunCount = 5,
+                        activatedRunCount = taskId == "regex-handler-methods"
+                            ? 4
+                            : 5,
+                        successfulActivatedRunCount =
+                            taskId == "regex-handler-methods" ? 4 : 5,
+                    }).ToArray(),
+                    priorSeries = new CodexDiscoveryHistoricalComparison(
+                        "/retained/0.3.0/summary.json",
+                        "30fb6de32eadbdb0fb3ff51cae5a268e26fb7f8a281697a4cc1b9eb74950a986",
+                        "dotnet-axi/codex-discovery-summary/v1",
+                        "2e0d5ebcb3549c7a5c5a451fe5106f4f6e156a6627011824327509b05c32f893",
+                        "417649ab59ccb352cf1389705f2b51f2ab406b3886ea86033efb24779851b77f",
+                        "failed",
+                        "incomparable",
+                        false,
+                        "Retained historical result."),
+                    reasons = new[]
+                    {
+                        "Complete comparable evidence does not satisfy either a documented regression threshold or the improvement threshold.",
+                    },
+                }
+                : new
+                {
+                    schema = CodexDiscoveryBenchmarkPreparation
+                        .PriorSummarySchema,
+                    requestHash = priorRequestHash,
+                    reportHash = priorReportHash,
+                    evidenceStatus = "complete",
+                    comparison = "no-improvement",
+                    expectedRunCount = 70,
+                    retainedRunCount = 70,
+                };
+            var priorSummary = await WriteJsonAsync(
+                Path.Combine(root, "prior-summary.json"),
+                priorSummaryValue);
             var settings = await WriteJsonAsync(
                 Path.Combine(root, "settings.json"),
                 new CodexDiscoverySettings(
@@ -1580,11 +2083,11 @@ public sealed class CodexDiscoveryBenchmarkTests
                 AppContext.BaseDirectory,
                 "Fixtures",
                 "AgentTasks",
-                "source-discovery",
+                "symbol-context",
                 "corpus.json");
             var request = new CodexDiscoveryBenchmarkRequest(
                 CodexDiscoveryBenchmarkPreparation.RequestSchema,
-                "codex-040-discovery-test",
+                "codex-050-symbol-context-test",
                 await PinFileAsync(executable),
                 await PinFileAsync(dnxExecutable),
                 codexHome,
@@ -1595,13 +2098,12 @@ public sealed class CodexDiscoveryBenchmarkTests
                     CodexDiscoveryBenchmarkPreparation.ProductMilestone,
                     await PinFileAsync(corpus),
                     [
-                        "search.file",
-                        "search.syntax.attributed-class",
-                        "search.syntax.catch",
-                        "search.syntax.invocation",
-                        "search.syntax.object-creation",
-                        "search.text.literal",
-                        "search.text.regex",
+                        "context.symbol",
+                        "outline.syntax",
+                        "search.symbol.declaration",
+                        "search.syntax.verify",
+                        "show.document",
+                        "show.symbol.identity",
                     ]),
                 new CodexDiscoveryProductPin(
                     CodexDiscoveryBenchmarkPreparation.PackageId,
@@ -1648,6 +2150,31 @@ public sealed class CodexDiscoveryBenchmarkTests
             }
         }
 
+        private static CodexDiscoveryConditionMetrics PriorMetrics(
+            AgentBenchmarkCondition condition,
+            int activatedRuns,
+            int invocations) =>
+            new(
+                condition,
+                35,
+                35,
+                35,
+                35,
+                0,
+                activatedRuns,
+                activatedRuns,
+                invocations,
+                invocations,
+                100m,
+                condition is AgentBenchmarkCondition.Baseline
+                    ? 46_920m
+                    : 50_463m,
+                3m,
+                1m,
+                condition is AgentBenchmarkCondition.Baseline
+                    ? 21_101.7472m
+                    : 21_530.5514m);
+
         private static string Write(string path, string value)
         {
             File.WriteAllText(path, value);
@@ -1673,7 +2200,7 @@ public sealed class CodexDiscoveryBenchmarkTests
                 <package xmlns="http://schemas.microsoft.com/packaging/2012/06/nuspec.xsd">
                   <metadata>
                     <id>dnaxi</id>
-                    <version>0.4.0</version>
+                    <version>0.5.0</version>
                     <authors>dotnet-axi</authors>
                     <description>Test package.</description>
                     <packageTypes><packageType name="DotnetTool" /></packageTypes>

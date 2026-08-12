@@ -16,9 +16,9 @@ namespace DotNetAxi.Testing;
 internal static partial class CodexDiscoveryBenchmarkPreparation
 {
     internal const string RequestSchema =
-        "dotnet-axi/codex-discovery-request/v3";
+        "dotnet-axi/codex-discovery-request/v4";
     internal const string PreparationSchema =
-        "dotnet-axi/codex-discovery-preparation/v3";
+        "dotnet-axi/codex-discovery-preparation/v4";
     internal const string SettingsSchema =
         "dotnet-axi/codex-discovery-settings/v1";
     internal const string ToolConfigurationSchema =
@@ -30,13 +30,13 @@ internal static partial class CodexDiscoveryBenchmarkPreparation
     internal const string PermissionProfile = "never";
     internal const string NetworkPolicy = "disabled";
     internal const string AuthenticationMethod = "chatgpt";
-    internal const string ProductMilestone = "0.3.0";
-    internal const string CorpusId = "source-discovery";
+    internal const string ProductMilestone = "0.5.0";
+    internal const string CorpusId = "symbol-context";
     internal const string CorpusVersion = "1.0.0";
     internal const string PackageId = "dnaxi";
-    internal const string PackageVersion = "0.4.0";
+    internal const string PackageVersion = "0.5.0";
     internal const string ProductSchema = "dotnet-axi/v1";
-    internal const string HarnessVersion = "2.3.0";
+    internal const string HarnessVersion = "2.4.0";
     internal const string PackageSourceEnvironmentVariable =
         "DNAXI_LOCAL_FEED";
     internal const string ExactCandidateInvocation =
@@ -47,10 +47,53 @@ internal static partial class CodexDiscoveryBenchmarkPreparation
     internal const int BoundedSkillReaderMaximumLines = 110;
     internal const int CodexLocalProbeTimeoutSeconds = 30;
     internal const string PriorSummarySchema =
-        "dotnet-axi/codex-discovery-summary/v1";
+        "dotnet-axi/codex-discovery-summary/v3";
+    internal const string PriorRequestHash =
+        "cdd5e913c38e5e7b9dd2f36c841690b0e5dbebd4bef8863f94b6ac1ab803aac8";
+    internal const string PriorReportHash =
+        "69ca8480a5a9c9f9a07956d4a3755dd7619b5e37ca895d592543a64bb6ed7653";
+    private const string PriorHistoricalSummaryHash =
+        "30fb6de32eadbdb0fb3ff51cae5a268e26fb7f8a281697a4cc1b9eb74950a986";
+    private const string PriorHistoricalRequestHash =
+        "2e0d5ebcb3549c7a5c5a451fe5106f4f6e156a6627011824327509b05c32f893";
+    private const string PriorHistoricalReportHash =
+        "417649ab59ccb352cf1389705f2b51f2ab406b3886ea86033efb24779851b77f";
     internal const int RunsPerTask = 5;
+    internal const int PriorExpectedRunCount = 70;
 
     private static readonly string[] ExpectedTaskIds =
+    [
+        "test-symbol-explicit-scope",
+        "symbol-owner-framework-variants",
+        "fresh-symbol-identity-show",
+        "stale-symbol-correction",
+        "ambiguous-symbol-correction",
+        "syntax-candidate-partial-verification",
+        "bounded-symbol-show",
+        "document-exact-line-span",
+        "symbol-outline",
+        "context-whole-section-truncation",
+    ];
+
+    private static readonly string[] ExpectedBaselineTaskIds =
+    [
+        "test-symbol-explicit-scope",
+        "symbol-owner-framework-variants",
+        "syntax-candidate-partial-verification",
+        "document-exact-line-span",
+    ];
+
+    private static readonly string[] ExpectedCapabilities =
+    [
+        "context.symbol",
+        "outline.syntax",
+        "search.symbol.declaration",
+        "search.syntax.verify",
+        "show.document",
+        "show.symbol.identity",
+    ];
+
+    private static readonly string[] ExpectedPriorTaskIds =
     [
         "file-handler-paths",
         "literal-archive-status",
@@ -61,30 +104,22 @@ internal static partial class CodexDiscoveryBenchmarkPreparation
         "syntax-object-creation-archive-client",
     ];
 
-    private static readonly string[] ExpectedCapabilities =
-    [
-        "search.file",
-        "search.syntax.attributed-class",
-        "search.syntax.catch",
-        "search.syntax.invocation",
-        "search.syntax.object-creation",
-        "search.text.literal",
-        "search.text.regex",
-    ];
-
     private static readonly IReadOnlyDictionary<string, string>
         ExpectedCapabilityByTask = new Dictionary<string, string>(
             StringComparer.Ordinal)
         {
-            ["file-handler-paths"] = "search.file",
-            ["literal-archive-status"] = "search.text.literal",
-            ["regex-handler-methods"] = "search.text.regex",
-            ["syntax-attributed-classes"] =
-                "search.syntax.attributed-class",
-            ["syntax-catch-timeout"] = "search.syntax.catch",
-            ["syntax-invocation-record"] = "search.syntax.invocation",
-            ["syntax-object-creation-archive-client"] =
-                "search.syntax.object-creation",
+            ["test-symbol-explicit-scope"] = "search.symbol.declaration",
+            ["symbol-owner-framework-variants"] =
+                "search.symbol.declaration",
+            ["fresh-symbol-identity-show"] = "show.symbol.identity",
+            ["stale-symbol-correction"] = "show.symbol.identity",
+            ["ambiguous-symbol-correction"] = "show.symbol.identity",
+            ["syntax-candidate-partial-verification"] =
+                "search.syntax.verify",
+            ["bounded-symbol-show"] = "show.symbol.identity",
+            ["document-exact-line-span"] = "show.document",
+            ["symbol-outline"] = "outline.syntax",
+            ["context-whole-section-truncation"] = "context.symbol",
         };
 
     internal static JsonSerializerOptions JsonOptions { get; } = new()
@@ -221,7 +256,7 @@ internal static partial class CodexDiscoveryBenchmarkPreparation
         catch (AgentTaskCorpusException exception)
         {
             throw new AgentBenchmarkException(
-                "The pinned source-discovery corpus is invalid.",
+                "The pinned symbol-context corpus is invalid.",
                 exception);
         }
 
@@ -232,7 +267,7 @@ internal static partial class CodexDiscoveryBenchmarkPreparation
                 StringComparison.Ordinal))
         {
             throw new AgentBenchmarkException(
-                "The request does not select the controlled source-discovery corpus identity.");
+                "The request does not select the controlled symbol-context corpus identity.");
         }
 
         var applicable = corpus.SelectApplicableTasks(
@@ -241,9 +276,11 @@ internal static partial class CodexDiscoveryBenchmarkPreparation
         if (!applicable.Select(static task => task.Id).SequenceEqual(
                 ExpectedTaskIds,
                 StringComparer.Ordinal)
+            || !applicable.Where(static task => task.Applicability.Baseline)
+                .Select(static task => task.Id)
+                .SequenceEqual(ExpectedBaselineTaskIds, StringComparer.Ordinal)
             || applicable.Any(static task =>
-                !task.Applicability.Baseline
-                || !task.Applicability.Candidate
+                !task.Applicability.Candidate
                 || task.RequiredCapabilities.Count != 1
                 || !ExpectedCapabilityByTask.TryGetValue(
                     task.Id,
@@ -257,7 +294,7 @@ internal static partial class CodexDiscoveryBenchmarkPreparation
                     StringComparer.Ordinal)))
         {
             throw new AgentBenchmarkException(
-                "The request does not select the exact seven passive 0.3.0 discovery tasks for both conditions.");
+                "The request does not select the exact ten candidate and four baseline 0.5.0 symbol-context tasks.");
         }
 
         var selectedCorpus = corpus with
@@ -297,7 +334,7 @@ internal static partial class CodexDiscoveryBenchmarkPreparation
         var corpusDirectory = Path.GetDirectoryName(
                 request.Corpus.Artifact.Path)
             ?? throw new AgentBenchmarkException(
-                "The source-discovery corpus must have a parent directory.");
+                "The symbol-context corpus must have a parent directory.");
         var candidateProbeManifest = Path.GetFullPath(Path.Combine(
             corpusDirectory,
             selectedCorpus.Tasks[0].Repository.FixtureManifest.Replace(
@@ -348,9 +385,11 @@ internal static partial class CodexDiscoveryBenchmarkPreparation
             configuration,
             adapter);
         var taskTimeoutBudgetSeconds = checked(
-            applicable.Sum(static task => task.Execution.TimeoutSeconds)
-            * RunsPerTask
-            * 2);
+            applicable.Sum(static task =>
+                task.Execution.TimeoutSeconds
+                * ((task.Applicability.Baseline ? 1 : 0)
+                   + (task.Applicability.Candidate ? 1 : 0)))
+            * RunsPerTask);
         var finalizationBudgetSeconds = checked(
             prepared.Schedule.Count
             * request.CleanupTimeoutSeconds
@@ -595,7 +634,7 @@ internal static partial class CodexDiscoveryBenchmarkPreparation
             cancellationToken);
         await ValidateFilePinAsync(
             request.PriorSeries.Summary,
-            "retained 0.3.0 summary",
+            "retained 0.4.0 summary",
             cancellationToken);
         await ValidateFilePinAsync(
             request.Baseline.Instructions,
@@ -696,7 +735,7 @@ internal static partial class CodexDiscoveryBenchmarkPreparation
                 StringComparison.Ordinal))
         {
             throw new AgentBenchmarkException(
-                "The request does not pin the exact manual dnx-first 0.4.0 Codex discovery series contract.");
+                "The request does not pin the exact manual dnx-first 0.5.0 Codex symbol-context series contract.");
         }
 
         if (!string.Equals(
@@ -717,7 +756,7 @@ internal static partial class CodexDiscoveryBenchmarkPreparation
         ValidatePinShape(request.Product.Skill, "dnaxi repository skill");
         ValidatePinShape(
             request.PriorSeries.Summary,
-            "retained 0.3.0 summary");
+            "retained 0.4.0 summary");
         ValidatePinShape(request.Baseline.Instructions, "baseline instructions");
         ValidatePinShape(
             request.Baseline.ToolConfiguration,
@@ -767,7 +806,7 @@ internal static partial class CodexDiscoveryBenchmarkPreparation
                 StringComparison.Ordinal))
         {
             throw new AgentBenchmarkException(
-                "The settings artifact does not pin the approved Codex 0.4.0 self-hosting execution profile.");
+                "The settings artifact does not pin the approved Codex 0.5.0 symbol-context execution profile.");
         }
     }
 
@@ -1163,7 +1202,7 @@ internal static partial class CodexDiscoveryBenchmarkPreparation
                     StringComparer.Ordinal))
             {
                 throw new AgentBenchmarkException(
-                    "The pinned package must identify the exact dnaxi 0.4.0 .NET tool candidate.");
+                    "The pinned package must identify the exact dnaxi 0.5.0 .NET tool candidate.");
             }
 
             foreach (var entryName in new[]
@@ -1222,23 +1261,26 @@ internal static partial class CodexDiscoveryBenchmarkPreparation
     {
         await ValidateFilePinAsync(
             prior.Summary,
-            "retained 0.3.0 summary",
+            "retained 0.4.0 summary",
             cancellationToken);
         try
         {
             await using var stream = File.OpenRead(prior.Summary.Path);
-            using var document = await JsonDocument.ParseAsync(
-                stream,
-                cancellationToken: cancellationToken);
-            var root = document.RootElement;
+            var summary = await JsonSerializer.DeserializeAsync<
+                    CodexDiscoveryPriorSeriesSummaryV3>(
+                    stream,
+                    JsonOptions,
+                    cancellationToken)
+                ?? throw new AgentBenchmarkException(
+                    "The retained 0.4.0 summary is empty.");
             var identity = new CodexDiscoveryPriorSeriesIdentity(
-                root.GetProperty("schema").GetString() ?? string.Empty,
-                root.GetProperty("requestHash").GetString() ?? string.Empty,
-                root.GetProperty("reportHash").GetString() ?? string.Empty,
-                root.GetProperty("evidenceStatus").GetString() ?? string.Empty,
-                root.GetProperty("comparison").GetString() ?? string.Empty,
-                root.GetProperty("expectedRunCount").GetInt32(),
-                root.GetProperty("retainedRunCount").GetInt32());
+                summary.Schema ?? string.Empty,
+                summary.RequestHash ?? string.Empty,
+                summary.ReportHash ?? string.Empty,
+                summary.EvidenceStatus ?? string.Empty,
+                summary.Comparison ?? string.Empty,
+                summary.ExpectedRunCount,
+                summary.RetainedRunCount);
             if (!string.Equals(
                     identity.Schema,
                     PriorSummarySchema,
@@ -1248,23 +1290,88 @@ internal static partial class CodexDiscoveryBenchmarkPreparation
                     prior.RequestHash,
                     StringComparison.Ordinal)
                 || !string.Equals(
+                    identity.RequestHash,
+                    PriorRequestHash,
+                    StringComparison.Ordinal)
+                || !string.Equals(
                     identity.ReportHash,
                     prior.ReportHash,
                     StringComparison.Ordinal)
                 || !string.Equals(
+                    identity.ReportHash,
+                    PriorReportHash,
+                    StringComparison.Ordinal)
+                || !string.Equals(
                     identity.EvidenceStatus,
-                    "failed",
+                    "complete",
                     StringComparison.Ordinal)
                 || !string.Equals(
                     identity.Comparison,
+                    "no-improvement",
+                    StringComparison.Ordinal)
+                || identity.ExpectedRunCount != PriorExpectedRunCount
+                || identity.RetainedRunCount != identity.ExpectedRunCount
+                || !IsCanonicalPriorCondition(
+                    summary.Baseline,
+                    AgentBenchmarkCondition.Baseline)
+                || !IsCanonicalPriorCondition(
+                    summary.Candidate,
+                    AgentBenchmarkCondition.Candidate)
+                || summary.Thresholds is null
+                || summary.Thresholds.SafetyCriticalRegressions != 0
+                || summary.Thresholds.AggregateSuccessDeltaPercentagePoints
+                    != 0m
+                || summary.Thresholds.MedianTokenChangePercent
+                    != 7.5511508951406649616368286400m
+                || summary.Thresholds.MedianToolCallChangePercent != 0m
+                || summary.Thresholds.SuccessRegression
+                || summary.Thresholds.TokenRegression
+                || summary.Thresholds.ToolCallRegression
+                || summary.Thresholds.ImprovementClaimSupported
+                || summary.RouteActivations is null
+                || !summary.RouteActivations.Select(static route => route.TaskId)
+                    .SequenceEqual(ExpectedPriorTaskIds, StringComparer.Ordinal)
+                || summary.RouteActivations.Any(static route =>
+                    route.CandidateRunCount != RunsPerTask
+                    || route.ActivatedRunCount
+                    != ExpectedPriorActivationCount(route.TaskId)
+                    || route.SuccessfulActivatedRunCount
+                    != ExpectedPriorActivationCount(route.TaskId))
+                || summary.PriorSeries is null
+                || summary.PriorSeries.Comparable
+                || !string.Equals(
+                    summary.PriorSeries.SummaryHash,
+                    PriorHistoricalSummaryHash,
+                    StringComparison.Ordinal)
+                || !string.Equals(
+                    summary.PriorSeries.SummarySchema,
+                    "dotnet-axi/codex-discovery-summary/v1",
+                    StringComparison.Ordinal)
+                || !string.Equals(
+                    summary.PriorSeries.RequestHash,
+                    PriorHistoricalRequestHash,
+                    StringComparison.Ordinal)
+                || !string.Equals(
+                    summary.PriorSeries.ReportHash,
+                    PriorHistoricalReportHash,
+                    StringComparison.Ordinal)
+                || !string.Equals(
+                    summary.PriorSeries.EvidenceStatus,
+                    "failed",
+                    StringComparison.Ordinal)
+                || !string.Equals(
+                    summary.PriorSeries.Comparison,
                     "incomparable",
                     StringComparison.Ordinal)
-                || identity.ExpectedRunCount != RunsPerTask
-                    * ExpectedTaskIds.Length * 2
-                || identity.RetainedRunCount != identity.ExpectedRunCount)
+                || summary.Reasons is null
+                || !summary.Reasons.SequenceEqual(
+                    [
+                        "Complete comparable evidence does not satisfy either a documented regression threshold or the improvement threshold.",
+                    ],
+                    StringComparer.Ordinal))
             {
                 throw new AgentBenchmarkException(
-                    "The prior-series pin does not identify the retained failed/incomparable 0.3.0 discovery result.");
+                    "The prior-series pin does not identify the immutable retained 0.4.0 discovery result.");
             }
 
             return identity;
@@ -1276,10 +1383,46 @@ internal static partial class CodexDiscoveryBenchmarkPreparation
                   or FormatException)
         {
             throw new AgentBenchmarkException(
-                "The retained 0.3.0 summary is malformed.",
+                "The retained 0.4.0 summary is malformed.",
                 exception);
         }
     }
+
+    private static bool IsCanonicalPriorCondition(
+        CodexDiscoveryConditionMetrics? metrics,
+        AgentBenchmarkCondition condition)
+    {
+        if (metrics is null
+            || metrics.Condition != condition
+            || metrics.RunCount != 35
+            || metrics.CompletedCount != 35
+            || metrics.SuccessCount != 35
+            || metrics.SafeCount != 35
+            || metrics.TimedOutCount != 0
+            || metrics.SuccessRatePercent != 100m
+            || metrics.MedianToolCalls != 3m
+            || metrics.MedianTurns != 1m)
+        {
+            return false;
+        }
+
+        return condition is AgentBenchmarkCondition.Baseline
+            ? metrics.DnxActivatedRunCount == 0
+              && metrics.SuccessfulDnxActivatedRunCount == 0
+              && metrics.DnxInvocationCount == 0
+              && metrics.SuccessfulDnxInvocationCount == 0
+              && metrics.MedianTotalTokens == 46_920m
+              && metrics.MedianDurationMilliseconds == 21_101.7472m
+            : metrics.DnxActivatedRunCount == 34
+              && metrics.SuccessfulDnxActivatedRunCount == 34
+              && metrics.DnxInvocationCount == 35
+              && metrics.SuccessfulDnxInvocationCount == 35
+              && metrics.MedianTotalTokens == 50_463m
+              && metrics.MedianDurationMilliseconds == 21_530.5514m;
+    }
+
+    private static int ExpectedPriorActivationCount(string taskId) =>
+        taskId == "regex-handler-methods" ? 4 : 5;
 
     private static async ValueTask ValidateCodexRuntimeAsync(
         CodexDiscoveryBenchmarkRequest request,
@@ -1864,6 +2007,27 @@ internal sealed record CodexDiscoveryPriorSeriesIdentity(
     string Comparison,
     int ExpectedRunCount,
     int RetainedRunCount);
+
+internal sealed record CodexDiscoveryPriorSeriesSummaryV3(
+    string? Schema,
+    string? RequestHash,
+    string? ReportHash,
+    string? EvidenceStatus,
+    string? Comparison,
+    int ExpectedRunCount,
+    int RetainedRunCount,
+    CodexDiscoveryConditionMetrics? Baseline,
+    CodexDiscoveryConditionMetrics? Candidate,
+    CodexDiscoveryThresholdEvaluation? Thresholds,
+    IReadOnlyList<CodexDiscoveryPriorRouteActivationV3>? RouteActivations,
+    CodexDiscoveryHistoricalComparison? PriorSeries,
+    IReadOnlyList<string>? Reasons);
+
+internal sealed record CodexDiscoveryPriorRouteActivationV3(
+    string TaskId,
+    int CandidateRunCount,
+    int ActivatedRunCount,
+    int SuccessfulActivatedRunCount);
 
 internal sealed record CodexDiscoveryConditionPin(
     CodexDiscoveryArtifactPin Instructions,
