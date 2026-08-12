@@ -523,13 +523,11 @@ public static partial class AgentTaskCorpusLoader
                 "exact-fact-set",
                 StringComparison.Ordinal))
         {
-            if (!string.Equals(
-                    oracle.Normalizer,
-                    "ordinal-lines/v1",
-                    StringComparison.Ordinal))
+            if (oracle.Normalizer is not (
+                    "ordinal-lines/v1" or "ordinal-sequence/v1"))
             {
                 throw new AgentTaskCorpusException(
-                    $"Task '{taskId}' exact success oracle must use 'ordinal-lines/v1'.");
+                    $"Task '{taskId}' exact success oracle must use 'ordinal-lines/v1' or 'ordinal-sequence/v1'.");
             }
 
             if (oracle.ModelJudge is not null)

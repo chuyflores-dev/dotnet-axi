@@ -613,10 +613,8 @@ public sealed partial class AgentBenchmarkRunner
                 oracle.Kind,
                 "exact-fact-set",
                 StringComparison.Ordinal)
-            || !string.Equals(
-                oracle.Normalizer,
-                "ordinal-lines/v1",
-                StringComparison.Ordinal))
+            || oracle.Normalizer is not (
+                "ordinal-lines/v1" or "ordinal-sequence/v1"))
         {
             throw new AgentBenchmarkException(
                 $"Unsupported success oracle '{oracle.Kind}'.");
@@ -624,7 +622,8 @@ public sealed partial class AgentBenchmarkRunner
 
         return AgentBenchmarkFactSet.EqualsExpected(
             answer,
-            oracle.ExpectedFacts);
+            oracle.ExpectedFacts,
+            oracle.Normalizer!);
     }
 
     private static bool EvaluateClaimsSupported(
@@ -641,7 +640,8 @@ public sealed partial class AgentBenchmarkRunner
 
         return AgentBenchmarkFactSet.ContainsOnlyExpected(
             answer,
-            oracle.ExpectedFacts);
+            oracle.ExpectedFacts,
+            oracle.Normalizer ?? string.Empty);
     }
 
     private static AgentBenchmarkInspectedScope NormalizeScope(
@@ -1201,10 +1201,8 @@ public sealed partial class AgentBenchmarkRunner
                     task.SuccessOracle.Kind,
                     "exact-fact-set",
                     StringComparison.Ordinal)
-                || !string.Equals(
-                    task.SuccessOracle.Normalizer,
-                    "ordinal-lines/v1",
-                    StringComparison.Ordinal)
+                || task.SuccessOracle.Normalizer is not (
+                    "ordinal-lines/v1" or "ordinal-sequence/v1")
                 || task.SuccessOracle.ModelJudge is not null
                 || !IsFactSet(task.SuccessOracle.ExpectedFacts))
             {

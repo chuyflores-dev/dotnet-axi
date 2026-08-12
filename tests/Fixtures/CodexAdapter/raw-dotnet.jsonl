@@ -1,0 +1,5 @@
+{"type":"thread.started","thread_id":"thread-raw-dotnet"}
+{"type":"turn.started"}
+{"type":"item.completed","item":{"id":"dotnet","type":"command_execution","command":"/bin/zsh -lc 'dotnet msbuild src/Discovery/Discovery.csproj -getProperty:TargetFrameworks'","aggregated_output":"net10.0\n","exit_code":0,"status":"completed"}}
+{"type":"item.completed","item":{"id":"message","type":"agent_message","text":"src/Discovery/Handlers/AuditHandler.cs:5"}}
+{"type":"turn.completed","usage":{"input_tokens":21,"output_tokens":3}}

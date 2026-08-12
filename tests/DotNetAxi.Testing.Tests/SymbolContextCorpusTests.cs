@@ -12,7 +12,7 @@ public sealed partial class SymbolContextCorpusTests
         var corpus = await AgentTaskCorpusLoader.LoadAsync(CorpusPath());
 
         Assert.Equal("symbol-context", corpus.Id);
-        Assert.Equal("1.0.1", corpus.Version);
+        Assert.Equal("1.0.2", corpus.Version);
         Assert.Equal(10, corpus.Tasks.Count);
         Assert.Equal(
             [
@@ -39,18 +39,36 @@ public sealed partial class SymbolContextCorpusTests
                 Assert.Equal("invariant", task.Execution.Locale);
                 Assert.Equal("UTC", task.Execution.TimeZone);
                 Assert.Equal("exact-fact-set", task.SuccessOracle.Kind);
-                Assert.Equal("ordinal-lines/v1", task.SuccessOracle.Normalizer);
+                Assert.Equal("ordinal-sequence/v1", task.SuccessOracle.Normalizer);
                 Assert.Null(task.SuccessOracle.ModelJudge);
-                var prefixes = task.SuccessOracle.ExpectedFacts.Select(
-                    static fact => fact[..(fact.IndexOf(':') + 1)]);
-                Assert.EndsWith(
-                    "Return exactly one newline-delimited fact for each of these prefixes, in this order: "
-                    + string.Join(
-                        ", ",
-                        prefixes.Select(static prefix => $"`{prefix}`"))
-                    + ".",
+                Assert.Contains(
+                    "Replace every angle-bracket description with the corresponding evidence value.",
                     task.Prompt,
                     StringComparison.Ordinal);
+                const string responseMarker =
+                    "with each shown literal prefix followed by one space and no extra text:";
+                Assert.Contains(
+                    responseMarker,
+                    task.Prompt,
+                    StringComparison.Ordinal);
+                var contract = task.Prompt[
+                    (task.Prompt.IndexOf(
+                        responseMarker,
+                        StringComparison.Ordinal) + responseMarker.Length)..];
+                var offset = 0;
+                foreach (var expectedFact in task.SuccessOracle.ExpectedFacts)
+                {
+                    var prefix = expectedFact[..(expectedFact.IndexOf(':') + 1)];
+                    var marker = $"`{prefix} ";
+                    var markerIndex = contract.IndexOf(
+                        marker,
+                        offset,
+                        StringComparison.Ordinal);
+                    Assert.True(
+                        markerIndex >= offset,
+                        $"Task '{task.Id}' does not declare grammar for '{prefix}'.");
+                    offset = markerIndex + marker.Length;
+                }
                 Assert.Equal(
                     task.SuccessOracle.ExpectedFacts.Order(StringComparer.Ordinal),
                     task.SuccessOracle.ExpectedFacts);
@@ -76,6 +94,80 @@ public sealed partial class SymbolContextCorpusTests
             corpus.Tasks
                 .Where(static task => task.Applicability.Candidate)
                 .Select(static task => task.Id));
+    }
+
+    [Fact]
+    public async Task Exact_fact_normalizer_preserves_order_and_duplicates()
+    {
+        var corpus = await AgentTaskCorpusLoader.LoadAsync(CorpusPath());
+        var facts = corpus.Tasks[0].SuccessOracle.ExpectedFacts;
+        var exact = string.Join('\n', facts);
+        var reordered = string.Join('\n', facts.Reverse());
+        var duplicated = string.Join('\n', [.. facts, facts[0]]);
+
+        Assert.True(AgentBenchmarkFactSet.EqualsExpected(
+            exact,
+            facts,
+            "ordinal-sequence/v1"));
+        Assert.False(AgentBenchmarkFactSet.EqualsExpected(
+            reordered,
+            facts,
+            "ordinal-sequence/v1"));
+        Assert.False(AgentBenchmarkFactSet.EqualsExpected(
+            duplicated,
+            facts,
+            "ordinal-sequence/v1"));
+        Assert.True(AgentBenchmarkFactSet.EqualsExpected(
+            duplicated,
+            facts,
+            "ordinal-lines/v1"));
+    }
+
+    [Theory]
+    [InlineData("missing-grammar")]
+    [InlineData("malformed-code-span")]
+    [InlineData("extra-declaration")]
+    [InlineData("leaked-answer")]
+    [InlineData("vague-grammar")]
+    [InlineData("missing-order-directive")]
+    public async Task Preparation_contract_rejects_under_specified_or_leaking_prompts(
+        string mutation)
+    {
+        var corpus = await AgentTaskCorpusLoader.LoadAsync(CorpusPath());
+        var task = corpus.Tasks[0];
+        var prompt = mutation switch
+        {
+            "missing-grammar" => task.Prompt.Replace(
+                "<repo-relative-path>:<1-based-line>",
+                "value",
+                StringComparison.Ordinal),
+            "malformed-code-span" => task.Prompt.Replace(
+                "`declaration: <repo-relative-path>:<1-based-line>`",
+                "`declaration: <repo-relative-path>:<1-based-line>",
+                StringComparison.Ordinal),
+            "extra-declaration" => task.Prompt[..^1]
+                + ", `extra: <value>`.",
+            "leaked-answer" => task.Prompt.Replace(
+                "declaration: <repo-relative-path>:<1-based-line>",
+                task.SuccessOracle.ExpectedFacts[0],
+                StringComparison.Ordinal),
+            "vague-grammar" => task.Prompt.Replace(
+                "declaration: <repo-relative-path>:<1-based-line>",
+                "declaration: <value>",
+                StringComparison.Ordinal),
+            "missing-order-directive" => corpus.Tasks[1].Prompt.Replace(
+                "Sort repeated framework values using ordinal string order. ",
+                string.Empty,
+                StringComparison.Ordinal),
+            _ => throw new ArgumentOutOfRangeException(nameof(mutation)),
+        };
+        var mutatedTask = mutation == "missing-order-directive"
+            ? corpus.Tasks[1] with { Prompt = prompt }
+            : task with { Prompt = prompt };
+
+        Assert.False(
+            CodexDiscoveryBenchmarkPreparation.HasExactFactResponseContract(
+                mutatedTask));
     }
 
     [Fact]

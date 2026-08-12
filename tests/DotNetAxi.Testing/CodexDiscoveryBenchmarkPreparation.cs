@@ -32,11 +32,11 @@ internal static partial class CodexDiscoveryBenchmarkPreparation
     internal const string AuthenticationMethod = "chatgpt";
     internal const string ProductMilestone = "0.5.0";
     internal const string CorpusId = "symbol-context";
-    internal const string CorpusVersion = "1.0.1";
+    internal const string CorpusVersion = "1.0.2";
     internal const string PackageId = "dnaxi";
     internal const string PackageVersion = "0.5.0";
     internal const string ProductSchema = "dotnet-axi/v1";
-    internal const string HarnessVersion = "2.5.0";
+    internal const string HarnessVersion = "2.6.0";
     internal const string PackageSourceEnvironmentVariable =
         "DNAXI_LOCAL_FEED";
     internal const string ExactCandidateInvocation =
@@ -293,13 +293,15 @@ internal static partial class CodexDiscoveryBenchmarkPreparation
                     task.RequiredCapabilities[0],
                     expectedCapability,
                     StringComparison.Ordinal)
-                || task.Execution.PermittedTools.Contains(
-                    "workspace-write",
-                    StringComparer.Ordinal)
-                || !HasExactFactPrefixContract(task)))
+                || !string.Equals(
+                    task.SuccessOracle.Normalizer,
+                    "ordinal-sequence/v1",
+                    StringComparison.Ordinal)
+                || !HasExactPermittedToolPolicy(task)
+                || !HasExactFactResponseContract(task)))
         {
             throw new AgentBenchmarkException(
-                "The request does not select the exact ten candidate and four baseline 0.5.0 symbol-context tasks with explicit oracle fact prefixes.");
+                "The request does not select the exact ten candidate and four baseline 0.5.0 symbol-context tasks with approved oracle response contracts.");
         }
 
         var selectedCorpus = corpus with
@@ -1037,12 +1039,11 @@ internal static partial class CodexDiscoveryBenchmarkPreparation
     {
         var rawToolDirectory = tools.ExecutableSearchPathEntries[0].Path;
         var dotnetPath = ResolveExecutableCommand(rawToolDirectory, "dotnet");
-        var searchPath = ResolveExecutableCommand(rawToolDirectory, "rg")
-                         ?? ResolveExecutableCommand(rawToolDirectory, "grep");
+        var searchPath = ResolveExecutableCommand(rawToolDirectory, "rg");
         if (dotnetPath is null || searchPath is null)
         {
             throw new AgentBenchmarkException(
-                "The shared sealed raw-tool path must contain executable raw 'dotnet' and 'rg' or equivalent 'grep' commands.");
+                "The shared sealed raw-tool path must contain executable raw 'dotnet' and 'rg' commands.");
         }
 
         var corpusDirectory = Path.GetDirectoryName(request.Corpus.Artifact.Path)
@@ -1078,6 +1079,44 @@ internal static partial class CodexDiscoveryBenchmarkPreparation
                 "The pinned baseline source-search command cannot find an exact line in the materialized benchmark fixture.");
         }
 
+        var commonArgumentsResult = await new ProcessRunner().RunAsync(
+            new ProcessRunRequest(
+                searchPath,
+                fixture.WorkspacePath,
+                [
+                    "--hidden",
+                    "--glob", "!**/bin/**",
+                    "--glob", "!**/obj/**",
+                    "--files",
+                    "-g", "Workspace.slnx",
+                    "-g", "*.cs",
+                    "-g", "*.csproj",
+                ],
+                fixture.EnvironmentVariables,
+                new ProcessOutputLimits(16 * 1024, 4 * 1024),
+                TimeSpan.FromSeconds(10)),
+            cancellationToken);
+        var discoveredFiles = commonArgumentsResult.StandardOutput.Text.Split(
+                ['\r', '\n'],
+                StringSplitOptions.RemoveEmptyEntries
+                | StringSplitOptions.TrimEntries)
+            .Select(static path => path.Replace('\\', '/'))
+            .ToArray();
+        if (!IsSuccessfulProbe(commonArgumentsResult)
+            || !discoveredFiles.Contains(
+                "Workspace.slnx",
+                StringComparer.Ordinal)
+            || !discoveredFiles.Contains(
+                "src/Core/LedgerService.cs",
+                StringComparer.Ordinal)
+            || !discoveredFiles.Contains(
+                "tests/Core.Tests/Core.Tests.csproj",
+                StringComparer.Ordinal))
+        {
+            throw new AgentBenchmarkException(
+                "The pinned baseline rg command does not support the common Codex source-search arguments used by the benchmark condition.");
+        }
+
         var dotnetResult = await new ProcessRunner().RunAsync(
             new ProcessRunRequest(
                 dotnetPath,
@@ -1111,19 +1150,198 @@ internal static partial class CodexDiscoveryBenchmarkPreparation
         && !result.StandardOutput.LimitExceeded
         && !result.StandardError.LimitExceeded;
 
-    private static bool HasExactFactPrefixContract(AgentTaskDefinition task)
+    internal static bool HasExactFactResponseContract(AgentTaskDefinition task)
     {
-        var prefixes = task.SuccessOracle.ExpectedFacts.Select(static fact =>
+        const string evidenceMarker =
+            "Replace every angle-bracket description with the corresponding evidence value.";
+        const string responseMarker =
+            "with each shown literal prefix followed by one space and no extra text:";
+        var responseMarkerIndex = task.Prompt.IndexOf(
+            responseMarker,
+            StringComparison.Ordinal);
+        if (!task.Prompt.Contains(evidenceMarker, StringComparison.Ordinal)
+            || responseMarkerIndex < 0)
         {
-            var separator = fact.IndexOf(':');
-            return separator < 0 ? string.Empty : fact[..(separator + 1)];
-        }).ToArray();
-        var suffix =
-            "Return exactly one newline-delimited fact for each of these prefixes, in this order: "
-            + string.Join(", ", prefixes.Select(static prefix => $"`{prefix}`"))
+            return false;
+        }
+
+        var contract = task.Prompt[
+            (responseMarkerIndex + responseMarker.Length)..].Trim();
+        if (!contract.EndsWith(".", StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        var declarations = Regex.Matches(contract, "`(?<declaration>[^`]*)`")
+            .Select(static match => match.Groups["declaration"].Value)
+            .ToArray();
+        string[]? approvedDeclarations = task.Id switch
+        {
+            "test-symbol-explicit-scope" =>
+            [
+                "declaration: <repo-relative-path>:<1-based-line>",
+                "owner: <repo-relative-csproj-path>",
+                "signature: <unqualified-declaration-name>",
+            ],
+            "symbol-owner-framework-variants" =>
+            [
+                "declaration: <repo-relative-path>:<1-based-line>",
+                "framework: <target-framework-moniker>",
+                "framework: <target-framework-moniker>",
+                "owner: <repo-relative-csproj-path>",
+                "variant-count: <base-10-integer>",
+            ],
+            "fresh-symbol-identity-show" =>
+            [
+                "body: <single-return-statement>",
+                "declaration: <repo-relative-path>:<1-based-line>",
+                "signature: <unqualified-method-signature>",
+            ],
+            "stale-symbol-correction" =>
+            [
+                "correction-target: <unqualified-name-without-parameters>",
+                "replacement: <unqualified-signature>",
+                "status: <normalized-status>",
+            ],
+            "ambiguous-symbol-correction" =>
+            [
+                "candidate-count: <base-10-integer>",
+                "selected: <selection-or-none>",
+                "status: <normalized-status>",
+            ],
+            "syntax-candidate-partial-verification" =>
+            [
+                "candidate: <repo-relative-path>:<1-based-line>",
+                "coverage: <coverage-value>",
+                "reason: <partial-reason-value>",
+                "status: <candidate-status-value>",
+            ],
+            "bounded-symbol-show" =>
+            [
+                "declaration: <repo-relative-path>:<1-based-line>",
+                "retrieval: <availability-value>",
+                "signature: <unqualified-declaration-name>",
+                "truncated: <lowercase-boolean>",
+            ],
+            "document-exact-line-span" =>
+            [
+                "actual-span: <start-line>-<end-line>",
+                "line-5: <exact-line-text>",
+                "line-6: <exact-line-text>",
+            ],
+            "symbol-outline" =>
+            [
+                "1: depth <base-10-integer> <signature>",
+                "2: depth <base-10-integer> <signature>",
+                "3: depth <base-10-integer> <signature>",
+            ],
+            "context-whole-section-truncation" =>
+            [
+                "included-characters: <base-10-integer>",
+                "omitted: <comma-separated-section-names>",
+                "retrieval: <availability-value>",
+                "truncated: <lowercase-boolean>",
+            ],
+            _ => null,
+        };
+        string[] requiredDirectives = task.Id switch
+        {
+            "symbol-owner-framework-variants" =>
+            ["Sort repeated framework values using ordinal string order."],
+            "fresh-symbol-identity-show" =>
+            ["For body, return only the single return statement without braces or escaped newlines."],
+            "stale-symbol-correction" =>
+            ["Translate error code evidence.stale_id to normalized status stale."],
+            "ambiguous-symbol-correction" =>
+            ["Use selected value none when no declaration is resolved, and translate error code evidence.ambiguous_id to normalized status ambiguous."],
+            "syntax-candidate-partial-verification" =>
+            ["Use the structured coverage, partial_reason, and per-candidate status values literally."],
+            "bounded-symbol-show" =>
+            ["Use retrieval value available when a nonblank retrieval_command is present and unavailable otherwise; use a lowercase boolean for truncated."],
+            "document-exact-line-span" =>
+            ["Preserve each retrieved line value exactly."],
+            "symbol-outline" =>
+            ["Preserve structured outline order and format each value as the literal word depth, one space, the integer depth, one space, and the signature."],
+            "context-whole-section-truncation" =>
+            [
+                "For omitted, join omitted_sections in reported order with commas and no spaces.",
+                "Use retrieval value available when a nonblank retrieval_command is present and unavailable otherwise; use a lowercase boolean for truncated.",
+            ],
+            _ => [],
+        };
+        if (approvedDeclarations is null
+            || !declarations.SequenceEqual(
+                approvedDeclarations,
+                StringComparer.Ordinal)
+            || requiredDirectives.Any(directive =>
+                !task.Prompt.Contains(directive, StringComparison.Ordinal))
+            || declarations.Length != task.SuccessOracle.ExpectedFacts.Count)
+        {
+            return false;
+        }
+
+        var exactContract = string.Join(
+            ", ",
+            declarations.Select(static declaration => $"`{declaration}`"))
             + ".";
-        return prefixes.All(static prefix => prefix.Length > 1)
-               && task.Prompt.EndsWith(suffix, StringComparison.Ordinal);
+        if (!string.Equals(contract, exactContract, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        for (var index = 0; index < declarations.Length; index++)
+        {
+            var expectedFact = task.SuccessOracle.ExpectedFacts[index];
+            if (task.Prompt.Contains(expectedFact, StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            var separator = expectedFact.IndexOf(':');
+            var declaration = declarations[index];
+            var prefix = expectedFact[..(separator + 1)];
+            if (!declaration.StartsWith($"{prefix} ", StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            var grammar = declaration[(prefix.Length + 1)..];
+            var placeholders = Regex.Matches(
+                grammar,
+                "<(?<name>[a-z0-9][a-z0-9-]*)>");
+            if (placeholders.Count == 0
+                || placeholders.Any(static placeholder =>
+                    string.IsNullOrWhiteSpace(
+                        placeholder.Groups["name"].Value))
+                || grammar.Count(static character => character == '<')
+                    != placeholders.Count
+                || grammar.Count(static character => character == '>')
+                    != placeholders.Count)
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static bool HasExactPermittedToolPolicy(
+        AgentTaskDefinition task)
+    {
+        string[] expected = task.Id switch
+        {
+            "syntax-candidate-partial-verification" =>
+            [
+                "dotnet-sdk",
+                "repository-execution",
+                "repository-read",
+                "source-search",
+            ],
+            _ => ["repository-read", "source-search"],
+        };
+        return task.Execution.PermittedTools.SequenceEqual(
+            expected,
+            StringComparer.Ordinal);
     }
 
     private static string? ResolveExecutableCommand(

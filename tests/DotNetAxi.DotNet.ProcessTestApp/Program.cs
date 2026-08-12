@@ -59,6 +59,34 @@ if (rawProbeEnabled
 }
 
 if (rawProbeEnabled
+    && processName == "rg"
+    && File.Exists(Path.Combine(
+        AppContext.BaseDirectory,
+        "rg.codex-arguments-enabled"))
+    && args.SequenceEqual(
+        [
+            "--hidden",
+            "--glob", "!**/bin/**",
+            "--glob", "!**/obj/**",
+            "--files",
+            "-g", "Workspace.slnx",
+            "-g", "*.cs",
+            "-g", "*.csproj",
+        ]))
+{
+    var outputSeparator = File.Exists(Path.Combine(
+        AppContext.BaseDirectory,
+        "rg.windows-separators-enabled"))
+            ? '\\'
+            : '/';
+    Console.WriteLine("Workspace.slnx");
+    Console.WriteLine($"src{outputSeparator}Core{outputSeparator}LedgerService.cs");
+    Console.WriteLine(
+        $"tests{outputSeparator}Core.Tests{outputSeparator}Core.Tests.csproj");
+    return 0;
+}
+
+if (rawProbeEnabled
     && processName == "dotnet"
     && args.SequenceEqual(
         [
