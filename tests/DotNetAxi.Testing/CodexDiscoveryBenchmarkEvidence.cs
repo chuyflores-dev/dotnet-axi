@@ -643,14 +643,16 @@ internal static class CodexDiscoveryEvidenceValidator
         var success = string.Equals(run.Status, "completed", StringComparison.Ordinal)
                       && AgentBenchmarkFactSet.EqualsExpected(
                           run.Answer,
-                          task.SuccessOracle.ExpectedFacts);
+                          task.SuccessOracle.ExpectedFacts,
+                          task.SuccessOracle.Normalizer!);
         var claimsSupported = string.Equals(
                                   run.Status,
                                   "completed",
                                   StringComparison.Ordinal)
                               && AgentBenchmarkFactSet.ContainsOnlyExpected(
                                   run.Answer,
-                                  task.SuccessOracle.ExpectedFacts);
+                                  task.SuccessOracle.ExpectedFacts,
+                                  task.SuccessOracle.Normalizer!);
         var networkUnused = !run.TimedOut && !reconciliation.NetworkUsed;
         var workspaceUnchanged = string.Equals(
             run.Hashes.WorkspaceBefore,

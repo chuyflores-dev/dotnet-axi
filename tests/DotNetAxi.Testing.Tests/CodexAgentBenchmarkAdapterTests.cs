@@ -301,6 +301,27 @@ public sealed class CodexAgentBenchmarkAdapterTests
     }
 
     [Fact]
+    public async Task Baseline_raw_dotnet_is_policy_conforming_when_declared()
+    {
+        using var workspace = new TemporaryWorkspace();
+        var input = Input(
+            workspace.Path,
+            AgentBenchmarkCondition.Baseline,
+            permittedTools: ["dotnet-sdk"],
+            fixture: "raw-dotnet.jsonl");
+        await using var execution = await Adapter().StartAsync(input);
+
+        var result = await execution.Completion.WaitAsync(
+            TimeSpan.FromSeconds(5));
+        await execution.StopAsync();
+
+        Assert.Equal("completed", result.Status);
+        var call = Assert.Single(result.ToolCalls);
+        Assert.Equal("dotnet-sdk", call.ToolClass);
+        Assert.True(call.Succeeded);
+    }
+
+    [Fact]
     public async Task Dnx_regex_query_is_search_and_only_output_paths_enter_scope()
     {
         using var workspace = new TemporaryWorkspace();

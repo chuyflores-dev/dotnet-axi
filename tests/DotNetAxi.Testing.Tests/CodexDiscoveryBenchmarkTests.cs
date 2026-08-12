@@ -1,6 +1,7 @@
 using System.IO.Compression;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 
 namespace DotNetAxi.Testing.Tests;
 
@@ -190,7 +191,7 @@ public sealed class CodexDiscoveryBenchmarkTests
                 fixture.RequestPath));
 
         Assert.Contains(
-            "equivalent 'grep'",
+            "and 'rg' commands",
             exception.Message,
             StringComparison.Ordinal);
     }
@@ -223,6 +224,66 @@ public sealed class CodexDiscoveryBenchmarkTests
 
         Assert.Contains(
             "cannot find an exact line",
+            exception.Message,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Preparation_rejects_raw_source_search_without_common_codex_grammar()
+    {
+        using var fixture = await PreparedFixture.CreateAsync(
+            rawSourceSearchSupportsCodexArguments: false);
+
+        var exception = await Assert.ThrowsAsync<AgentBenchmarkException>(
+            async () => await CodexDiscoveryBenchmarkPreparation.PrepareAsync(
+                fixture.RequestPath));
+
+        Assert.Contains(
+            "common Codex source-search arguments",
+            exception.Message,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Preparation_accepts_native_windows_separators_from_raw_source_search()
+    {
+        using var fixture = await PreparedFixture.CreateAsync(
+            rawSourceSearchUsesWindowsSeparators: true);
+
+        var prepared = await CodexDiscoveryBenchmarkPreparation.PrepareAsync(
+            fixture.RequestPath);
+
+        Assert.Equal(70, prepared.Preparation.Schedule.Count);
+    }
+
+    [Fact]
+    public async Task Preparation_rejects_the_historical_set_normalizer()
+    {
+        using var fixture = await PreparedFixture.CreateAsync(
+            useHistoricalCorpusNormalizer: true);
+
+        var exception = await Assert.ThrowsAsync<AgentBenchmarkException>(
+            async () => await CodexDiscoveryBenchmarkPreparation.PrepareAsync(
+                fixture.RequestPath));
+
+        Assert.Contains(
+            "approved oracle response contracts",
+            exception.Message,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Preparation_rejects_a_semantic_task_without_raw_dotnet_permission()
+    {
+        using var fixture = await PreparedFixture.CreateAsync(
+            omitSemanticDotnetToolClass: true);
+
+        var exception = await Assert.ThrowsAsync<AgentBenchmarkException>(
+            async () => await CodexDiscoveryBenchmarkPreparation.PrepareAsync(
+                fixture.RequestPath));
+
+        Assert.Contains(
+            "approved oracle response contracts",
             exception.Message,
             StringComparison.Ordinal);
     }
@@ -1943,12 +2004,16 @@ public sealed class CodexDiscoveryBenchmarkTests
             string candidateVersion = "0.5.0",
             bool includeBoundedReader = true,
             bool boundedReaderSucceeds = true,
-            string harnessVersion = "2.5.0",
+            string harnessVersion = "2.6.0",
             bool includeRawDotnet = true,
             bool includeRawSourceSearch = true,
             bool rawDotnetSucceeds = true,
             bool rawSourceSearchSucceeds = true,
-            bool canonicalPriorSummary = true)
+            bool rawSourceSearchSupportsCodexArguments = true,
+            bool rawSourceSearchUsesWindowsSeparators = false,
+            bool canonicalPriorSummary = true,
+            bool useHistoricalCorpusNormalizer = false,
+            bool omitSemanticDotnetToolClass = false)
         {
             var root = Path.Combine(
                 Path.GetTempPath(),
@@ -1999,6 +2064,22 @@ public sealed class CodexDiscoveryBenchmarkTests
                 File.WriteAllText(
                     Path.Combine(rawToolsPath, "rg.raw-probe-enabled"),
                     "enabled");
+                if (rawSourceSearchSupportsCodexArguments)
+                {
+                    File.WriteAllText(
+                        Path.Combine(
+                            rawToolsPath,
+                            "rg.codex-arguments-enabled"),
+                        "enabled");
+                }
+                if (rawSourceSearchUsesWindowsSeparators)
+                {
+                    File.WriteAllText(
+                        Path.Combine(
+                            rawToolsPath,
+                            "rg.windows-separators-enabled"),
+                        "enabled");
+                }
                 if (!rawSourceSearchSucceeds)
                 {
                     File.WriteAllText(
@@ -2175,12 +2256,64 @@ public sealed class CodexDiscoveryBenchmarkTests
                         [CodexDiscoveryBenchmarkPreparation
                             .PackageSourceEnvironmentVariable] = packageSource,
                     }));
-            var corpus = Path.Combine(
+            var corpusSource = Path.Combine(
                 AppContext.BaseDirectory,
                 "Fixtures",
                 "AgentTasks",
                 "symbol-context",
                 "corpus.json");
+            var corpus = corpusSource;
+            if (useHistoricalCorpusNormalizer
+                || omitSemanticDotnetToolClass)
+            {
+                var corpusDirectory = Path.Combine(root, "symbol-context");
+                CopyDirectory(
+                    Path.GetDirectoryName(corpusSource)!,
+                    corpusDirectory);
+                corpus = Path.Combine(corpusDirectory, "corpus.json");
+                var document = JsonNode.Parse(
+                    await File.ReadAllTextAsync(corpus))!.AsObject();
+                var tasks = document["tasks"]!.AsArray();
+                if (useHistoricalCorpusNormalizer)
+                {
+                    foreach (var taskNode in tasks)
+                    {
+                        taskNode!.AsObject()["successOracle"]!
+                            .AsObject()["normalizer"] =
+                            "ordinal-lines/v1";
+                    }
+                }
+
+                if (omitSemanticDotnetToolClass)
+                {
+                    var semanticTask = tasks
+                        .Select(static task => task!.AsObject())
+                        .Single(static task => string.Equals(
+                            task["id"]!.GetValue<string>(),
+                            "syntax-candidate-partial-verification",
+                            StringComparison.Ordinal));
+                    var permittedTools = semanticTask["execution"]!
+                        .AsObject()["permittedTools"]!.AsArray();
+                    for (var index = 0; index < permittedTools.Count; index++)
+                    {
+                        if (!string.Equals(
+                                permittedTools[index]!.GetValue<string>(),
+                                "dotnet-sdk",
+                                StringComparison.Ordinal))
+                        {
+                            continue;
+                        }
+
+                        permittedTools.RemoveAt(index);
+                        break;
+                    }
+                }
+
+                await File.WriteAllTextAsync(
+                    corpus,
+                    document.ToJsonString(
+                        CodexDiscoveryBenchmarkPreparation.JsonOptions));
+            }
             var request = new CodexDiscoveryBenchmarkRequest(
                 CodexDiscoveryBenchmarkPreparation.RequestSchema,
                 "codex-050-symbol-context-test",
@@ -2275,6 +2408,24 @@ public sealed class CodexDiscoveryBenchmarkTests
         {
             File.WriteAllText(path, value);
             return path;
+        }
+
+        private static void CopyDirectory(
+            string sourceDirectory,
+            string destinationDirectory)
+        {
+            foreach (var sourceFile in Directory.EnumerateFiles(
+                         sourceDirectory,
+                         "*",
+                         SearchOption.AllDirectories))
+            {
+                var destinationFile = Path.Combine(
+                    destinationDirectory,
+                    Path.GetRelativePath(sourceDirectory, sourceFile));
+                Directory.CreateDirectory(
+                    Path.GetDirectoryName(destinationFile)!);
+                File.Copy(sourceFile, destinationFile);
+            }
         }
 
         private static string WritePackage(

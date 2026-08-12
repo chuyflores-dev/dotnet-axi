@@ -8,7 +8,7 @@ namespace DotNetAxi.Testing.Tests;
 public sealed class AgentBenchmarkRunnerTests
 {
     [Fact]
-    public async Task Exact_fact_sets_ignore_response_order_and_duplicates()
+    public async Task Exact_fact_sequences_reject_response_order_and_duplicates()
     {
         var source = await SingleTaskCorpusAsync();
         var expectedFacts = new[]
@@ -20,6 +20,7 @@ public sealed class AgentBenchmarkRunnerTests
         {
             SuccessOracle = source.Tasks[0].SuccessOracle with
             {
+                Normalizer = "ordinal-sequence/v1",
                 ExpectedFacts = expectedFacts,
             },
         };
@@ -47,7 +48,7 @@ public sealed class AgentBenchmarkRunnerTests
 
         var series = await RunAsync(corpus, adapter, Configuration(7));
 
-        Assert.All(series.Runs, static run => Assert.True(run.Success));
+        Assert.All(series.Runs, static run => Assert.False(run.Success));
     }
 
     [Fact]

@@ -42,6 +42,9 @@ public sealed class AgentTaskCorpusTests
                 Assert.Equal("invariant", task.Execution.Locale);
                 Assert.Equal("UTC", task.Execution.TimeZone);
                 Assert.Equal("exact-fact-set", task.SuccessOracle.Kind);
+                Assert.Equal(
+                    "ordinal-lines/v1",
+                    task.SuccessOracle.Normalizer);
                 Assert.Null(task.SuccessOracle.ModelJudge);
                 Assert.Contains(
                     "workspace-unchanged",

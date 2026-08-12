@@ -444,8 +444,9 @@ independent of the product and harness versions. Each task declares:
   invariant locale, and UTC. The adapter maps permitted classes to concrete
   tools for its condition without adding tool-selection hints to the prompt.
 - A success oracle, a separate safety oracle, and required harness validation.
-  Discovery tasks use an exact set of newline facts normalized by
-  `ordinal-lines/v1`; when ordering and labels are exact, the condition-neutral
+  Legacy discovery tasks use an exact set of newline facts normalized by
+  `ordinal-lines/v1`. The 0.5.0 symbol-context corpus uses the ordered,
+  duplicate-preserving `ordinal-sequence/v1` normalizer; its condition-neutral
   prompt names every required line prefix in oracle order without revealing
   expected values. Their deterministic safety checks require supported claims,
   no network use, and an unchanged workspace. Validation always confirms the
@@ -486,8 +487,12 @@ identity, executables, settings, commits, and the exact selected corpus.
 directory, verifies the exact CLI version and active ChatGPT authentication
 with bounded local `codex --version` and `codex login status` probes, and seals
 the deterministic 70-run schedule without dispatching a model. It also
-executes the pinned bounded reader, raw `dotnet`, and raw `rg` or equivalent
-search command so a sealed but unusable baseline fails before paid execution.
+executes the pinned bounded reader, raw `dotnet`, and an `rg`-compatible
+source-search command so a sealed but unusable baseline fails before paid
+execution. The source-search probe covers both exact fixed-string lookup and
+the `--files`, `--hidden`, `--glob`, and `-g` grammar commonly emitted by Codex;
+a grep-backed executable that implements only the first lookup is not treated
+as equivalent.
 Preparation executes the exact source-pinned candidate with `-- --version` against
 disposable isolated .NET and NuGet state and requires the expected successful
 structured schema and tool version. `run` repeats that probe while validating
@@ -533,19 +538,31 @@ report schemas, version 3 summaries, Codex adapter version 1.7, and harness
 version 2.3. Reconciliation corrections do not relabel retained adapter
 evidence. The `0.5.0` symbol-context protocol uses request and preparation
 version 4, retained-run and report version 3, and summary version 4. The first
-retained series used harness 2.4 and remains failed/incomparable. The repaired
-release-gate series uses harness 2.5 and corpus 1.0.1. It schedules five
+retained series used harness 2.4 and remains failed/incomparable. The initial
+repaired release-gate series used harness 2.5 and corpus 1.0.1; it also remains
+failed/incomparable because the prompt contract left fact value grammar and
+exact whitespace under-specified while a grep-backed `rg` wrapper rejected
+common Codex arguments. The subsequent release-gate series uses harness 2.6
+and corpus 1.0.2. Every prompt defines the condition-neutral value grammar,
+literal prefix, required single space, and ordering without disclosing the
+evidence values to discover. The `ordinal-sequence/v1` normalizer preserves
+line order and duplicates, so reordered or repeated facts fail the exact
+oracle without reinterpreting retained series that used `ordinal-lines/v1`.
+It schedules five
 repetitions for each applicable condition: four shared tasks produce 20
 baseline and 20 candidate runs, and six candidate-only tasks produce 30 more
 candidate runs, for 70 randomized runs and a 9,000-second agent-timeout budget.
 
 The shared sealed raw-tool path contains the pinned `dnx`, an executable `sed`
-reader, raw `dotnet`, and `rg` or equivalent source search. Preparation runs
+reader, raw `dotnet`, and `rg`-compatible source search. Preparation runs
 the bounded `sed -n 1,110p` form against the complete candidate `SKILL.md`,
-finds an exact source line in a materialized pinned fixture, and evaluates its
-target frameworks through raw `dotnet msbuild`. It fails before paid execution
-when any required command is absent, cannot run, or produces different
-evidence. The
+finds an exact source line in a materialized pinned fixture, proves the common
+Codex `rg` argument grammar against that fixture, and evaluates its target
+frameworks through raw `dotnet msbuild`. It fails before paid execution when
+any required command is absent, cannot run, rejects that grammar, or produces
+different evidence. The shared semantic-verification task explicitly permits
+the adapter's `dotnet-sdk` tool class, so a baseline raw `dotnet` invocation
+that passes preflight remains policy-conforming in retained evidence. The
 network-free local Codex probes use a 30-second deadline so runtime cold starts
 under parallel CI remain bounded without inheriting the paid-run budget. The
 fixture home restores this sealed path after login-shell initialization, and
