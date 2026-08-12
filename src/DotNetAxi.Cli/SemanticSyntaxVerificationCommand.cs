@@ -7,7 +7,7 @@ namespace DotNetAxi.Cli;
 
 internal static class SemanticSyntaxVerificationCommand
 {
-    public static async ValueTask<ICommandResult> ExecuteAsync(
+    public static ValueTask<ICommandResult> ExecuteAsync(
         string command,
         WorkspaceDiscoveryResult workspace,
         RoslynSyntaxQueryResult syntax,
@@ -16,6 +16,52 @@ internal static class SemanticSyntaxVerificationCommand
         bool full,
         int limit,
         string retrievalCommand,
+        CancellationToken cancellationToken) =>
+        ExecuteCoreAsync(
+            command,
+            workspace,
+            syntax,
+            query,
+            fields,
+            full,
+            limit,
+            retrievalCommand,
+            verifier: null,
+            cancellationToken);
+
+    internal static ValueTask<ICommandResult> ExecuteAsync(
+        string command,
+        WorkspaceDiscoveryResult workspace,
+        RoslynSyntaxQueryResult syntax,
+        ISemanticallyVerifiableSyntaxQuery query,
+        OutputFieldSelection<StructuralCandidate> fields,
+        bool full,
+        int limit,
+        string retrievalCommand,
+        RoslynSemanticCandidateVerifier verifier,
+        CancellationToken cancellationToken) =>
+        ExecuteCoreAsync(
+            command,
+            workspace,
+            syntax,
+            query,
+            fields,
+            full,
+            limit,
+            retrievalCommand,
+            verifier,
+            cancellationToken);
+
+    private static async ValueTask<ICommandResult> ExecuteCoreAsync(
+        string command,
+        WorkspaceDiscoveryResult workspace,
+        RoslynSyntaxQueryResult syntax,
+        ISemanticallyVerifiableSyntaxQuery query,
+        OutputFieldSelection<StructuralCandidate> fields,
+        bool full,
+        int limit,
+        string retrievalCommand,
+        RoslynSemanticCandidateVerifier? verifier,
         CancellationToken cancellationToken)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(command);
@@ -27,12 +73,12 @@ internal static class SemanticSyntaxVerificationCommand
         var projects = workspace.Projects
             .Select(static project => project.Path)
             .ToArray();
-        var ownership = new WorkspaceProjectOwnershipResolver(
-            workspace.RootPath,
+        verifier ??= new RoslynSemanticCandidateVerifier(
+            new WorkspaceProjectOwnershipResolver(
+                workspace.RootPath,
+                projects),
             projects);
-        var verification = await new RoslynSemanticCandidateVerifier(
-                ownership,
-                projects)
+        var verification = await verifier
             .VerifyAsync(
                 workspace.RootPath,
                 syntax,

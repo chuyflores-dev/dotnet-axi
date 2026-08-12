@@ -151,10 +151,31 @@ public sealed class RoslynSemanticCandidateVerifier
     private readonly IFileOwnershipResolver _ownership;
     private readonly IReadOnlyList<string> _projects;
     private readonly MsBuildCompilerVariantResolver _variantResolver;
+    private readonly Func<
+        MSBuildWorkspace,
+        string,
+        CancellationToken,
+        Task<Project>> _projectLoader;
 
     public RoslynSemanticCandidateVerifier(
         IFileOwnershipResolver ownership,
         IEnumerable<string> projects)
+        : this(
+            ownership,
+            projects,
+            static (workspace, projectPath, cancellationToken) =>
+                workspace.OpenProjectAsync(
+                    projectPath,
+                    progress: null,
+                    cancellationToken))
+    {
+    }
+
+    internal RoslynSemanticCandidateVerifier(
+        IFileOwnershipResolver ownership,
+        IEnumerable<string> projects,
+        Func<MSBuildWorkspace, string, CancellationToken, Task<Project>>
+            projectLoader)
     {
         _ownership = ownership ?? throw new ArgumentNullException(nameof(ownership));
         ArgumentNullException.ThrowIfNull(projects);
@@ -164,6 +185,8 @@ public sealed class RoslynSemanticCandidateVerifier
             .ToArray());
         _variantResolver = new MsBuildCompilerVariantResolver(
             new DotNetHostResolver());
+        _projectLoader = projectLoader
+            ?? throw new ArgumentNullException(nameof(projectLoader));
     }
 
     public async ValueTask<SemanticSyntaxVerificationResult> VerifyAsync(
@@ -322,7 +345,7 @@ public sealed class RoslynSemanticCandidateVerifier
         return path;
     }
 
-    private static async ValueTask<ProjectCompilationContext> CreateContextAsync(
+    private async ValueTask<ProjectCompilationContext> CreateContextAsync(
         string workspaceRoot,
         FileCompilerVariant variant,
         CancellationToken cancellationToken)
@@ -359,9 +382,9 @@ public sealed class RoslynSemanticCandidateVerifier
             workspace.RegisterWorkspaceFailedHandler(args =>
                 workspaceDiagnostics.Add(args.Diagnostic));
             workspace.LoadMetadataForReferencedProjects = true;
-            var loaded = await workspace.OpenProjectAsync(
+            var loaded = await _projectLoader(
+                    workspace,
                     projectPath,
-                    progress: null,
                     cancellationToken)
                 .ConfigureAwait(false);
             var compilation = await loaded.GetCompilationAsync(cancellationToken)
@@ -433,6 +456,10 @@ public sealed class RoslynSemanticCandidateVerifier
             return ProjectCompilationContext.Failed("project.load_failed");
         }
         catch (IOException)
+        {
+            return ProjectCompilationContext.Failed("project.load_failed");
+        }
+        catch (TimeoutException)
         {
             return ProjectCompilationContext.Failed("project.load_failed");
         }
