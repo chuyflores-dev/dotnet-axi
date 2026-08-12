@@ -16,7 +16,7 @@
   },
   "corpus": {
     "id": "symbol-context",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "productMilestone": "0.5.0",
     "artifact": {
       "path": "/absolute/path/to/symbol-context/corpus.json",
@@ -60,7 +60,7 @@
   "randomizationSeed": 20260811,
   "maximumStartAttempts": 1,
   "cleanupTimeoutSeconds": 10,
-  "harnessVersion": "2.4.0",
+  "harnessVersion": "2.5.0",
   "fixtureCommit": "replace-with-40-or-64-lowercase-hex-fixture-commit",
   "productCommit": "replace-with-40-or-64-lowercase-hex-product-commit",
   "baseline": {

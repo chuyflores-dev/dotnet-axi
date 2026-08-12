@@ -13,6 +13,66 @@ if (args.SequenceEqual(["--info"])
     return 97;
 }
 
+var processName = Path.GetFileNameWithoutExtension(Environment.ProcessPath);
+var rawProbeEnabled = File.Exists(Path.Combine(
+    AppContext.BaseDirectory,
+    $"{processName}.raw-probe-enabled"));
+var rawProbeExitCodePath = Path.Combine(
+    AppContext.BaseDirectory,
+    $"{processName}.raw-probe-exit-code");
+if (rawProbeEnabled
+    && processName is "dotnet" or "rg" or "grep"
+    && File.Exists(rawProbeExitCodePath)
+    && int.TryParse(
+        File.ReadAllText(rawProbeExitCodePath),
+        CultureInfo.InvariantCulture,
+        out var rawProbeExitCode))
+{
+    return rawProbeExitCode;
+}
+
+if (rawProbeEnabled
+    && args.SequenceEqual(["--version"])
+    && processName is "dotnet" or "rg" or "grep")
+{
+    Console.WriteLine(processName == "dotnet" ? "10.0.100" : "raw-search 1.0");
+    return 0;
+}
+
+if (rawProbeEnabled
+    && processName is "rg" or "grep"
+    && args.Length == 4
+    && args[0] == "-n"
+    && args[1] == "-F"
+    && File.Exists(args[3]))
+{
+    var matches = File.ReadLines(args[3])
+        .Select((line, index) => (Line: line, Number: index + 1))
+        .Where(item => item.Line.Contains(args[2], StringComparison.Ordinal))
+        .ToArray();
+    foreach (var match in matches)
+    {
+        Console.WriteLine($"{match.Number}:{match.Line}");
+    }
+
+    return matches.Length == 0 ? 1 : 0;
+}
+
+if (rawProbeEnabled
+    && processName == "dotnet"
+    && args.SequenceEqual(
+        [
+            "msbuild",
+            "src/Core/Core.csproj",
+            "-nologo",
+            "-getProperty:TargetFrameworks",
+        ])
+    && File.Exists("src/Core/Core.csproj"))
+{
+    Console.WriteLine("net8.0;net10.0");
+    return 0;
+}
+
 if (IsOptionalDependencyShim())
 {
     return OptionalDependencyShim(args);
