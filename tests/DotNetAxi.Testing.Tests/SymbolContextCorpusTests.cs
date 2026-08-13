@@ -12,7 +12,7 @@ public sealed partial class SymbolContextCorpusTests
         var corpus = await AgentTaskCorpusLoader.LoadAsync(CorpusPath());
 
         Assert.Equal("symbol-context", corpus.Id);
-        Assert.Equal("1.0.2", corpus.Version);
+        Assert.Equal("1.0.3", corpus.Version);
         Assert.Equal(10, corpus.Tasks.Count);
         Assert.Equal(
             [
@@ -168,6 +168,125 @@ public sealed partial class SymbolContextCorpusTests
         Assert.False(
             CodexDiscoveryBenchmarkPreparation.HasExactFactResponseContract(
                 mutatedTask));
+    }
+
+    [Theory]
+    [InlineData("product-vocabulary")]
+    [InlineData("leaked-expected-fact")]
+    [InlineData("infeasible-baseline")]
+    public async Task Semantic_verification_contract_rejects_condition_specific_or_infeasible_prompts(
+        string mutation)
+    {
+        var corpus = await AgentTaskCorpusLoader.LoadAsync(CorpusPath());
+        var task = corpus.Tasks.Single(candidate =>
+            candidate.Id == "syntax-candidate-partial-verification");
+        var prompt = mutation switch
+        {
+            "product-vocabulary" => task.Prompt.Replace(
+                "Locate the MissingAudit invocation candidate",
+                "Use coverage and partial_reason to locate the MissingAudit invocation candidate",
+                StringComparison.Ordinal),
+            "leaked-expected-fact" => task.Prompt.Replace(
+                "ownership: <presence-value>",
+                "ownership: absent",
+                StringComparison.Ordinal),
+            "infeasible-baseline" => task.Prompt.Replace(
+                "Replace every angle-bracket description",
+                "Also require a hidden compiler trace before determining availability. Replace every angle-bracket description",
+                StringComparison.Ordinal),
+            _ => throw new ArgumentOutOfRangeException(nameof(mutation)),
+        };
+
+        Assert.False(
+            CodexDiscoveryBenchmarkPreparation.HasExactFactResponseContract(
+                task with { Prompt = prompt }));
+    }
+
+    [Fact]
+    public async Task Shared_semantic_verification_oracle_is_derivable_from_both_conditions()
+    {
+        var corpus = await AgentTaskCorpusLoader.LoadAsync(CorpusPath());
+        var task = corpus.Tasks.Single(candidate =>
+            candidate.Id == "syntax-candidate-partial-verification");
+        Assert.Equal(
+            [
+                "dotnet-sdk",
+                "repository-execution",
+                "repository-read",
+                "source-search",
+            ],
+            task.Execution.PermittedTools);
+        Assert.DoesNotContain("coverage", task.Prompt, StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "partial_reason",
+            task.Prompt,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "ownership.not_found",
+            task.Prompt,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain("unresolved", task.Prompt, StringComparison.Ordinal);
+
+        var factory = new RepositoryFixtureFactory();
+        await using var fixture = await factory.CreateAsync(FixtureManifestPath());
+        var sourcePath = Path.Combine(
+            fixture.WorkspacePath,
+            "loose",
+            "UnownedCandidate.cs");
+        var sourceLine = (await File.ReadAllLinesAsync(sourcePath))
+            .Select((text, index) => (Text: text, Line: index + 1))
+            .Single(item => item.Text.Contains(
+                "MissingAudit()",
+                StringComparison.Ordinal));
+        var projectPaths = Directory.EnumerateFiles(
+                fixture.WorkspacePath,
+                "*.csproj",
+                SearchOption.AllDirectories)
+            .Order(StringComparer.Ordinal)
+            .ToArray();
+        Assert.Equal(4, projectPaths.Length);
+        var baselineOwners = new List<string>();
+        foreach (var projectPath in projectPaths)
+        {
+            var compileItems = await EvaluatedCompileItemsAsync(
+                fixture.WorkspacePath,
+                projectPath);
+            if (compileItems.Contains(
+                Path.GetFullPath(sourcePath),
+                OperatingSystem.IsWindows()
+                    ? StringComparer.OrdinalIgnoreCase
+                    : StringComparer.Ordinal))
+            {
+                baselineOwners.Add(projectPath);
+            }
+        }
+
+        var baselineFacts = new[]
+        {
+            $"candidate: loose/UnownedCandidate.cs:{sourceLine.Line}",
+            $"compiler-verification: {(baselineOwners.Count == 0 ? "unavailable" : "available")}",
+            $"ownership: {(baselineOwners.Count == 0 ? "absent" : "present")}",
+        };
+
+        var candidateResult = await RunAsync(
+            fixture.WorkspacePath,
+            "search", "syntax", "invocation",
+            "--name", "MissingAudit",
+            "--path", "loose/UnownedCandidate.cs",
+            "--verify", "--full");
+        AssertSuccess(candidateResult);
+        var missingOwnership = candidateResult.Output.Contains(
+            "partial_reason: ownership.not_found",
+            StringComparison.Ordinal);
+        var candidateFacts = new[]
+        {
+            $"candidate: {Scalar(candidateResult.Output, "file")}:{Scalar(candidateResult.Output, "line")}",
+            $"compiler-verification: {(missingOwnership ? "unavailable" : "available")}",
+            $"ownership: {(missingOwnership ? "absent" : "present")}",
+        };
+
+        Assert.Equal(task.SuccessOracle.ExpectedFacts, baselineFacts);
+        Assert.Equal(task.SuccessOracle.ExpectedFacts, candidateFacts);
     }
 
     [Fact]
@@ -359,9 +478,8 @@ public sealed partial class SymbolContextCorpusTests
             "syntax-candidate-partial-verification",
             [
                 $"candidate: {Scalar(partial.Output, "file")}:{Scalar(partial.Output, "line")}",
-                $"coverage: {Scalar(partial.Output, "coverage")}",
-                $"reason: {Scalar(partial.Output, "partial_reason")}",
-                $"status: {IndentedScalar(partial.Output, 4, "status")}",
+                "compiler-verification: unavailable",
+                "ownership: absent",
             ]);
 
         var boundedShow = await RunAsync(
@@ -494,18 +612,6 @@ public sealed partial class SymbolContextCorpusTests
         return DecodeScalar(matches[occurrence].Groups["value"].Value);
     }
 
-    private static string IndentedScalar(
-        string output,
-        int spaces,
-        string field)
-    {
-        var match = Regex.Match(
-            output,
-            $@"(?m)^{new string(' ', spaces)}{Regex.Escape(field)}: (?<value>.*)$");
-        Assert.True(match.Success, output);
-        return DecodeScalar(match.Groups["value"].Value);
-    }
-
     private static string SectionScalar(
         string output,
         string section,
@@ -606,6 +712,38 @@ public sealed partial class SymbolContextCorpusTests
         await process.WaitForExitAsync();
         Assert.True(string.IsNullOrEmpty(error), error);
         return (process.ExitCode, output);
+    }
+
+    private static async Task<IReadOnlyList<string>> EvaluatedCompileItemsAsync(
+        string workingDirectory,
+        string projectPath)
+    {
+        var startInfo = new ProcessStartInfo
+        {
+            FileName = Environment.GetEnvironmentVariable("DOTNET_HOST_PATH")
+                ?? "dotnet",
+            WorkingDirectory = workingDirectory,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+        };
+        startInfo.ArgumentList.Add("msbuild");
+        startInfo.ArgumentList.Add(projectPath);
+        startInfo.ArgumentList.Add("-nologo");
+        startInfo.ArgumentList.Add("-getItem:Compile");
+        using var process = Process.Start(startInfo)!;
+        var output = await process.StandardOutput.ReadToEndAsync();
+        var error = await process.StandardError.ReadToEndAsync();
+        await process.WaitForExitAsync();
+        Assert.True(process.ExitCode == 0, error);
+        Assert.True(string.IsNullOrEmpty(error), error);
+        using var document = JsonDocument.Parse(output);
+        return document.RootElement
+            .GetProperty("Items")
+            .GetProperty("Compile")
+            .EnumerateArray()
+            .Select(item => item.GetProperty("FullPath").GetString()!)
+            .ToArray();
     }
 
     private static string CorpusPath() => Path.Combine(

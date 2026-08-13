@@ -80,9 +80,49 @@ if (rawProbeEnabled
             ? '\\'
             : '/';
     Console.WriteLine("Workspace.slnx");
+    Console.WriteLine($"loose{outputSeparator}UnownedCandidate.cs");
+    Console.WriteLine(
+        $"src{outputSeparator}Alternate{outputSeparator}Alternate.csproj");
+    Console.WriteLine($"src{outputSeparator}Core{outputSeparator}Core.csproj");
     Console.WriteLine($"src{outputSeparator}Core{outputSeparator}LedgerService.cs");
+    Console.WriteLine($"src{outputSeparator}Worker{outputSeparator}Worker.csproj");
     Console.WriteLine(
         $"tests{outputSeparator}Core.Tests{outputSeparator}Core.Tests.csproj");
+    return 0;
+}
+
+if (rawProbeEnabled
+    && processName == "dotnet"
+    && args.Length == 4
+    && args[0] == "msbuild"
+    && args[2] == "-nologo"
+    && args[3] == "-getItem:Compile"
+    && File.Exists(args[1])
+    && File.Exists(Path.Combine(
+        AppContext.BaseDirectory,
+        "dotnet.compile-items-enabled")))
+{
+    var projectDirectory = Path.GetDirectoryName(Path.GetFullPath(args[1]))!;
+    var compileItems = Directory.EnumerateFiles(
+            projectDirectory,
+            "*.cs",
+            SearchOption.AllDirectories)
+        .Where(path => !path.Split(Path.DirectorySeparatorChar)
+            .Any(segment => segment is "bin" or "obj"))
+        .Order(StringComparer.Ordinal)
+        .Select(path => new
+        {
+            Identity = Path.GetRelativePath(projectDirectory, path),
+            FullPath = Path.GetFullPath(path),
+        })
+        .ToArray();
+    Console.WriteLine(JsonSerializer.Serialize(new
+    {
+        Items = new
+        {
+            Compile = compileItems,
+        },
+    }));
     return 0;
 }
 
