@@ -581,6 +581,7 @@ public sealed class CodexAgentBenchmarkAdapterTests
     [InlineData("true < /outside/request.sentinel || true")]
     [InlineData("sed -n 1p</outside/request.sentinel")]
     [InlineData("awk '{print}' /outside/request.sentinel")]
+    [InlineData("nl -ba /outside/request.sentinel")]
     [InlineData("dd if=/outside/request.sentinel of=/dev/null")]
     public void Boundary_detection_covers_qualified_readers_redirection_and_common_reader_forms(
         string command)
@@ -593,6 +594,22 @@ public sealed class CodexAgentBenchmarkAdapterTests
                 workspace.Path));
 
         Assert.Equal("/outside/request.sentinel", attempt.Operand);
+    }
+
+    [Fact]
+    public void Boundary_detection_reconciles_numbered_repository_reads()
+    {
+        using var workspace = new TemporaryWorkspace();
+        var file = Path.Combine(workspace.Path, "src", "Core", "Core.csproj");
+        Directory.CreateDirectory(Path.GetDirectoryName(file)!);
+        File.WriteAllText(file, "<Project />");
+
+        var analysis = CodexBenchmarkCommandEvidence.AnalyzeReadAttempts(
+            "nl -ba src/Core/Core.csproj",
+            workspace.Path);
+
+        Assert.True(analysis.Complete);
+        Assert.Empty(analysis.Attempts);
     }
 
     [Theory]

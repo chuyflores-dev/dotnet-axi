@@ -37,7 +37,7 @@ internal static partial class CodexDiscoveryBenchmarkPreparation
     internal const string PackageId = "dnaxi";
     internal const string PackageVersion = "0.5.0";
     internal const string ProductSchema = "dotnet-axi/v1";
-    internal const string HarnessVersion = "2.11.0";
+    internal const string HarnessVersion = "2.11.1";
     internal const string IsolationProtocol =
         "codex-controlled-workspace/v1";
     internal const string PackageSourceEnvironmentVariable =

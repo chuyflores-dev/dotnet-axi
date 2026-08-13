@@ -2254,7 +2254,7 @@ internal static partial class CodexBenchmarkCommandEvidence
             "cat" or "sed" or "head" or "tail" or "type"
             or "get-content" or "more" or "less" or "awk" or "gawk"
             or "mawk" or "dd" or "sort" or "uniq" or "cut" or "strings"
-            or "xxd" or "od" or "wc" or "file" or "stat" or "ls"
+            or "xxd" or "od" or "wc" or "file" or "stat" or "ls" or "nl"
             or "dir" or "dotnet" or "git";
 
     private static bool IsNoReadExecutableName(string executableName) =>

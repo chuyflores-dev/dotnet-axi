@@ -2678,7 +2678,7 @@ public sealed class CodexDiscoveryBenchmarkTests
             string candidateVersion = "0.5.0",
             bool includeBoundedReader = true,
             bool boundedReaderSucceeds = true,
-            string harnessVersion = "2.11.0",
+            string harnessVersion = "2.11.1",
             bool includeRawDotnet = true,
             bool includeRawSourceSearch = true,
             bool rawDotnetSucceeds = true,
