@@ -587,7 +587,7 @@ internal static class CodexDiscoveryEvidenceValidator
             context.Preparation.Manifest.Adapter.Id,
             context.Preparation.Manifest.Adapter.Version,
             CodexDiscoveryBenchmarkPreparation.CodexCliVersion,
-            CodexDiscoveryBenchmarkPreparation.ModelId,
+            context.Configuration.Execution.ModelId,
             CodexDiscoveryBenchmarkPreparation.ReasoningSetting,
             CodexDiscoveryBenchmarkPreparation.CorpusVersion,
             CodexDiscoveryBenchmarkPreparation.ProductSchema);

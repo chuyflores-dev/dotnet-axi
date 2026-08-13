@@ -26,6 +26,7 @@ internal static partial class CodexDiscoveryBenchmarkPreparation
         "dotnet-axi/codex-discovery-tool-configuration/v3";
     internal const string CodexCliVersion = "codex-cli 0.146.0";
     internal const string ModelId = "gpt-5.6-sol";
+    internal const string LunaModelId = "gpt-5.6-luna";
     internal const string ReasoningSetting = "low";
     internal const string Sandbox = "read-only";
     internal const string PermissionProfile = "never";
@@ -37,7 +38,7 @@ internal static partial class CodexDiscoveryBenchmarkPreparation
     internal const string PackageId = "dnaxi";
     internal const string PackageVersion = "0.5.0";
     internal const string ProductSchema = "dotnet-axi/v1";
-    internal const string HarnessVersion = "2.11.1";
+    internal const string HarnessVersion = "2.11.2";
     internal const string IsolationProtocol =
         "codex-controlled-workspace/v1";
     internal const string PackageSourceEnvironmentVariable =
@@ -354,6 +355,7 @@ internal static partial class CodexDiscoveryBenchmarkPreparation
         {
             var candidateProbeInput = CreateProbeInput(
                 request,
+                settings.ModelId,
                 selectedCorpus.Tasks[0],
                 candidateProbeFixture,
                 AgentBenchmarkCondition.Candidate);
@@ -378,7 +380,7 @@ internal static partial class CodexDiscoveryBenchmarkPreparation
             TimeSpan.FromSeconds(request.CleanupTimeoutSeconds),
             new AgentBenchmarkExecutionSettings(
                 CodexCliVersion,
-                ModelId,
+                settings.ModelId,
                 ReasoningSetting,
                 request.Settings.Sha256,
                 Sandbox,
@@ -809,7 +811,7 @@ internal static partial class CodexDiscoveryBenchmarkPreparation
                 settings.CodexCliVersion,
                 CodexCliVersion,
                 StringComparison.Ordinal)
-            || !string.Equals(settings.ModelId, ModelId, StringComparison.Ordinal)
+            || settings.ModelId is not (ModelId or LunaModelId)
             || !string.Equals(
                 settings.ReasoningSetting,
                 ReasoningSetting,
@@ -2056,6 +2058,7 @@ internal static partial class CodexDiscoveryBenchmarkPreparation
 
     private static AgentBenchmarkAdapterInput CreateProbeInput(
         CodexDiscoveryBenchmarkRequest request,
+        string modelId,
         AgentTaskDefinition task,
         RepositoryFixture fixture,
         AgentBenchmarkCondition condition)
@@ -2074,7 +2077,7 @@ internal static partial class CodexDiscoveryBenchmarkPreparation
             fixture.EnvironmentVariables,
             new AgentBenchmarkExecutionSettings(
                 CodexCliVersion,
-                ModelId,
+                modelId,
                 ReasoningSetting,
                 request.Settings.Sha256,
                 Sandbox,

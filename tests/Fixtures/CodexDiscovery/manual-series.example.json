@@ -60,7 +60,7 @@
   "randomizationSeed": 20260811,
   "maximumStartAttempts": 1,
   "cleanupTimeoutSeconds": 10,
-  "harnessVersion": "2.11.1",
+  "harnessVersion": "2.11.2",
   "fixtureCommit": "replace-with-40-or-64-lowercase-hex-fixture-commit",
   "productCommit": "replace-with-40-or-64-lowercase-hex-product-commit",
   "baseline": {
