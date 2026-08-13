@@ -108,6 +108,39 @@ public sealed class WorkspaceDiscovererTests
     }
 
     [Fact]
+    public void Inaccessible_ancestor_is_a_discovery_boundary()
+    {
+        using var root = new TemporaryDirectory();
+        var current = Directory.CreateDirectory(
+            Path.Combine(root.Path, "parent", "current"));
+        var parent = current.Parent
+            ?? throw new InvalidOperationException(
+                "The test directory must have a parent.");
+        var inspected = new List<string>();
+
+        var result = WorkspaceDiscoverer.FindAncestor(
+            current,
+            directory =>
+            {
+                inspected.Add(directory.FullName);
+                if (string.Equals(
+                        directory.FullName,
+                        parent.FullName,
+                        StringComparison.Ordinal))
+                {
+                    throw new UnauthorizedAccessException();
+                }
+
+                return false;
+            });
+
+        Assert.Null(result);
+        Assert.Equal(
+            [current.FullName, parent.FullName],
+            inspected);
+    }
+
+    [Fact]
     public async Task Malformed_git_marker_does_not_create_a_git_workspace()
     {
         await using var fixture = await _fixtures.CreateAsync(
@@ -334,5 +367,20 @@ public sealed class WorkspaceDiscovererTests
         {
             return false;
         }
+    }
+
+    private sealed class TemporaryDirectory : IDisposable
+    {
+        public TemporaryDirectory()
+        {
+            Path = System.IO.Path.Combine(
+                System.IO.Path.GetTempPath(),
+                $"dotnet-axi-workspace-discovery-{Guid.NewGuid():N}");
+            Directory.CreateDirectory(Path);
+        }
+
+        public string Path { get; }
+
+        public void Dispose() => Directory.Delete(Path, recursive: true);
     }
 }

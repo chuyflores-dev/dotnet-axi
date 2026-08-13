@@ -331,7 +331,7 @@ public sealed class WorkspaceDiscoverer
                 .IsExternal;
     }
 
-    private static DirectoryInfo? FindAncestor(
+    internal static DirectoryInfo? FindAncestor(
         DirectoryInfo current,
         Func<DirectoryInfo, bool> predicate)
     {
@@ -339,9 +339,16 @@ public sealed class WorkspaceDiscoverer
              directory is not null;
              directory = directory.Parent)
         {
-            if (predicate(directory))
+            try
             {
-                return directory;
+                if (predicate(directory))
+                {
+                    return directory;
+                }
+            }
+            catch (UnauthorizedAccessException)
+            {
+                return null;
             }
         }
 
