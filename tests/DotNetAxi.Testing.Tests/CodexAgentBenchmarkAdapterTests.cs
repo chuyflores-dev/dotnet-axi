@@ -29,7 +29,7 @@ public sealed class CodexAgentBenchmarkAdapterTests
             baselineWorkspace,
             AgentBenchmarkCondition.Baseline));
 
-        Assert.Equal("1.7.0", adapter.Descriptor.Version);
+        Assert.Equal("1.8.0", adapter.Descriptor.Version);
         Assert.Equal(
             await File.ReadAllBytesAsync(Path.Combine(source, "SKILL.md")),
             await File.ReadAllBytesAsync(Path.Combine(
@@ -54,6 +54,87 @@ public sealed class CodexAgentBenchmarkAdapterTests
             ".agents",
             "skills",
             "dotnet-axi")));
+    }
+
+    [Fact]
+    public async Task Condition_tools_and_feed_are_copied_into_distinct_run_boundaries()
+    {
+        using var root = new TemporaryWorkspace();
+        var sourceTools = Directory.CreateDirectory(
+            Path.Combine(root.Path, "source-tools")).FullName;
+        var sourceFeed = Directory.CreateDirectory(
+            Path.Combine(root.Path, "source-feed")).FullName;
+        var authenticationHome = Directory.CreateDirectory(
+            Path.Combine(root.Path, "shared-codex-home")).FullName;
+        var dnx = Path.Combine(sourceTools, "dnx");
+        await File.WriteAllTextAsync(dnx, "pinned tool");
+        await File.WriteAllTextAsync(
+            Path.Combine(sourceFeed, "dnaxi.0.5.0.nupkg"),
+            "pinned feed");
+        var baselineWorkspace = Directory.CreateDirectory(Path.Combine(
+            root.Path,
+            "baseline-run",
+            "workspace")).FullName;
+        var candidateWorkspace = Directory.CreateDirectory(Path.Combine(
+            root.Path,
+            "candidate-run",
+            "workspace")).FullName;
+        var adapter = Adapter(
+            [sourceTools],
+            dnx,
+            candidateEnvironmentVariables: new Dictionary<string, string>
+            {
+                ["DNAXI_LOCAL_FEED"] = sourceFeed,
+            },
+            authenticationEnvironment: new Dictionary<string, string>
+            {
+                ["CODEX_HOME"] = authenticationHome,
+            });
+        var baselineInput = Input(
+            baselineWorkspace,
+            AgentBenchmarkCondition.Baseline);
+        var candidateInput = Input(
+            candidateWorkspace,
+            AgentBenchmarkCondition.Candidate);
+
+        await adapter.PrepareWorkspaceAsync(baselineInput);
+        await adapter.PrepareWorkspaceAsync(candidateInput);
+        var baseline = adapter.CreateStartInfo(baselineInput);
+        var candidate = adapter.CreateStartInfo(candidateInput);
+
+        Assert.NotEqual(
+            baseline.Environment["PATH"],
+            candidate.Environment["PATH"]);
+        Assert.DoesNotContain(
+            sourceTools,
+            baseline.Environment["PATH"],
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            sourceTools,
+            candidate.Environment["PATH"],
+            StringComparison.Ordinal);
+        Assert.False(baseline.Environment.ContainsKey("DNAXI_LOCAL_FEED"));
+        var materializedFeed = candidate.Environment["DNAXI_LOCAL_FEED"];
+        Assert.NotNull(materializedFeed);
+        Assert.DoesNotContain(
+            sourceFeed,
+            materializedFeed,
+            StringComparison.Ordinal);
+        Assert.True(File.Exists(Path.Combine(
+            materializedFeed,
+            "dnaxi.0.5.0.nupkg")));
+        Assert.All(
+            baseline.ArgumentList.Concat(candidate.ArgumentList),
+            value =>
+            {
+                Assert.DoesNotContain(sourceTools, value, StringComparison.Ordinal);
+                Assert.DoesNotContain(sourceFeed, value, StringComparison.Ordinal);
+            });
+        Assert.Contains(
+            candidate.ArgumentList,
+            value => value.Contains(
+                $"{JsonSerializer.Serialize(authenticationHome)}=\"deny\"",
+                StringComparison.Ordinal));
     }
 
     [Fact]
@@ -105,11 +186,24 @@ public sealed class CodexAgentBenchmarkAdapterTests
         Assert.Contains("--skip-git-repo-check", baselineArguments);
         AssertOption(baselineArguments, "--model", "gpt-5.6-codex");
         AssertOption(baselineArguments, "--cd", workspace.Path);
-        AssertOption(baselineArguments, "--sandbox", "read-only");
+        Assert.DoesNotContain("--sandbox", baselineArguments);
+        Assert.Contains(
+            $"default_permissions=\"{CodexAgentBenchmarkAdapter.RuntimePermissionProfileName}\"",
+            baselineArguments);
+        Assert.Contains(
+            baselineArguments,
+            static argument => argument.Contains(
+                "\":root\"=\"deny\"",
+                StringComparison.Ordinal));
+        Assert.DoesNotContain(
+            baselineArguments,
+            static argument => argument.Contains(
+                "/tmp/.dotnet",
+                StringComparison.Ordinal));
         Assert.Contains("model_reasoning_effort=\"high\"", baselineArguments);
         Assert.Contains("approval_policy=\"never\"", baselineArguments);
         Assert.Contains("web_search=\"disabled\"", baselineArguments);
-        Assert.Contains(
+        Assert.DoesNotContain(
             "sandbox_workspace_write.network_access=false",
             baselineArguments);
         Assert.DoesNotContain("--full-auto", baselineArguments);
@@ -179,6 +273,7 @@ public sealed class CodexAgentBenchmarkAdapterTests
             AgentBenchmarkCondition.Baseline,
             fixture: "success.jsonl",
             additionalEnvironment: fixture.EnvironmentVariables);
+        await adapter.PrepareWorkspaceAsync(input);
         var startInfo = adapter.CreateStartInfo(input);
         Assert.DoesNotContain("--sandbox", startInfo.ArgumentList);
         Assert.Contains(
@@ -186,8 +281,12 @@ public sealed class CodexAgentBenchmarkAdapterTests
             startInfo.ArgumentList);
         Assert.Contains(
             CodexAgentBenchmarkAdapter.CreateRuntimePermissionProfileConfig(
+                fixture.WorkspacePath,
                 fixture.StatePath,
-                "read-only"),
+                CodexAgentBenchmarkAdapter.GetMaterializedArtifactRoot(
+                    fixture.WorkspacePath),
+                authenticationHomePath: null,
+                sandbox: "read-only"),
             startInfo.ArgumentList);
 
         await using var execution = await adapter.StartAsync(input);
@@ -379,6 +478,148 @@ public sealed class CodexAgentBenchmarkAdapterTests
     }
 
     [Fact]
+    public void Boundary_detection_resolves_absolute_parent_symlink_condition_and_shared_state_reads()
+    {
+        using var workspace = new TemporaryWorkspace();
+        var sealedRoot = $"{workspace.Path}-sealed";
+        var artifactRoot = $"{workspace.Path}-artifacts";
+        Directory.CreateDirectory(sealedRoot);
+        Directory.CreateDirectory(artifactRoot);
+        try
+        {
+            var sentinels = new[]
+            {
+                "request",
+                "preparation",
+                "evidence",
+                "candidate-only",
+                "other-run",
+                "shared-state",
+                "platform-temp",
+            }.Select(name =>
+            {
+                var path = Path.Combine(sealedRoot, $"{name}.sentinel");
+                File.WriteAllText(path, name);
+                return path;
+            }).ToArray();
+            var allowedWorkspace = Path.Combine(
+                workspace.Path,
+                "allowed.sentinel");
+            var allowedArtifact = Path.Combine(
+                artifactRoot,
+                "allowed-tool.sentinel");
+            File.WriteAllText(allowedWorkspace, "workspace");
+            File.WriteAllText(allowedArtifact, "artifact");
+            var link = Path.Combine(workspace.Path, "sealed-link.sentinel");
+            File.CreateSymbolicLink(link, sentinels[0]);
+            IReadOnlyList<string> allowedRoots =
+                [workspace.Path, artifactRoot];
+
+            Assert.All(sentinels, sentinel => Assert.Single(
+                CodexBenchmarkCommandEvidence.FindOutOfBoundReadAttempts(
+                    $"cat \"{sentinel}\"",
+                    workspace.Path,
+                    allowedRoots)));
+            Assert.Single(
+                CodexBenchmarkCommandEvidence.FindOutOfBoundReadAttempts(
+                    $"cat \"{Path.GetRelativePath(workspace.Path, sentinels[0])}\"",
+                    workspace.Path,
+                    allowedRoots));
+            Assert.Single(
+                CodexBenchmarkCommandEvidence.FindOutOfBoundReadAttempts(
+                    "cat sealed-link.sentinel",
+                    workspace.Path,
+                    allowedRoots));
+            Assert.Single(
+                CodexBenchmarkCommandEvidence.FindOutOfBoundReadAttempts(
+                    "cat \"$CODEX_HOME/auth.json\"",
+                    workspace.Path,
+                    allowedRoots));
+            Assert.Empty(
+                CodexBenchmarkCommandEvidence.FindOutOfBoundReadAttempts(
+                    $"cat \"{allowedWorkspace}\" \"{allowedArtifact}\"",
+                    workspace.Path,
+                    allowedRoots));
+        }
+        finally
+        {
+            Directory.Delete(sealedRoot, recursive: true);
+            Directory.Delete(artifactRoot, recursive: true);
+        }
+    }
+
+    [Theory]
+    [InlineData("/bin/cat /outside/request.sentinel")]
+    [InlineData("/usr/bin/rg needle /outside/request.sentinel")]
+    [InlineData("true < /outside/request.sentinel || true")]
+    [InlineData("sed -n 1p</outside/request.sentinel")]
+    [InlineData("awk '{print}' /outside/request.sentinel")]
+    [InlineData("dd if=/outside/request.sentinel of=/dev/null")]
+    public void Boundary_detection_covers_qualified_readers_redirection_and_common_reader_forms(
+        string command)
+    {
+        using var workspace = new TemporaryWorkspace();
+
+        var attempt = Assert.Single(
+            CodexBenchmarkCommandEvidence.FindOutOfBoundReadAttempts(
+                command,
+                workspace.Path));
+
+        Assert.Equal("/outside/request.sentinel", attempt.Operand);
+    }
+
+    [Theory]
+    [InlineData("python3 -c 'open(\"/outside/request.sentinel\").read()'")]
+    [InlineData("sh -c 'value=$(cat /outside/request.sentinel); true'")]
+    [InlineData("test -r /outside/request.sentinel")]
+    [InlineData("printf '%s\\n' /outside/*")]
+    [InlineData("echo $HOME")]
+    public void Boundary_detection_fails_closed_for_unreconciled_read_capable_commands(
+        string command)
+    {
+        using var workspace = new TemporaryWorkspace();
+
+        var analysis = CodexBenchmarkCommandEvidence.AnalyzeReadAttempts(
+            command,
+            workspace.Path);
+
+        Assert.False(analysis.Complete);
+    }
+
+    [Fact]
+    public void Boundary_report_remains_verifiable_after_a_symlink_is_deleted()
+    {
+        using var workspace = new TemporaryWorkspace();
+        var sealedRoot = $"{workspace.Path}-sealed-retained";
+        Directory.CreateDirectory(sealedRoot);
+        try
+        {
+            var sentinel = Path.Combine(sealedRoot, "request.sentinel");
+            File.WriteAllText(sentinel, "sealed");
+            var link = Path.Combine(workspace.Path, "request-link.sentinel");
+            File.CreateSymbolicLink(link, sentinel);
+            const string command = "cat request-link.sentinel";
+            var attempt = Assert.Single(
+                CodexBenchmarkCommandEvidence.FindOutOfBoundReadAttempts(
+                    command,
+                    workspace.Path));
+            File.Delete(link);
+
+            Assert.True(CodexBenchmarkCommandEvidence
+                .CommandContainsReadOperand(command, attempt.Operand));
+            Assert.True(CodexBenchmarkCommandEvidence
+                .IsReportedOutOfBoundReadAttempt(
+                    attempt.Operand,
+                    attempt.ResolvedPath,
+                    [workspace.Path]));
+        }
+        finally
+        {
+            Directory.Delete(sealedRoot, recursive: true);
+        }
+    }
+
+    [Fact]
     public void Command_scope_accepts_shell_wrapped_numbered_repository_read()
     {
         using var workspace = new TemporaryWorkspace();
@@ -560,8 +801,8 @@ public sealed class CodexAgentBenchmarkAdapterTests
     [InlineData("completion-before-thread.jsonl", "emit", "0", "failed", false, "turn.completed")]
     [InlineData("completion-before-start.jsonl", "emit", "0", "failed", false, "turn.completed")]
     [InlineData("item-after-completion.jsonl", "emit", "0", "failed", false, "item.completed")]
-    [InlineData("scope-outside.jsonl", "emit", "0", "failed", false, "item.completed")]
-    [InlineData("scope-outside-punctuation.jsonl", "emit", "0", "failed", false, "item.completed")]
+    [InlineData("scope-outside.jsonl", "emit", "0", "permission-denied", false, "item.completed")]
+    [InlineData("scope-outside-punctuation.jsonl", "emit", "0", "permission-denied", false, "item.completed")]
     public async Task Failure_contracts_preserve_raw_evidence(
         string fixture,
         string behavior,
@@ -588,6 +829,22 @@ public sealed class CodexAgentBenchmarkAdapterTests
         Assert.Contains(
             result.RawEvents,
             value => value.Kind == expectedEvent);
+        if (fixture.StartsWith("scope-outside", StringComparison.Ordinal))
+        {
+            var denial = Assert.Single(
+                result.RawEvents,
+                static value => value.Kind
+                    == "adapter.filesystem.read.denied");
+            using var payload = JsonDocument.Parse(denial.Payload);
+            Assert.True(AgentBenchmarkHash.IsHash(
+                payload.RootElement.GetProperty("commandHash").GetString()));
+            Assert.StartsWith(
+                "/outside/",
+                payload.RootElement.GetProperty("attemptedPath").GetString(),
+                StringComparison.Ordinal);
+            Assert.True(Assert.Single(result.ToolCalls).Succeeded);
+        }
+
         Assert.Equal(
             Enumerable.Range(0, result.RawEvents.Count),
             result.RawEvents.Select(static value => value.Sequence));
@@ -694,7 +951,9 @@ public sealed class CodexAgentBenchmarkAdapterTests
     private static CodexAgentBenchmarkAdapter Adapter(
         IReadOnlyList<string>? executableSearchPathEntries = null,
         string? expectedDnxExecutablePath = null,
-        string? candidateSkillDirectoryPath = null)
+        string? candidateSkillDirectoryPath = null,
+        IReadOnlyDictionary<string, string>? candidateEnvironmentVariables = null,
+        IReadOnlyDictionary<string, string>? authenticationEnvironment = null)
     {
         var baselineInstructions = Hash("baseline-instructions");
         var baselineTools = Hash("baseline-tools");
@@ -722,8 +981,10 @@ public sealed class CodexAgentBenchmarkAdapterTests
                         "mcp_servers.dnaxi.enabled=true",
                     ],
                     executableSearchPathEntries,
+                    EnvironmentVariables: candidateEnvironmentVariables,
                     SkillDirectoryPath: candidateSkillDirectoryPath),
                 ["codex-fixture"],
+                authenticationEnvironment,
                 expectedDnxExecutablePath:
                     expectedDnxExecutablePath));
     }

@@ -715,6 +715,15 @@ internal static class CodexDiscoveryEvidenceValidator
         int? exitedProcess = null;
         int? exitCode = null;
         string? workspacePath = null;
+        var expectedBoundaryReports = new Dictionary<string, int>(
+            StringComparer.Ordinal);
+        var expectedUnreconciledReports = new Dictionary<string, int>(
+            StringComparer.Ordinal);
+        var reportedBoundaryEvents = new HashSet<string>(
+            StringComparer.Ordinal);
+        var expectedBoundaryEvents = 0;
+        var expectedUnreconciledEvents = 0;
+        var outOfBoundReadAttempts = 0;
         var valid = run.RawEvents.Count > 0;
         for (var index = 0; index < run.RawEvents.Count; index++)
         {
@@ -775,6 +784,109 @@ internal static class CodexDiscoveryEvidenceValidator
                 if (raw.Kind == "codex.stderr")
                 {
                     permissionDenied |= IsDenial(payload);
+                    continue;
+                }
+
+                if (raw.Kind == "adapter.filesystem.read.denied")
+                {
+                    using var document = JsonDocument.Parse(payload);
+                    var boundaryRoot = document.RootElement;
+                    var allowedReadRoots = workspacePath is null
+                        ? []
+                        : CodexAgentBenchmarkAdapter.GetAgentReadableRoots(
+                            workspacePath);
+                    var commandHash = string.Empty;
+                    var attemptedPath = string.Empty;
+                    var resolvedPath = string.Empty;
+                    var eventValid = workspacePath is not null
+                                     && TryGetRawString(
+                                         boundaryRoot,
+                                         "commandHash",
+                                         out commandHash)
+                                     && TryGetRawString(
+                                         boundaryRoot,
+                                         "attemptedPath",
+                                         out attemptedPath)
+                                     && TryGetRawString(
+                                         boundaryRoot,
+                                         "resolvedPath",
+                                         out resolvedPath)
+                                     && CodexBenchmarkCommandEvidence
+                                         .IsReportedOutOfBoundReadAttempt(
+                                             attemptedPath,
+                                             resolvedPath,
+                                             allowedReadRoots)
+                                     && rawCommandOutputs.Values.Any(output =>
+                                         string.Equals(
+                                             AgentBenchmarkHash.Compute(
+                                                 output.Command),
+                                             commandHash,
+                                             StringComparison.Ordinal)
+                                         && CodexBenchmarkCommandEvidence
+                                             .CommandContainsReadOperand(
+                                                 output.Command,
+                                                 attemptedPath));
+                    if (eventValid)
+                    {
+                        var key = BoundaryReportKey(
+                            commandHash,
+                            attemptedPath,
+                            resolvedPath);
+                        eventValid = reportedBoundaryEvents.Add(key);
+                        if (eventValid
+                            && expectedBoundaryReports.TryGetValue(
+                                key,
+                                out var remaining))
+                        {
+                            if (remaining == 1)
+                            {
+                                expectedBoundaryReports.Remove(key);
+                            }
+                            else
+                            {
+                                expectedBoundaryReports[key] = remaining - 1;
+                            }
+                        }
+                    }
+
+                    valid &= eventValid;
+                    outOfBoundReadAttempts++;
+                    permissionDenied = true;
+                    protocolFailure = true;
+                    continue;
+                }
+
+                if (raw.Kind == "adapter.filesystem.read.unreconciled")
+                {
+                    using var document = JsonDocument.Parse(payload);
+                    var commandHash = string.Empty;
+                    var remaining = 0;
+                    var eventValid = TryGetRawString(
+                                         document.RootElement,
+                                         "commandHash",
+                                         out commandHash)
+                                     && AgentBenchmarkHash.IsHash(commandHash)
+                                     && expectedUnreconciledReports.TryGetValue(
+                                         commandHash,
+                                         out remaining)
+                                     && remaining > 0;
+                    if (eventValid)
+                    {
+                        if (remaining == 1)
+                        {
+                            expectedUnreconciledReports.Remove(commandHash);
+                        }
+                        else
+                        {
+                            expectedUnreconciledReports[commandHash] =
+                                remaining - 1;
+                        }
+                    }
+
+                    valid &= eventValid;
+                    outOfBoundReadAttempts++;
+                    permissionDenied = true;
+                    protocolFailure = true;
                     continue;
                 }
 
@@ -956,6 +1068,36 @@ internal static class CodexDiscoveryEvidenceValidator
                                 command,
                                 run.Sandbox,
                                 task.Execution.PermittedTools);
+                            var commandHash = AgentBenchmarkHash.Compute(command);
+                            var allowedReadRoots =
+                                CodexAgentBenchmarkAdapter
+                                    .GetAgentReadableRoots(workspacePath!);
+                            var readAnalysis =
+                                CodexBenchmarkCommandEvidence
+                                    .AnalyzeReadAttempts(
+                                        command,
+                                        workspacePath,
+                                        allowedReadRoots);
+                            expectedBoundaryEvents +=
+                                readAnalysis.Attempts.Count;
+                            foreach (var attempt in readAnalysis.Attempts)
+                            {
+                                var key = BoundaryReportKey(
+                                    commandHash,
+                                    attempt.Operand,
+                                    attempt.ResolvedPath);
+                                expectedBoundaryReports[key] =
+                                    expectedBoundaryReports.GetValueOrDefault(key)
+                                    + 1;
+                            }
+                            if (!readAnalysis.Complete)
+                            {
+                                expectedUnreconciledEvents++;
+                                expectedUnreconciledReports[commandHash] =
+                                    expectedUnreconciledReports
+                                        .GetValueOrDefault(commandHash)
+                                    + 1;
+                            }
                             rawCommandOutputs.Add(
                                 toolCalls.Count,
                                 new CodexDiscoveryRawCommandOutput(
@@ -980,7 +1122,8 @@ internal static class CodexDiscoveryEvidenceValidator
                                 command,
                                 workspacePath,
                                 files,
-                                projects);
+                                projects,
+                                allowedReadRoots);
                             protocolFailure |= !CodexBenchmarkCommandEvidence.ObserveOutputScope(
                                 outputText,
                                 workspacePath,
@@ -1094,6 +1237,12 @@ internal static class CodexDiscoveryEvidenceValidator
         var processExit = startedProcess is not null
                           && startedProcess == exitedProcess
                           && exitCode is not null;
+        valid &= reportedBoundaryEvents.Count >= expectedBoundaryEvents
+                 && outOfBoundReadAttempts
+                     == reportedBoundaryEvents.Count
+                        + expectedUnreconciledEvents
+                 && expectedBoundaryReports.Count == 0
+                 && expectedUnreconciledReports.Count == 0;
         var reconstructedStatus = permissionDenied
             ? "permission-denied"
             : exitCode == 0
@@ -1146,6 +1295,7 @@ internal static class CodexDiscoveryEvidenceValidator
             scopeMatches,
             files.ToArray(),
             projects.ToArray(),
+            outOfBoundReadAttempts,
             processExit,
             networkUsed,
             valid
@@ -1159,6 +1309,17 @@ internal static class CodexDiscoveryEvidenceValidator
             && scopeMatches
             && processExit);
     }
+
+    private static string BoundaryReportKey(
+        string commandHash,
+        string attemptedPath,
+        string resolvedPath) =>
+        string.Concat(
+            commandHash,
+            "\0",
+            attemptedPath,
+            "\0",
+            resolvedPath);
 
     private static bool TryGetRawString(
         JsonElement value,
@@ -1949,6 +2110,7 @@ internal sealed record CodexDiscoveryRawReconciliation(
     bool Scope,
     IReadOnlyList<string> Files,
     IReadOnlyList<string> Projects,
+    int OutOfBoundReadAttempts,
     bool ProcessExit,
     bool NetworkUsed,
     bool Passed);

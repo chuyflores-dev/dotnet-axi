@@ -290,6 +290,38 @@ internal sealed partial class CodexAgentBenchmarkEventNormalizer
             command,
             item.GetRawText(),
             succeeded);
+        var allowedReadRoots =
+            CodexAgentBenchmarkAdapter.GetAgentReadableRoots(_input);
+        var readAnalysis = CodexBenchmarkCommandEvidence.AnalyzeReadAttempts(
+            command,
+            _input.WorkspacePath,
+            allowedReadRoots);
+        foreach (var attempt in readAnalysis.Attempts)
+        {
+            AddRawEvent(
+                "adapter.filesystem.read.denied",
+                JsonSerializer.Serialize(new
+                {
+                    commandHash = AgentBenchmarkHash.Compute(command),
+                    attemptedPath = attempt.Operand,
+                    resolvedPath = attempt.ResolvedPath,
+                }));
+            _permissionDenied = true;
+            _protocolFailure = true;
+        }
+
+        if (!readAnalysis.Complete)
+        {
+            AddRawEvent(
+                "adapter.filesystem.read.unreconciled",
+                JsonSerializer.Serialize(new
+                {
+                    commandHash = AgentBenchmarkHash.Compute(command),
+                }));
+            _permissionDenied = true;
+            _protocolFailure = true;
+        }
+
         ObserveCommandScope(command);
         ObserveOutputScope(output);
         if (NetworkCommandRegex().IsMatch(command))
@@ -460,7 +492,8 @@ internal sealed partial class CodexAgentBenchmarkEventNormalizer
                 value,
                 _input.WorkspacePath,
                 _files,
-                _projects))
+                _projects,
+                CodexAgentBenchmarkAdapter.GetAgentReadableRoots(_input)))
         {
             _protocolFailure = true;
         }

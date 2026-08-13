@@ -253,15 +253,20 @@ exec --ephemeral --json --ignore-user-config --ignore-rules
 --skip-git-repo-check`. Controlled benchmark fixtures are content-hashed clean
 directories rather than Git repositories, so the explicit skip affects only
 Codex's repository-presence preflight. Every argument is passed without a
-shell. Each run also passes the exact model, workspace, and `read-only` or
-`workspace-write` sandbox explicitly; fixes the reasoning and `never` approval
-settings; and disables web search and workspace-sandbox network access. A task
-receives `workspace-write` only when its abstract permitted tools declare
-`workspace-write`; every other task is passive and must use `read-only`.
+shell. Each run also passes the exact model and workspace and selects a sealed
+permission profile whose root rule is deny. The profile reopens only minimal
+system resources, the run's workspace with `read` or `write` access, its
+materialized condition artifacts with read access, and its isolated runtime
+state with write access; network access, the shared authentication home, and
+host temporary roots remain denied. A task receives workspace write access
+only when its abstract permitted tools declare `workspace-write`; every other
+task is passive. The invocation also fixes the reasoning and `never` approval
+settings and disables web search.
 Condition-specific configuration accepts only declared skill and MCP-server
 exposure, whose instruction and concrete-tool hashes are pinned in the series
 manifest. Authentication environment is supplied explicitly to this one
-process and is not included in captured arguments or evidence.
+launcher process, is not included in captured arguments or evidence, and is
+explicitly denied to commands executed inside the agent sandbox.
 
 The first successfully created launcher process owns the run even before a
 `thread.started` event arrives. Its PID is retained once, silence while that
@@ -285,6 +290,15 @@ selection uses the invoked executable rather than executable names appearing
 only as arguments. Malformed,
 duplicate, overflowing, permission-denied, read-only, network-denied, and
 untrusted-scope evidence fails closed while preserving the complete trajectory.
+For every repository-read or source-search command, including path-qualified
+readers and shell input redirection, the adapter records a synthetic
+`adapter.filesystem.read.denied` event for each absolute, traversal,
+shared-state, or symlink-resolved operand outside the run's readable roots.
+The event retains the resolved path observed while the run fixture is still
+live. Reader or shell grammar that cannot be reconciled completely emits
+`adapter.filesystem.read.unreconciled` and fails closed. Reconciliation binds
+each event to the matching provider command and requires every independently
+derivable attempt, regardless of provider item status or command exit code.
 After timeout, the runner preserves the pre-cleanup snapshot, performs bounded
 stop and dispose, and then retains only a monotonic extension containing the
 owned launcher's final PID and exit-code evidence.
@@ -499,8 +513,10 @@ structured schema and tool version. `run` repeats that probe while validating
 the unchanged preparation before it creates evidence or dispatches a paid
 agent. It then writes create-new preparation, per-run, report, and summary
 evidence; completed run evidence is flushed durably before the next run starts,
-and every execution artifact and tool-directory pin is revalidated after each
-retained run before another paid run may start.
+but only after the owned agent process has exited and been reaped. The evidence
+root is never part of the agent-readable filesystem profile. Every execution
+artifact and tool-directory pin is revalidated after each retained run before
+another paid run may start.
 `validate` reloads the request and artifacts, rejects unknown JSON fields or
 drift, reconciles normalized metrics with raw Codex events, and recomputes the
 documented comparison thresholds. Missing, failed, and timed-out trajectories
@@ -521,13 +537,18 @@ Candidate adds only the repository skill through the project-local
 value bound to the pinned feed. A network-free `codex debug prompt-input`
 preflight proves the candidate skill and exact source-pinned 0.4.0 invocation
 are model-visible while the baseline does not expose the skill before paid
-execution is allowed. Each materialized workspace
-supplies an isolated runtime-state sibling for .NET, NuGet, temporary files,
-and diagnostic artifacts. The adapter replaces the legacy sandbox selector
-with a scoped permission profile that extends Codex's read-only policy and
-grants write access only to that state and, on Unix, `/tmp/.dotnet` for .NET's
-named synchronization primitives; repository content remains read-only. The
-same profile runs the local execution preflight. The skill can therefore select
+execution is allowed. Each materialized workspace supplies an isolated
+runtime-state sibling for .NET, NuGet, temporary files, and diagnostic
+artifacts. The adapter copies only the condition-permitted executable
+directories into a run-specific artifact root and copies the pinned feed only
+for candidate runs. The candidate skill is copied only into that candidate's
+workspace. Neither condition receives the sealed source paths, the other
+condition's artifact or fixture instance, or another run's state. The
+deny-root profile grants access only to that workspace, artifact root, and
+runtime state; direct `/tmp`, including `/tmp/.dotnet`, and the platform host
+temp root remain denied. Node reuse is disabled and the same profile runs the
+local execution preflight, including an MSBuild property evaluation. The skill
+can therefore select
 `dnx dnaxi@0.4.0 --source "$DNAXI_LOCAL_FEED" --verbosity quiet --` while
 package resolution remains local and network-disabled. The CLI is not
 represented as an MCP server, and API-key authentication or API-key artifacts
@@ -553,12 +574,26 @@ oracle without reinterpreting retained series that used `ordinal-lines/v1`.
 That 2.6 / 1.0.2 evidence remains immutable, failed, and incomparable: its
 path-scoped partial syntax routes did not expose the requested selector in
 structured output, and expected ambiguity was not fully reconciled as a
-structured diagnostic outcome. The corrected protocol uses harness 2.7,
-summary schema version 5, and the unchanged corpus 1.0.2 for future evidence;
-it does not rewrite, relabel, or pool the retained 2.6 series. It schedules five
+structured diagnostic outcome. The route-corrected protocol uses harness 2.7
+and summary schema version 5. The isolation-corrected protocol uses request and
+preparation version 5, Codex adapter version 1.8, harness 2.8, isolation
+protocol `codex-permission-profile/v1`, the same summary version 5, and the
+unchanged corpus 1.0.2 for future evidence. It does not rewrite, relabel, or
+pool the retained 2.6 series. It schedules five
 repetitions for each applicable condition: four shared tasks produce 20
 baseline and 20 candidate runs, and six candidate-only tasks produce 30 more
 candidate runs, for 70 randomized runs and a 9,000-second agent-timeout budget.
+
+Preparation runs the non-model isolation preflight once for baseline and once
+for candidate before any paid dispatch. Each probe must execute its
+materialized reader, raw source search, and .NET SDK and read its own fixture
+and condition artifacts, while unique sentinels representing immutable
+request/preparation, retained evidence, candidate-only artifacts, another run,
+the other condition's fixture and artifacts, shared Codex state, and host temp
+state remain unreadable through absolute paths, parent traversal, and a
+workspace symlink. An unsupported permission profile, unavailable symlink
+probe, readable sentinel, missing permitted read, nonzero exit, unexpected
+output, or stderr causes preparation to fail closed.
 
 The shared sealed raw-tool path contains the pinned `dnx`, an executable `sed`
 reader, raw `dotnet`, and `rg`-compatible source search. Preparation runs

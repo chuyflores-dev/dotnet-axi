@@ -284,6 +284,26 @@ static int CodexSandboxProbe(IReadOnlyList<string> values)
         return 64;
     }
 
+    var isolationScript = values
+        .Select((value, index) => new { value, index })
+        .FirstOrDefault(static entry =>
+            string.Equals(
+                Path.GetFileName(entry.value),
+                "isolation-probe.sh",
+                StringComparison.OrdinalIgnoreCase)
+            || string.Equals(
+                Path.GetFileName(entry.value),
+                "isolation-probe.cmd",
+                StringComparison.OrdinalIgnoreCase));
+    if (isolationScript is not null)
+    {
+        return CodexIsolationProbe(
+            values,
+            delimiter,
+            isolationScript.index,
+            AppContext.BaseDirectory);
+    }
+
     var dnxExecutable = values[delimiter + 1];
     if (!string.Equals(
             Path.GetFileNameWithoutExtension(dnxExecutable),
@@ -297,6 +317,80 @@ static int CodexSandboxProbe(IReadOnlyList<string> values)
         values.Skip(delimiter + 2).ToArray(),
         Path.GetDirectoryName(dnxExecutable)
         ?? AppContext.BaseDirectory);
+}
+
+static int CodexIsolationProbe(
+    IReadOnlyList<string> values,
+    int sandboxDelimiter,
+    int scriptIndex,
+    string stateDirectory)
+{
+    var probeDelimiter = values.ToList().IndexOf("--", scriptIndex + 1);
+    if (scriptIndex <= sandboxDelimiter
+        || probeDelimiter < scriptIndex + 6
+        || probeDelimiter + 1 >= values.Count)
+    {
+        return 64;
+    }
+
+    var reader = values[scriptIndex + 1];
+    var rawSearch = values[scriptIndex + 2];
+    var rawDotNet = values[scriptIndex + 3];
+    var allowedWorkspace = values[scriptIndex + 4];
+    var allowedArtifact = values[scriptIndex + 5];
+    var configuration = values.Take(sandboxDelimiter)
+        .FirstOrDefault(static value => value.Contains(
+            "permissions={dnaxi-benchmark=",
+            StringComparison.Ordinal));
+    var codexHome = Environment.GetEnvironmentVariable("CODEX_HOME");
+    if (configuration is null
+        || codexHome is null
+        || !configuration.Contains("\":root\"=\"deny\"", StringComparison.Ordinal)
+        || !configuration.Contains("\":minimal\"=\"read\"", StringComparison.Ordinal)
+        || !configuration.Contains("\":slash_tmp\"=\"deny\"", StringComparison.Ordinal)
+        || configuration.Contains("/tmp/.dotnet", StringComparison.Ordinal)
+        || !configuration.Contains(
+            JsonSerializer.Serialize(Path.GetFullPath(codexHome)) + "=\"deny\"",
+            StringComparison.Ordinal)
+        || !configuration.Contains(
+            JsonSerializer.Serialize(Path.GetDirectoryName(allowedArtifact)!)
+            + "=\"read\"",
+            StringComparison.Ordinal)
+        || !File.Exists(reader)
+        || !File.Exists(rawSearch)
+        || !File.Exists(rawDotNet)
+        || !File.Exists(allowedWorkspace)
+        || !File.Exists(allowedArtifact)
+        || values.Skip(probeDelimiter + 1).Any(static path => !File.Exists(path)))
+    {
+        return 64;
+    }
+
+    if (File.Exists(Path.Combine(
+            stateDirectory,
+            "codex.isolation-leak")))
+    {
+        Console.Write(File.ReadAllText(values[probeDelimiter + 1]));
+        return 0;
+    }
+
+    if (File.Exists(Path.Combine(
+            Path.GetDirectoryName(rawSearch) ?? stateDirectory,
+            "rg.raw-probe-exit-code")))
+    {
+        return 82;
+    }
+
+    Console.Write(File.ReadAllText(allowedWorkspace));
+    Console.Write(File.ReadAllText(allowedArtifact));
+    var index = 0;
+    foreach (var _ in values.Skip(probeDelimiter + 1))
+    {
+        Console.WriteLine($"denied:{index}");
+        index++;
+    }
+
+    return 0;
 }
 
 static int DnxDiscoveryProbe(
