@@ -1,6 +1,7 @@
 using System.Buffers.Binary;
 using System.Globalization;
 using System.IO.Compression;
+using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -32,11 +33,11 @@ internal static partial class CodexDiscoveryBenchmarkPreparation
     internal const string AuthenticationMethod = "chatgpt";
     internal const string ProductMilestone = "0.5.0";
     internal const string CorpusId = "symbol-context";
-    internal const string CorpusVersion = "1.0.3";
+    internal const string CorpusVersion = "1.0.4";
     internal const string PackageId = "dnaxi";
     internal const string PackageVersion = "0.5.0";
     internal const string ProductSchema = "dotnet-axi/v1";
-    internal const string HarnessVersion = "2.9.0";
+    internal const string HarnessVersion = "2.10.0";
     internal const string IsolationProtocol =
         "codex-permission-profile/v1";
     internal const string PackageSourceEnvironmentVariable =
@@ -78,12 +79,7 @@ internal static partial class CodexDiscoveryBenchmarkPreparation
     ];
 
     private static readonly string[] ExpectedBaselineTaskIds =
-    [
-        "test-symbol-explicit-scope",
-        "symbol-owner-framework-variants",
-        "syntax-candidate-partial-verification",
-        "document-exact-line-span",
-    ];
+        ExpectedTaskIds;
 
     private static readonly string[] ExpectedCapabilities =
     [
@@ -328,6 +324,7 @@ internal static partial class CodexDiscoveryBenchmarkPreparation
                 static entry => entry.Path).ToArray(),
             candidateTools.EnvironmentVariables,
             candidateTools.SkillDirectoryPath);
+        var dotNetInstallationRoot = GetDotNetInstallationRoot();
         var adapter = new CodexAgentBenchmarkAdapter(
             new CodexAgentBenchmarkAdapterOptions(
                 request.CodexExecutable.Path,
@@ -339,7 +336,8 @@ internal static partial class CodexDiscoveryBenchmarkPreparation
                     {
                         ["CODEX_HOME"] = request.CodexHomePath,
                     },
-                expectedDnxExecutablePath: request.DnxExecutable.Path));
+                expectedDnxExecutablePath: request.DnxExecutable.Path,
+                dotNetInstallationRoot: dotNetInstallationRoot));
         var corpusDirectory = Path.GetDirectoryName(
                 request.Corpus.Artifact.Path)
             ?? throw new AgentBenchmarkException(
@@ -2262,6 +2260,7 @@ internal static partial class CodexDiscoveryBenchmarkPreparation
                 fixture.StatePath,
                 artifactRoot,
                 sharedHome,
+                adapter.DotNetInstallationRoot,
                 Sandbox),
             "--cd",
             fixture.WorkspacePath,
@@ -2362,6 +2361,21 @@ internal static partial class CodexDiscoveryBenchmarkPreparation
         + "shift\r\n"
         + "goto loop\r\n";
 
+    private static string GetDotNetInstallationRoot()
+    {
+        var runtimeDirectory = new DirectoryInfo(
+            RuntimeEnvironment.GetRuntimeDirectory());
+        var installationRoot = runtimeDirectory.Parent?.Parent?.Parent;
+        if (installationRoot is null
+            || !Directory.Exists(installationRoot.FullName))
+        {
+            throw new AgentBenchmarkException(
+                "The benchmark harness cannot locate its .NET installation.");
+        }
+
+        return installationRoot.FullName;
+    }
+
     private static bool PathsEqual(string left, string right) =>
         string.Equals(
             Path.GetFullPath(left),
@@ -2411,8 +2425,9 @@ internal static partial class CodexDiscoveryBenchmarkPreparation
                             fixture.StatePath,
                             CodexAgentBenchmarkAdapter
                                 .GetMaterializedArtifactRoot(
-                                    fixture.WorkspacePath),
+                            fixture.WorkspacePath),
                             codexHome,
+                            adapter.DotNetInstallationRoot,
                             Sandbox),
                     "--cd",
                     fixture.WorkspacePath,

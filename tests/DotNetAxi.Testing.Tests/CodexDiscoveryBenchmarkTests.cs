@@ -278,11 +278,11 @@ public sealed class CodexDiscoveryBenchmarkTests
         var second = await CodexDiscoveryBenchmarkPreparation.PrepareAsync(
             fixture.RequestPath);
 
-        Assert.Equal(70, context.Preparation.Schedule.Count);
-        Assert.Equal(70, context.Preparation.UsageBoundary.RunCount);
-        Assert.Equal(9_000,
+        Assert.Equal(100, context.Preparation.Schedule.Count);
+        Assert.Equal(100, context.Preparation.UsageBoundary.RunCount);
+        Assert.Equal(12_600,
             context.Preparation.UsageBoundary.AgentTimeoutBudgetSeconds);
-        Assert.Equal(1_400,
+        Assert.Equal(2_000,
             context.Preparation.UsageBoundary.FinalizationBudgetSeconds);
         Assert.Null(context.Preparation.UsageBoundary.ProviderTokenLimit);
         Assert.Equal(AgentBenchmarkDispatch.Manual,
@@ -315,12 +315,12 @@ public sealed class CodexDiscoveryBenchmarkTests
             context.Preparation.Schedule.GroupBy(run =>
                 (run.TaskId, run.Condition)),
             group => Assert.Equal(5, group.Count()));
-        Assert.Equal(20, context.Preparation.Schedule.Count(run =>
+        Assert.Equal(50, context.Preparation.Schedule.Count(run =>
             run.Condition is AgentBenchmarkCondition.Baseline));
         Assert.Equal(50, context.Preparation.Schedule.Count(run =>
             run.Condition is AgentBenchmarkCondition.Candidate));
         Assert.Equal(
-            Enumerable.Range(0, 70),
+            Enumerable.Range(0, 100),
             context.Preparation.Schedule.Select(run => run.ExecutionOrder));
         var task = context.Corpus.Tasks[0];
         var baselineInput = AdapterInput(
@@ -368,7 +368,10 @@ public sealed class CodexDiscoveryBenchmarkTests
         Assert.Equal(
             context.Request.Product.Skill.Path,
             context.CandidateTools.SkillDirectoryPath);
-        Assert.Equal("1.8.0", context.Adapter.Descriptor.Version);
+        Assert.Equal("1.9.0", context.Adapter.Descriptor.Version);
+        Assert.NotNull(context.Adapter.DotNetInstallationRoot);
+        Assert.True(Directory.Exists(
+            context.Adapter.DotNetInstallationRoot));
 
         var preparationPath = Path.Combine(fixture.Root, "preparation.json");
         await CodexDiscoveryBenchmarkPreparation.WriteCreateNewAsync(
@@ -551,7 +554,7 @@ public sealed class CodexDiscoveryBenchmarkTests
         var prepared = await CodexDiscoveryBenchmarkPreparation.PrepareAsync(
             fixture.RequestPath);
 
-        Assert.Equal(70, prepared.Preparation.Schedule.Count);
+        Assert.Equal(100, prepared.Preparation.Schedule.Count);
     }
 
     [Fact]
@@ -672,14 +675,15 @@ public sealed class CodexDiscoveryBenchmarkTests
 
         Assert.Equal("complete", summary.EvidenceStatus);
         Assert.Equal("improvement", summary.Comparison);
-        Assert.Equal(70, summary.RetainedRunCount);
+        Assert.Equal(100, summary.RetainedRunCount);
         Assert.Equal(-10m, summary.Thresholds.MedianTokenChangePercent);
+        Assert.Equal(0m, summary.Thresholds.MedianDurationChangePercent);
         Assert.True(summary.Thresholds.ImprovementClaimSupported);
         Assert.Equal(0, summary.Baseline.DnxInvocationCount);
-        Assert.Equal(20, summary.Candidate.DnxActivatedRunCount);
-        Assert.Equal(20, summary.Candidate.SuccessfulDnxActivatedRunCount);
-        Assert.Equal(20, summary.Candidate.DnxInvocationCount);
-        Assert.Equal(20, summary.Candidate.SuccessfulDnxInvocationCount);
+        Assert.Equal(50, summary.Candidate.DnxActivatedRunCount);
+        Assert.Equal(40, summary.Candidate.SuccessfulDnxActivatedRunCount);
+        Assert.Equal(70, summary.Candidate.DnxInvocationCount);
+        Assert.Equal(60, summary.Candidate.SuccessfulDnxInvocationCount);
         Assert.Equal(50, summary.AllCandidate.DnxActivatedRunCount);
         Assert.Equal(40, summary.AllCandidate.SuccessfulDnxActivatedRunCount);
         Assert.Equal(10, summary.RouteActivations.Count);
@@ -714,22 +718,15 @@ public sealed class CodexDiscoveryBenchmarkTests
             Assert.Equal(
                 ["search symbol", "show symbol"],
                 run.Steps.Select(static step => step.Route)));
-        Assert.Equal(4, summary.ComparableTaskIds.Count);
-        Assert.Equal(6, summary.CandidateOnlyTasks.Count);
-        Assert.All(summary.CandidateOnlyTasks, static task =>
-        {
-            Assert.Equal(5, task.CompletedCount);
-            Assert.Equal(5, task.SuccessCount);
-            Assert.Equal(5, task.SafeCount);
-            Assert.Equal(5, task.SuccessfulActivatedRunCount);
-        });
+        Assert.Equal(10, summary.ComparableTaskIds.Count);
+        Assert.Empty(summary.CandidateOnlyTasks);
         Assert.False(summary.PriorSeries.Comparable);
         Assert.Equal("complete", summary.PriorSeries.EvidenceStatus);
         Assert.Equal("no-improvement", summary.PriorSeries.Comparison);
         Assert.True(CodexDiscoveryEvidenceValidator.CanonicalEquals(
             summary,
             validated));
-        Assert.Equal(70,
+        Assert.Equal(100,
             Directory.EnumerateFiles(
                 Path.Combine(evidencePath, "runs"),
                 "*.json").Count());
@@ -1511,6 +1508,35 @@ public sealed class CodexDiscoveryBenchmarkTests
         Assert.True(CodexDiscoveryEvidenceValidator.CanonicalEquals(
             missing,
             missingValidated));
+    }
+
+    [Fact]
+    public async Task Empty_matched_success_cohort_has_unavailable_efficiency()
+    {
+        using var fixture = await PreparedFixture.CreateAsync();
+        var context = await CodexDiscoveryBenchmarkPreparation.PrepareAsync(
+            fixture.RequestPath);
+        var runs = context.Preparation.Schedule
+            .Select(scheduled => CreateFailedRun(context, scheduled))
+            .ToArray();
+        var report = new CodexDiscoverySeriesReport(
+            CodexDiscoveryEvidenceStore.ReportSchema,
+            context.Preparation.RequestHash,
+            context.Preparation.Manifest,
+            context.Preparation.Schedule.Count,
+            Complete: true,
+            Failure: null,
+            runs);
+
+        var summary = CodexDiscoveryEvidenceValidator.CreateSummary(
+            context,
+            report,
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+
+        Assert.Null(summary.Thresholds.MedianTokenChangePercent);
+        Assert.Null(summary.Thresholds.MedianDurationChangePercent);
+        Assert.False(summary.Thresholds.TokenRegression);
+        Assert.False(summary.Thresholds.ImprovementClaimSupported);
     }
 
     [Fact]
@@ -2655,7 +2681,7 @@ public sealed class CodexDiscoveryBenchmarkTests
             string candidateVersion = "0.5.0",
             bool includeBoundedReader = true,
             bool boundedReaderSucceeds = true,
-            string harnessVersion = "2.9.0",
+            string harnessVersion = "2.10.0",
             bool includeRawDotnet = true,
             bool includeRawSourceSearch = true,
             bool rawDotnetSucceeds = true,
@@ -2821,6 +2847,7 @@ public sealed class CodexDiscoveryBenchmarkTests
                         0,
                         0m,
                         7.5511508951406649616368286400m,
+                        null,
                         0m,
                         false,
                         false,

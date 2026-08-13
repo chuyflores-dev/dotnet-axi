@@ -29,7 +29,7 @@ public sealed class CodexAgentBenchmarkAdapterTests
             baselineWorkspace,
             AgentBenchmarkCondition.Baseline));
 
-        Assert.Equal("1.8.0", adapter.Descriptor.Version);
+        Assert.Equal("1.9.0", adapter.Descriptor.Version);
         Assert.Equal(
             await File.ReadAllBytesAsync(Path.Combine(source, "SKILL.md")),
             await File.ReadAllBytesAsync(Path.Combine(
@@ -286,6 +286,7 @@ public sealed class CodexAgentBenchmarkAdapterTests
                 CodexAgentBenchmarkAdapter.GetMaterializedArtifactRoot(
                     fixture.WorkspacePath),
                 authenticationHomePath: null,
+                dotNetInstallationRoot: null,
                 sandbox: "read-only"),
             startInfo.ArgumentList);
 
@@ -294,6 +295,32 @@ public sealed class CodexAgentBenchmarkAdapterTests
         Assert.Contains(
             execution.GetProgressSnapshot().RawEvents,
             static value => value.Kind == "adapter.process.started");
+    }
+
+    [Fact]
+    public void Runtime_profile_grants_the_same_dotnet_installation_read_only()
+    {
+        using var workspace = new TemporaryWorkspace();
+        var runtime = Directory.CreateDirectory(
+            Path.Combine(workspace.Path, "runtime")).FullName;
+        var artifacts = Directory.CreateDirectory(
+            Path.Combine(workspace.Path, "artifacts")).FullName;
+        var dotnet = Directory.CreateDirectory(
+            Path.Combine(workspace.Path, "dotnet")).FullName;
+
+        var profile = CodexAgentBenchmarkAdapter
+            .CreateRuntimePermissionProfileConfig(
+                Path.Combine(workspace.Path, "work"),
+                runtime,
+                artifacts,
+                authenticationHomePath: null,
+                dotnet,
+                sandbox: "read-only");
+
+        Assert.Contains(
+            $"{JsonSerializer.Serialize(dotnet)}=\"read\"",
+            profile,
+            StringComparison.Ordinal);
     }
 
     [Fact]
