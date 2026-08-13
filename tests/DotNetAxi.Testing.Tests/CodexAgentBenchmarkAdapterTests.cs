@@ -612,6 +612,50 @@ public sealed class CodexAgentBenchmarkAdapterTests
         Assert.Empty(analysis.Attempts);
     }
 
+    [Fact]
+    public void Boundary_detection_reconciles_the_observed_pinned_feed_guard()
+    {
+        using var workspace = new TemporaryWorkspace();
+        var project = Path.Combine(workspace.Path, "src", "Core", "Core.csproj");
+        Directory.CreateDirectory(Path.GetDirectoryName(project)!);
+        File.WriteAllText(project, "<Project />");
+        var command =
+            "/bin/zsh -lc 'if [ -n \"$DNAXI_LOCAL_FEED\" ]; then "
+            + "dnx dnaxi@0.5.0 --source \"$DNAXI_LOCAL_FEED\" --verbosity quiet -- "
+            + "search symbol '\"'SymbolContext.Product.LedgerService' --project "
+            + "src/Core/Core.csproj --fields id,kind,signature,owning_projects,"
+            + "variant_count,variants --limit 20; else exit 2; fi\"";
+
+        var analysis = CodexBenchmarkCommandEvidence.AnalyzeReadAttempts(
+            command,
+            workspace.Path);
+
+        Assert.True(analysis.Complete);
+        Assert.Empty(analysis.Attempts);
+        Assert.Equal(
+            "source-search",
+            CodexBenchmarkCommandEvidence.Classify(
+                command,
+                "read-only",
+                ["repository-read", "source-search"]));
+    }
+
+    [Fact]
+    public void Boundary_detection_rejects_an_outside_read_inside_the_feed_guard()
+    {
+        using var workspace = new TemporaryWorkspace();
+        const string command =
+            "/bin/zsh -lc 'if [ -n \"$DNAXI_LOCAL_FEED\" ]; then "
+            + "cat /outside/request.sentinel; else exit 2; fi'";
+
+        var attempt = Assert.Single(
+            CodexBenchmarkCommandEvidence.FindOutOfBoundReadAttempts(
+                command,
+                workspace.Path));
+
+        Assert.Equal("/outside/request.sentinel", attempt.Operand);
+    }
+
     [Theory]
     [InlineData("python3 -c 'open(\"/outside/request.sentinel\").read()'")]
     [InlineData("sh -c 'value=$(cat /outside/request.sentinel); true'")]

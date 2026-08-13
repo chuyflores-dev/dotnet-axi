@@ -513,7 +513,10 @@ source-search command so a sealed but unusable baseline fails before paid
 execution. The source-search probe covers both exact fixed-string lookup and
 the `--files`, `--hidden`, `--glob`, and `-g` grammar commonly emitted by Codex;
 a grep-backed executable that implements only the first lookup is not treated
-as equivalent.
+as equivalent. Retained command evidence also unwraps the exact nonempty
+`DNAXI_LOCAL_FEED` guard with `else exit 2` that Codex may place around the
+source-pinned candidate command; the guarded body remains subject to the same
+read-boundary and source-search reconciliation.
 Preparation executes the exact source-pinned candidate with `-- --version` against
 disposable isolated .NET and NuGet state and requires the expected successful
 structured schema and tool version. `run` repeats that probe while validating
