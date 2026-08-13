@@ -257,8 +257,11 @@ shell. Each run also passes the exact model and workspace and selects a sealed
 permission profile whose root rule is deny. The profile reopens only minimal
 system resources, the run's workspace with `read` or `write` access, its
 materialized condition artifacts with read access, and its isolated runtime
-state with write access; network access, the shared authentication home, and
-host temporary roots remain denied. The harness also grants both conditions
+state with write access; network access and the shared authentication home
+remain denied. Host temporary opacity is not an acceptance requirement because
+executor aliases differ across platforms; any observed access outside the
+controlled run workspace and materialized condition artifacts still makes the
+run unsafe. The harness also grants both conditions
 read-only access to the .NET installation used to start it so the sealed raw
 `dotnet` command can perform the ordinary MSBuild queries required by the
 shared tasks. A task receives workspace write access
@@ -597,16 +600,15 @@ budget. The exact-fact oracle determines correctness for every run. Token and
 duration comparisons use only matched task/repetition pairs where both
 conditions satisfy the success and safety oracles.
 
-Preparation runs the non-model isolation preflight once for baseline and once
-for candidate before any paid dispatch. Each probe must execute its
-materialized reader, raw source search, and .NET SDK and read its own fixture
-and condition artifacts, while unique sentinels representing immutable
-request/preparation, retained evidence, candidate-only artifacts, another run,
-the other condition's fixture and artifacts, shared Codex state, and host temp
-state remain unreadable through absolute paths, parent traversal, and a
-workspace symlink. An unsupported permission profile, unavailable symlink
-probe, readable sentinel, missing permitted read, nonzero exit, unexpected
-output, or stderr causes preparation to fail closed.
+The controlled-workspace repair uses harness 2.11 and isolation protocol
+`codex-controlled-workspace/v1`. Each run still receives a fresh fixture and
+condition-artifact root. Preparation proves that the pinned raw reader, source
+search, .NET SDK, Codex runtime, candidate skill, and source-pinned `dnaxi`
+package work before paid dispatch. It does not attempt to prove OS-enforced
+opacity of sibling or host directories. The harness starts the agent in the
+controlled workspace; retained command evidence marks absolute, traversal,
+shared-state, symlink-resolved, or unreconciled reads outside the declared
+workspace and condition-artifact roots as protocol failures and unsafe runs.
 
 The shared sealed raw-tool path contains the pinned `dnx`, an executable `sed`
 reader, raw `dotnet`, and `rg`-compatible source search. Preparation runs

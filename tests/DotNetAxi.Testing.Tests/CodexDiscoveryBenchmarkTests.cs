@@ -300,14 +300,14 @@ public sealed class CodexDiscoveryBenchmarkTests
         Assert.Equal("disabled",
             context.Preparation.Manifest.Execution.NetworkPolicy);
         Assert.Equal(
-            "codex-permission-profile/v1",
+            "codex-controlled-workspace/v1",
             context.Preparation.Isolation.Protocol);
-        Assert.True(context.Preparation.Isolation.RootDenied);
-        Assert.True(context.Preparation.Isolation.HostTemporaryDenied);
+        Assert.True(context.Preparation.Isolation.FreshWorkspacePerRun);
+        Assert.True(
+            context.Preparation.Isolation.CommandEvidenceBoundaryEnforced);
         Assert.True(
             context.Preparation.Isolation.SharedAuthenticationHomeDenied);
-        Assert.True(context.Preparation.Isolation.BaselinePassed);
-        Assert.True(context.Preparation.Isolation.CandidatePassed);
+        Assert.True(context.Preparation.Isolation.NetworkDisabled);
         Assert.True(CodexDiscoveryEvidenceValidator.CanonicalEquals(
             context.Preparation.Schedule,
             second.Preparation.Schedule));
@@ -400,19 +400,16 @@ public sealed class CodexDiscoveryBenchmarkTests
     }
 
     [Fact]
-    public async Task Preparation_fails_closed_when_either_condition_can_read_a_sealed_sentinel()
+    public async Task Preparation_does_not_use_host_visibility_as_a_readiness_gate()
     {
         using var fixture = await PreparedFixture.CreateAsync(
             isolationProbeLeaks: true);
 
-        var exception = await Assert.ThrowsAsync<AgentBenchmarkException>(() =>
-            CodexDiscoveryBenchmarkPreparation.PrepareAsync(
-                fixture.RequestPath).AsTask());
+        var prepared = await CodexDiscoveryBenchmarkPreparation.PrepareAsync(
+            fixture.RequestPath);
 
-        Assert.Contains(
-            "isolation preflight did not enforce the sealed run boundary",
-            exception.Message,
-            StringComparison.Ordinal);
+        Assert.True(
+            prepared.Preparation.Isolation.CommandEvidenceBoundaryEnforced);
     }
 
     [Fact]
@@ -2681,7 +2678,7 @@ public sealed class CodexDiscoveryBenchmarkTests
             string candidateVersion = "0.5.0",
             bool includeBoundedReader = true,
             bool boundedReaderSucceeds = true,
-            string harnessVersion = "2.10.0",
+            string harnessVersion = "2.11.0",
             bool includeRawDotnet = true,
             bool includeRawSourceSearch = true,
             bool rawDotnetSucceeds = true,
