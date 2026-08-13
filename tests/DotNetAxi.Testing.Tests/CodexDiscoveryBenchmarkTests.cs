@@ -383,6 +383,34 @@ public sealed class CodexDiscoveryBenchmarkTests
     }
 
     [Fact]
+    public async Task Preparation_seals_the_approved_luna_model()
+    {
+        using var fixture = await PreparedFixture.CreateAsync(
+            modelId: CodexDiscoveryBenchmarkPreparation.LunaModelId);
+
+        var context = await CodexDiscoveryBenchmarkPreparation.PrepareAsync(
+            fixture.RequestPath);
+
+        Assert.Equal(
+            CodexDiscoveryBenchmarkPreparation.LunaModelId,
+            context.Preparation.Manifest.Execution.ModelId);
+        Assert.Equal(
+            CodexDiscoveryBenchmarkPreparation.LunaModelId,
+            context.Configuration.Execution.ModelId);
+    }
+
+    [Fact]
+    public async Task Preparation_rejects_an_unapproved_model()
+    {
+        using var fixture = await PreparedFixture.CreateAsync(
+            modelId: "gpt-unapproved");
+
+        await Assert.ThrowsAsync<AgentBenchmarkException>(async () =>
+            await CodexDiscoveryBenchmarkPreparation.PrepareAsync(
+                fixture.RequestPath));
+    }
+
+    [Fact]
     public async Task Preparation_rejects_a_candidate_that_cannot_execute()
     {
         using var fixture = await PreparedFixture.CreateAsync(
@@ -2230,7 +2258,7 @@ public sealed class CodexDiscoveryBenchmarkTests
                 context.Preparation.Manifest.Adapter.Id,
                 context.Preparation.Manifest.Adapter.Version,
                 CodexDiscoveryBenchmarkPreparation.CodexCliVersion,
-                CodexDiscoveryBenchmarkPreparation.ModelId,
+                context.Configuration.Execution.ModelId,
                 CodexDiscoveryBenchmarkPreparation.ReasoningSetting,
                 CodexDiscoveryBenchmarkPreparation.CorpusVersion,
                 CodexDiscoveryBenchmarkPreparation.ProductSchema),
@@ -2342,7 +2370,7 @@ public sealed class CodexDiscoveryBenchmarkTests
                 context.Preparation.Manifest.Adapter.Id,
                 context.Preparation.Manifest.Adapter.Version,
                 CodexDiscoveryBenchmarkPreparation.CodexCliVersion,
-                CodexDiscoveryBenchmarkPreparation.ModelId,
+                context.Configuration.Execution.ModelId,
                 CodexDiscoveryBenchmarkPreparation.ReasoningSetting,
                 CodexDiscoveryBenchmarkPreparation.CorpusVersion,
                 CodexDiscoveryBenchmarkPreparation.ProductSchema),
@@ -2678,7 +2706,8 @@ public sealed class CodexDiscoveryBenchmarkTests
             string candidateVersion = "0.5.0",
             bool includeBoundedReader = true,
             bool boundedReaderSucceeds = true,
-            string harnessVersion = "2.11.1",
+            string harnessVersion = "2.11.2",
+            string modelId = CodexDiscoveryBenchmarkPreparation.ModelId,
             bool includeRawDotnet = true,
             bool includeRawSourceSearch = true,
             bool rawDotnetSucceeds = true,
@@ -2903,7 +2932,7 @@ public sealed class CodexDiscoveryBenchmarkTests
                 new CodexDiscoverySettings(
                     CodexDiscoveryBenchmarkPreparation.SettingsSchema,
                     CodexDiscoveryBenchmarkPreparation.CodexCliVersion,
-                    CodexDiscoveryBenchmarkPreparation.ModelId,
+                    modelId,
                     CodexDiscoveryBenchmarkPreparation.ReasoningSetting,
                     CodexDiscoveryBenchmarkPreparation.Sandbox,
                     CodexDiscoveryBenchmarkPreparation.PermissionProfile,

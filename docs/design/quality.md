@@ -505,7 +505,10 @@ identity, executables, settings, commits, and the exact selected corpus.
 directory, verifies the exact CLI version and active ChatGPT authentication
 with bounded local `codex --version` and `codex login status` probes, and seals
 the deterministic 100-run schedule without dispatching a model. It also
-executes the pinned bounded reader, raw `dotnet`, and an `rg`-compatible
+accepts only the approved `gpt-5.6-sol` and `gpt-5.6-luna` model IDs from the
+hash-pinned settings artifact and applies that exact model to both conditions.
+Preparation also executes the pinned bounded reader, raw `dotnet`, and an
+`rg`-compatible
 source-search command so a sealed but unusable baseline fails before paid
 execution. The source-search probe covers both exact fixed-string lookup and
 the `--files`, `--hidden`, `--glob`, and `-g` grammar commonly emitted by Codex;
