@@ -9,7 +9,7 @@ internal sealed class CodexDiscoveryEvidenceStore : IAgentBenchmarkRunSink
     internal const string ReportSchema =
         "dotnet-axi/codex-discovery-report/v3";
     internal const string SummarySchema =
-        "dotnet-axi/codex-discovery-summary/v5";
+        "dotnet-axi/codex-discovery-summary/v6";
 
     private readonly string _evidenceDirectory;
     private readonly string _runsDirectory;
@@ -274,32 +274,7 @@ internal static class CodexDiscoveryEvidenceValidator
                 context.Request.Product.PackageSource.Path,
                 context.Request.DnxExecutable.Path))
             .ToArray();
-        var candidateOnlyTasks = context.Corpus.Tasks
-            .Where(static task => !task.Applicability.Baseline)
-            .Select(task =>
-            {
-                var taskRuns = candidateRuns.Where(run => string.Equals(
-                    run.TaskId,
-                    task.Id,
-                    StringComparison.Ordinal)).ToArray();
-                var activation = routeActivations.Single(route => string.Equals(
-                    route.TaskId,
-                    task.Id,
-                    StringComparison.Ordinal));
-                return new CodexDiscoveryCandidateOnlyTaskMetrics(
-                    task.Id,
-                    taskRuns.Length,
-                    taskRuns.Count(static run => string.Equals(
-                        run.Status,
-                        "completed",
-                        StringComparison.Ordinal)),
-                    taskRuns.Count(static run => run.Success),
-                    taskRuns.Count(static run => run.Safe),
-                    taskRuns.Count(static run => run.TimedOut),
-                    activation.ActivatedRunCount,
-                    activation.SuccessfulActivatedRunCount);
-            })
-            .ToArray();
+        CodexDiscoveryCandidateOnlyTaskMetrics[] candidateOnlyTasks = [];
         var complete = report.Complete
                        && report.Runs.Count == report.ExpectedRunCount;
         var failed = report.Failure is not null
@@ -321,10 +296,29 @@ internal static class CodexDiscoveryEvidenceValidator
             ? (decimal?)(candidate.SuccessRatePercent
                 - baseline.SuccessRatePercent)
             : null;
-        var tokenChange = complete
+        var matchedSuccessfulPairs = complete
+            ? SuccessfulPairs(baselineRuns, comparableCandidateRuns)
+            : [];
+        var pairedBaselineTokens = matchedSuccessfulPairs.Count == 0
+            ? null
+            : (decimal?)Median(matchedSuccessfulPairs.Select(static pair =>
+                pair.Baseline.TotalTokens));
+        var pairedCandidateTokens = matchedSuccessfulPairs.Count == 0
+            ? null
+            : (decimal?)Median(matchedSuccessfulPairs.Select(static pair =>
+                pair.Candidate.TotalTokens));
+        var tokenChange = pairedBaselineTokens.HasValue
+            && pairedCandidateTokens.HasValue
             ? PercentageChange(
-                baseline.MedianTotalTokens,
-                candidate.MedianTotalTokens)
+                pairedBaselineTokens.Value,
+                pairedCandidateTokens.Value)
+            : null;
+        var durationChange = matchedSuccessfulPairs.Count > 0
+            ? PercentageChange(
+                Median(matchedSuccessfulPairs.Select(static pair =>
+                    pair.Baseline.Duration.Ticks)),
+                Median(matchedSuccessfulPairs.Select(static pair =>
+                    pair.Candidate.Duration.Ticks)))
             : null;
         var toolCallChange = complete
             ? PercentageChange(
@@ -338,14 +332,15 @@ internal static class CodexDiscoveryEvidenceValidator
         var tokenRegression = !correctnessBenefit
                               && (tokenChange is >= 10m
                                   || (tokenChange is null
-                                      && baseline.MedianTotalTokens == 0m
-                                      && candidate.MedianTotalTokens > 0m));
+                                      && pairedBaselineTokens == 0m
+                                      && pairedCandidateTokens > 0m));
         var toolCallRegression = !correctnessBenefit
                                  && (toolCallChange is >= 10m
                                      || (toolCallChange is null
                                          && baseline.MedianToolCalls == 0m
                                          && candidate.MedianToolCalls > 0m));
-        var tokenReduction = tokenChange is <= -10m;
+        var tokenReduction = matchedSuccessfulPairs.Count > 0
+                             && tokenChange is <= -10m;
         var zeroActivation = complete
                              && !failed
                              && allCandidate.DnxInvocationCount == 0;
@@ -455,6 +450,7 @@ internal static class CodexDiscoveryEvidenceValidator
                 safetyCriticalRegressions,
                 successDelta,
                 tokenChange,
+                durationChange,
                 toolCallChange,
                 successRegression,
                 tokenRegression,
@@ -1893,6 +1889,26 @@ internal static class CodexDiscoveryEvidenceValidator
         return decimal.Divide(candidate - baseline, baseline) * 100m;
     }
 
+    private static IReadOnlyList<CodexDiscoverySuccessfulPair>
+        SuccessfulPairs(
+            IReadOnlyList<AgentBenchmarkRunResult> baseline,
+            IReadOnlyList<AgentBenchmarkRunResult> candidate)
+    {
+        var candidateByKey = candidate.ToDictionary(
+            static run => (run.TaskId, run.Repetition));
+        return baseline
+            .Where(static run => run.Success && run.Safe)
+            .Select(run => candidateByKey.TryGetValue(
+                    (run.TaskId, run.Repetition),
+                    out var paired)
+                && paired.Success
+                && paired.Safe
+                    ? new CodexDiscoverySuccessfulPair(run, paired)
+                    : null)
+            .OfType<CodexDiscoverySuccessfulPair>()
+            .ToArray();
+    }
+
     private static int CountSafetyCriticalRegressions(
         IReadOnlyList<AgentBenchmarkRunResult> baseline,
         IReadOnlyList<AgentBenchmarkRunResult> candidate)
@@ -1974,6 +1990,7 @@ internal sealed record CodexDiscoveryThresholdEvaluation(
     int SafetyCriticalRegressions,
     decimal? AggregateSuccessDeltaPercentagePoints,
     decimal? MedianTokenChangePercent,
+    decimal? MedianDurationChangePercent,
     decimal? MedianToolCallChangePercent,
     bool SuccessRegression,
     bool TokenRegression,
@@ -2069,6 +2086,10 @@ internal sealed record CodexDiscoveryCandidateOnlyTaskMetrics(
     int TimedOutCount,
     int ActivatedRunCount,
     int SuccessfulActivatedRunCount);
+
+internal sealed record CodexDiscoverySuccessfulPair(
+    AgentBenchmarkRunResult Baseline,
+    AgentBenchmarkRunResult Candidate);
 
 internal sealed record CodexDiscoveryHistoricalComparison(
     string SummaryPath,

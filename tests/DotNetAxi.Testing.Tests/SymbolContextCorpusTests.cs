@@ -12,7 +12,7 @@ public sealed partial class SymbolContextCorpusTests
         var corpus = await AgentTaskCorpusLoader.LoadAsync(CorpusPath());
 
         Assert.Equal("symbol-context", corpus.Id);
-        Assert.Equal("1.0.3", corpus.Version);
+        Assert.Equal("1.0.4", corpus.Version);
         Assert.Equal(10, corpus.Tasks.Count);
         Assert.Equal(
             [
@@ -33,6 +33,7 @@ public sealed partial class SymbolContextCorpusTests
             static task =>
             {
                 Assert.Equal("0.5.0", task.Milestone);
+                Assert.True(task.Applicability.Baseline);
                 Assert.True(task.Applicability.Candidate);
                 Assert.Equal("materialized-clean", task.Repository.State);
                 Assert.Equal("disabled", task.Execution.Network);
@@ -80,12 +81,7 @@ public sealed partial class SymbolContextCorpusTests
                     task.RequiredValidation);
             });
         Assert.Equal(
-            [
-                "test-symbol-explicit-scope",
-                "symbol-owner-framework-variants",
-                "syntax-candidate-partial-verification",
-                "document-exact-line-span",
-            ],
+            corpus.Tasks.Select(static task => task.Id),
             corpus.Tasks
                 .Where(static task => task.Applicability.Baseline)
                 .Select(static task => task.Id));

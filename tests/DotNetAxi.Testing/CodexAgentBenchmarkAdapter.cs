@@ -40,7 +40,8 @@ public sealed class CodexAgentBenchmarkAdapterOptions
         CodexBenchmarkConditionExposure candidate,
         IReadOnlyList<string>? executablePrefixArguments = null,
         IReadOnlyDictionary<string, string>? authenticationEnvironment = null,
-        string? expectedDnxExecutablePath = null)
+        string? expectedDnxExecutablePath = null,
+        string? dotNetInstallationRoot = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(executablePath);
         ArgumentException.ThrowIfNullOrWhiteSpace(cliVersion);
@@ -70,6 +71,18 @@ public sealed class CodexAgentBenchmarkAdapterOptions
         }
 
         ExpectedDnxExecutablePath = expectedDnxExecutablePath;
+        if (dotNetInstallationRoot is not null
+            && (!Path.IsPathFullyQualified(dotNetInstallationRoot)
+                || !Directory.Exists(dotNetInstallationRoot)))
+        {
+            throw new ArgumentException(
+                "The .NET installation root must be an existing absolute directory.",
+                nameof(dotNetInstallationRoot));
+        }
+
+        DotNetInstallationRoot = dotNetInstallationRoot is null
+            ? null
+            : Path.GetFullPath(dotNetInstallationRoot);
 
         var authentication = new Dictionary<string, string>(
             StringComparer.Ordinal);
@@ -107,6 +120,8 @@ public sealed class CodexAgentBenchmarkAdapterOptions
     public IReadOnlyList<string> ExecutablePrefixArguments { get; }
 
     public string? ExpectedDnxExecutablePath { get; }
+
+    public string? DotNetInstallationRoot { get; }
 
     internal IReadOnlyDictionary<string, string> AuthenticationEnvironment =>
         _authenticationEnvironment;
@@ -221,7 +236,10 @@ public sealed class CodexAgentBenchmarkAdapter : IAgentBenchmarkAdapter
     }
 
     public AgentBenchmarkAdapterDescriptor Descriptor { get; } =
-        new("codex", "1.8.0");
+        new("codex", "1.9.0");
+
+    internal string? DotNetInstallationRoot =>
+        _options.DotNetInstallationRoot;
 
     public ValueTask PrepareWorkspaceAsync(
         AgentBenchmarkAdapterInput input,
@@ -520,6 +538,7 @@ public sealed class CodexAgentBenchmarkAdapter : IAgentBenchmarkAdapter
             GetRuntimeStateRoot(input),
             GetMaterializedArtifactRoot(input.WorkspacePath),
             GetAuthenticationHomePath(),
+            _options.DotNetInstallationRoot,
             input.Execution.Sandbox));
 
         AddConfig(
@@ -547,6 +566,7 @@ public sealed class CodexAgentBenchmarkAdapter : IAgentBenchmarkAdapter
         string? runtimeStateRoot,
         string artifactRoot,
         string? authenticationHomePath,
+        string? dotNetInstallationRoot,
         string sandbox)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(workspacePath);
@@ -556,7 +576,9 @@ public sealed class CodexAgentBenchmarkAdapter : IAgentBenchmarkAdapter
             || (runtimeStateRoot is not null
                 && !Path.IsPathFullyQualified(runtimeStateRoot))
             || (authenticationHomePath is not null
-                && !Path.IsPathFullyQualified(authenticationHomePath)))
+                && !Path.IsPathFullyQualified(authenticationHomePath))
+            || (dotNetInstallationRoot is not null
+                && !Path.IsPathFullyQualified(dotNetInstallationRoot)))
         {
             throw new ArgumentException(
                 "The benchmark isolation roots must be absolute.",
@@ -580,6 +602,9 @@ public sealed class CodexAgentBenchmarkAdapter : IAgentBenchmarkAdapter
         var authentication = authenticationHomePath is null
             ? null
             : Path.GetFullPath(authenticationHomePath);
+        var dotNetInstallation = dotNetInstallationRoot is null
+            ? null
+            : Path.GetFullPath(dotNetInstallationRoot);
         if (IsContained(workspace, artifacts)
             || IsContained(artifacts, workspace)
             || (runtime is not null
@@ -597,7 +622,6 @@ public sealed class CodexAgentBenchmarkAdapter : IAgentBenchmarkAdapter
         {
             "\":root\"=\"deny\"",
             "\":minimal\"=\"read\"",
-            "\":tmpdir\"=\"write\"",
             "\":slash_tmp\"=\"deny\"",
             $"{JsonSerializer.Serialize(workspace)}={JsonSerializer.Serialize(workspaceAccess)}",
             $"{JsonSerializer.Serialize(artifacts)}=\"read\"",
@@ -612,6 +636,12 @@ public sealed class CodexAgentBenchmarkAdapter : IAgentBenchmarkAdapter
         {
             fileSystem.Add(
                 $"{JsonSerializer.Serialize(authentication)}=\"deny\"");
+        }
+
+        if (dotNetInstallation is not null)
+        {
+            fileSystem.Add(
+                $"{JsonSerializer.Serialize(dotNetInstallation)}=\"read\"");
         }
 
         return string.Concat(

@@ -180,6 +180,8 @@ internal static class CodexDiscoveryBenchmarkProgram
         Console.WriteLine(
             $"median_token_change_percent: {summary.Thresholds.MedianTokenChangePercent?.ToString() ?? "unavailable"}");
         Console.WriteLine(
+            $"median_duration_change_percent: {summary.Thresholds.MedianDurationChangePercent?.ToString() ?? "unavailable"}");
+        Console.WriteLine(
             $"improvement_claim_supported: {summary.Thresholds.ImprovementClaimSupported.ToString().ToLowerInvariant()}");
         Console.WriteLine(
             $"activated_routes: {summary.RouteActivations.Count(static route => route.SuccessfulActivatedRunCount > 0)}/{summary.RouteActivations.Count}");

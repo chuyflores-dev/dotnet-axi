@@ -9,6 +9,9 @@ The tool MUST discover the current Git root from the current directory. Outside
 Git, it MUST choose the nearest ancestor containing `dotnet-axi.yml`, a
 solution, or a supported project file, in that order. If no marker exists, it
 MUST use the current directory and report `workspace_kind: directory`.
+An ancestor that the caller cannot read is a discovery boundary: the tool MUST
+stop ascending there and continue deterministically from the current directory
+instead of failing or attempting to widen the caller's access.
 
 ## Solution and project selection
 

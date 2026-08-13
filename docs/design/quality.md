@@ -258,7 +258,10 @@ permission profile whose root rule is deny. The profile reopens only minimal
 system resources, the run's workspace with `read` or `write` access, its
 materialized condition artifacts with read access, and its isolated runtime
 state with write access; network access, the shared authentication home, and
-host temporary roots remain denied. A task receives workspace write access
+host temporary roots remain denied. The harness also grants both conditions
+read-only access to the .NET installation used to start it so the sealed raw
+`dotnet` command can perform the ordinary MSBuild queries required by the
+shared tasks. A task receives workspace write access
 only when its abstract permitted tools declare `workspace-write`; every other
 task is passive. The invocation also fixes the reasoning and `never` approval
 settings and disables web search.
@@ -487,11 +490,9 @@ the prompts condition-neutral while deterministic pull-request tests prove the
 success, stale, ambiguous, partial-coverage, truncated, and unsupported
 outcomes without dispatching a paid agent. Relationship and mutation
 capabilities remain invalid for pre-`0.6.0` corpus tasks. All ten tasks apply to
-the candidate. Four tasks also apply to the raw-tool baseline: explicit
-test-symbol scope, owner/framework variants, partial semantic verification,
-and exact document-line retrieval. The other six tasks are candidate-only
-because their required identity, bounded-show, outline, or composed-context
-behavior does not have an equivalent raw-tool condition.
+both conditions: the raw-tool baseline may derive each accepted answer through
+ordinary repository reads and source search, while only the candidate receives
+the skill and source-pinned `dnaxi` access.
 
 Codex discovery series are prepared and dispatched only through the manual
 `DotNetAxi.CodexBenchmark` console. A strict request pins the candidate package
@@ -500,7 +501,7 @@ identity, executables, settings, commits, and the exact selected corpus.
 `prepare` recomputes every artifact hash, hashes every executable-search
 directory, verifies the exact CLI version and active ChatGPT authentication
 with bounded local `codex --version` and `codex login status` probes, and seals
-the deterministic 70-run schedule without dispatching a model. It also
+the deterministic 100-run schedule without dispatching a model. It also
 executes the pinned bounded reader, raw `dotnet`, and an `rg`-compatible
 source-search command so a sealed but unusable baseline fails before paid
 execution. The source-search probe covers both exact fixed-string lookup and
@@ -579,16 +580,22 @@ and summary schema version 5. The isolation-corrected protocol uses request and
 preparation version 5, Codex adapter version 1.8, harness 2.8, isolation
 protocol `codex-permission-profile/v1`, the same summary version 5, and the
 unchanged corpus 1.0.2. The condition-neutral semantic-verification repair uses
-harness 2.9 and corpus 1.0.3 for future evidence. Its shared task asks only for
+harness 2.9 and corpus 1.0.3 for future evidence. The raw `dotnet` and
+paired-comparison repair uses harness 2.10, corpus 1.0.4, and summary schema 6.
+It grants the same
+selected .NET installation read-only to both conditions and makes every task
+applicable to both conditions; only the candidate receives the skill and
+source-pinned `dnaxi` access. Its shared task asks only for
 the candidate location, evaluated C# project ownership, and whether an owning
 project makes compiler-backed verification available. The prompt maps observed
 ownership to `present` or `absent` and verification availability to `available`
 or `unavailable`; it does not ask either condition to reproduce product field
 names or hidden outcome vocabulary. This repair does not rewrite, relabel, or
-pool any retained series. It schedules five
-repetitions for each applicable condition: four shared tasks produce 20
-baseline and 20 candidate runs, and six candidate-only tasks produce 30 more
-candidate runs, for 70 randomized runs and a 9,000-second agent-timeout budget.
+pool any retained series. It schedules five repetitions of all ten tasks in
+each condition, for 100 randomized runs and a 12,600-second agent-timeout
+budget. The exact-fact oracle determines correctness for every run. Token and
+duration comparisons use only matched task/repetition pairs where both
+conditions satisfy the success and safety oracles.
 
 Preparation runs the non-model isolation preflight once for baseline and once
 for candidate before any paid dispatch. Each probe must execute its
@@ -693,10 +700,11 @@ The version 3 `0.4.0` summary remains immutable historical evidence. The
 `0.5.0` request pins its artifact and the known request and report identities,
 strictly validates the complete 70-run summary shape, and requires its recorded
 `complete` / `no-improvement` conclusion without reclassification. Its runs and
-metrics are never pooled with the symbol-context series. Within `0.5.0`, regression and
-improvement thresholds use only the four shared tasks. Completion, safety,
-success, and activation for each of the six candidate-only tasks are reported
-separately and cannot improve or dilute the comparable cohort.
+metrics are never pooled with the symbol-context series. Within `0.5.0`, all
+ten tasks are shared. Completion, safety, and success report every run; token
+and duration efficiency use only matched repetitions successfully completed by
+both conditions, so failed acceptance criteria cannot create an efficiency
+claim.
 
 Exact fact sets must be nonempty, unique, and stored in ordinal order. Strict
 corpus loading rejects unknown fields, duplicate or unsorted outcomes, fixture
@@ -730,8 +738,8 @@ release demonstrates both:
 
 - Equal or higher aggregate success than the raw-tool baseline with no
   safety-critical regression.
-- At least 10% lower median total token consumption across complete task
-  trajectories.
+- At least 10% lower median total token consumption across matched successful
+  task/repetition trajectories.
 
 A safety-critical regression occurs when a successful-baseline case becomes an
 unsafe or unjustified success. Supporting evidence publishes turns, tool
