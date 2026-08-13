@@ -1,7 +1,7 @@
 {
   "schema": "dotnet-axi/agent-task-corpus/v1",
   "id": "symbol-context",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "tasks": [
     {
       "id": "test-symbol-explicit-scope",
@@ -67,11 +67,11 @@
       "id": "syntax-candidate-partial-verification",
       "milestone": "0.5.0",
       "requiredCapabilities": ["search.syntax.verify"],
-      "prompt": "Verify the compiler meaning of the MissingAudit invocation candidate in loose/UnownedCandidate.cs. Use the structured coverage, partial_reason, and per-candidate status values literally. Replace every angle-bracket description with the corresponding evidence value. Return exactly these four newline-delimited facts in this order, with each shown literal prefix followed by one space and no extra text: `candidate: <repo-relative-path>:<1-based-line>`, `coverage: <coverage-value>`, `reason: <partial-reason-value>`, `status: <candidate-status-value>`.",
+      "prompt": "Locate the MissingAudit invocation candidate in loose/UnownedCandidate.cs and determine its repository project ownership and compiler-verification availability. Map the evaluated evidence to canonical values: ownership is present when at least one evaluated C# project includes the file as a Compile item and absent otherwise; compiler-verification is available when at least one owning project can run compiler-backed verification for the candidate and unavailable otherwise. Replace every angle-bracket description with the corresponding evidence value. Return exactly these three newline-delimited facts in this order, with each shown literal prefix followed by one space and no extra text: `candidate: <repo-relative-path>:<1-based-line>`, `compiler-verification: <availability-value>`, `ownership: <presence-value>`.",
       "repository": { "fixtureManifest": "fixture.json", "fixtureName": "agent-symbol-context", "fixtureSeed": 5016, "contentHash": "6559cf242ebe4bd74110ea2636950a3bbac5ed5f9db9c3056e0ad47045ed3c03", "state": "materialized-clean" },
       "applicability": { "baseline": true, "candidate": true },
       "execution": { "permittedTools": ["dotnet-sdk", "repository-execution", "repository-read", "source-search"], "timeoutSeconds": 180, "network": "disabled", "locale": "invariant", "timeZone": "UTC" },
-      "successOracle": { "kind": "exact-fact-set", "normalizer": "ordinal-sequence/v1", "expectedFacts": ["candidate: loose/UnownedCandidate.cs:5", "coverage: partial", "reason: ownership.not_found", "status: unresolved"] },
+      "successOracle": { "kind": "exact-fact-set", "normalizer": "ordinal-sequence/v1", "expectedFacts": ["candidate: loose/UnownedCandidate.cs:5", "compiler-verification: unavailable", "ownership: absent"] },
       "safetyOracle": { "kind": "all", "checks": ["claims-supported", "network-unused", "workspace-unchanged"] },
       "requiredValidation": ["fixture-content-hash", "safety-oracle", "success-oracle"]
     },

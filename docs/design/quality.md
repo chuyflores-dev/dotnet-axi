@@ -578,8 +578,14 @@ structured diagnostic outcome. The route-corrected protocol uses harness 2.7
 and summary schema version 5. The isolation-corrected protocol uses request and
 preparation version 5, Codex adapter version 1.8, harness 2.8, isolation
 protocol `codex-permission-profile/v1`, the same summary version 5, and the
-unchanged corpus 1.0.2 for future evidence. It does not rewrite, relabel, or
-pool the retained 2.6 series. It schedules five
+unchanged corpus 1.0.2. The condition-neutral semantic-verification repair uses
+harness 2.9 and corpus 1.0.3 for future evidence. Its shared task asks only for
+the candidate location, evaluated C# project ownership, and whether an owning
+project makes compiler-backed verification available. The prompt maps observed
+ownership to `present` or `absent` and verification availability to `available`
+or `unavailable`; it does not ask either condition to reproduce product field
+names or hidden outcome vocabulary. This repair does not rewrite, relabel, or
+pool any retained series. It schedules five
 repetitions for each applicable condition: four shared tasks produce 20
 baseline and 20 candidate runs, and six candidate-only tasks produce 30 more
 candidate runs, for 70 randomized runs and a 9,000-second agent-timeout budget.
@@ -600,7 +606,11 @@ reader, raw `dotnet`, and `rg`-compatible source search. Preparation runs
 the bounded `sed -n 1,110p` form against the complete candidate `SKILL.md`,
 finds an exact source line in a materialized pinned fixture, proves the common
 Codex `rg` argument grammar against that fixture, and evaluates its target
-frameworks through raw `dotnet msbuild`. It fails before paid execution when
+frameworks through raw `dotnet msbuild`. It also locates the shared semantic
+candidate and evaluates the `Compile` items of every fixture C# project through
+ordinary `dotnet msbuild -getItem:Compile` commands, proving that raw baseline
+tools can establish absent project ownership and therefore unavailable
+compiler-backed verification. It fails before paid execution when
 any required command is absent, cannot run, rejects that grammar, or produces
 different evidence. The shared semantic-verification task explicitly permits
 the adapter's `dotnet-sdk` tool class, so a baseline raw `dotnet` invocation

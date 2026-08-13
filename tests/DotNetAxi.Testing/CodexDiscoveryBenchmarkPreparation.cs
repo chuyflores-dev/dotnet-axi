@@ -32,11 +32,11 @@ internal static partial class CodexDiscoveryBenchmarkPreparation
     internal const string AuthenticationMethod = "chatgpt";
     internal const string ProductMilestone = "0.5.0";
     internal const string CorpusId = "symbol-context";
-    internal const string CorpusVersion = "1.0.2";
+    internal const string CorpusVersion = "1.0.3";
     internal const string PackageId = "dnaxi";
     internal const string PackageVersion = "0.5.0";
     internal const string ProductSchema = "dotnet-axi/v1";
-    internal const string HarnessVersion = "2.8.0";
+    internal const string HarnessVersion = "2.9.0";
     internal const string IsolationProtocol =
         "codex-permission-profile/v1";
     internal const string PackageSourceEnvironmentVariable =
@@ -1105,6 +1105,32 @@ internal static partial class CodexDiscoveryBenchmarkPreparation
                 "The pinned baseline source-search command cannot find an exact line in the materialized benchmark fixture.");
         }
 
+        const string expectedCandidateLine =
+            "5:    public static void Run() => MissingAudit();";
+        var candidateSearchResult = await new ProcessRunner().RunAsync(
+            new ProcessRunRequest(
+                searchPath,
+                fixture.WorkspacePath,
+                [
+                    "-n",
+                    "-F",
+                    "MissingAudit()",
+                    "loose/UnownedCandidate.cs",
+                ],
+                fixture.EnvironmentVariables,
+                new ProcessOutputLimits(4 * 1024, 4 * 1024),
+                TimeSpan.FromSeconds(10)),
+            cancellationToken);
+        if (!IsSuccessfulProbe(candidateSearchResult)
+            || !string.Equals(
+                candidateSearchResult.StandardOutput.Text.Trim(),
+                expectedCandidateLine,
+                StringComparison.Ordinal))
+        {
+            throw new AgentBenchmarkException(
+                "The pinned baseline source-search command cannot locate the semantic-verification candidate in the materialized benchmark fixture.");
+        }
+
         var commonArgumentsResult = await new ProcessRunner().RunAsync(
             new ProcessRunRequest(
                 searchPath,
@@ -1128,6 +1154,13 @@ internal static partial class CodexDiscoveryBenchmarkPreparation
                 | StringSplitOptions.TrimEntries)
             .Select(static path => path.Replace('\\', '/'))
             .ToArray();
+        string[] expectedProjectPaths =
+        [
+            "src/Alternate/Alternate.csproj",
+            "src/Core/Core.csproj",
+            "src/Worker/Worker.csproj",
+            "tests/Core.Tests/Core.Tests.csproj",
+        ];
         if (!IsSuccessfulProbe(commonArgumentsResult)
             || !discoveredFiles.Contains(
                 "Workspace.slnx",
@@ -1137,7 +1170,9 @@ internal static partial class CodexDiscoveryBenchmarkPreparation
                 StringComparer.Ordinal)
             || !discoveredFiles.Contains(
                 "tests/Core.Tests/Core.Tests.csproj",
-                StringComparer.Ordinal))
+                StringComparer.Ordinal)
+            || expectedProjectPaths.Any(projectPath =>
+                !discoveredFiles.Contains(projectPath, StringComparer.Ordinal)))
         {
             throw new AgentBenchmarkException(
                 "The pinned baseline rg command does not support the common Codex source-search arguments used by the benchmark condition.");
@@ -1166,6 +1201,83 @@ internal static partial class CodexDiscoveryBenchmarkPreparation
         {
             throw new AgentBenchmarkException(
                 "The pinned baseline dotnet command cannot evaluate the benchmark fixture's target frameworks through MSBuild.");
+        }
+
+        var candidatePath = Path.GetFullPath(
+            Path.Combine(
+                fixture.WorkspacePath,
+                "loose",
+                "UnownedCandidate.cs"));
+        var pathComparer = OperatingSystem.IsWindows()
+            ? StringComparer.OrdinalIgnoreCase
+            : StringComparer.Ordinal;
+        foreach (var projectPath in expectedProjectPaths)
+        {
+            var compileItemsResult = await new ProcessRunner().RunAsync(
+                new ProcessRunRequest(
+                    dotnetPath,
+                    fixture.WorkspacePath,
+                    [
+                        "msbuild",
+                        projectPath,
+                        "-nologo",
+                        "-getItem:Compile",
+                    ],
+                    fixture.EnvironmentVariables,
+                    new ProcessOutputLimits(64 * 1024, 4 * 1024),
+                    TimeSpan.FromSeconds(30)),
+                cancellationToken);
+            if (!IsSuccessfulProbe(compileItemsResult)
+                || !TryReadCompileItemFullPaths(
+                    compileItemsResult.StandardOutput.Text,
+                    out var compileItemPaths))
+            {
+                throw new AgentBenchmarkException(
+                    "The pinned baseline dotnet command cannot evaluate repository project ownership through ordinary MSBuild Compile-item queries.");
+            }
+
+            if (compileItemPaths.Contains(candidatePath, pathComparer))
+            {
+                throw new AgentBenchmarkException(
+                    "The materialized semantic-verification candidate unexpectedly belongs to an evaluated repository project.");
+            }
+        }
+    }
+
+    private static bool TryReadCompileItemFullPaths(
+        string output,
+        out string[] paths)
+    {
+        paths = [];
+        try
+        {
+            using var document = JsonDocument.Parse(output);
+            if (!document.RootElement.TryGetProperty("Items", out var items)
+                || !items.TryGetProperty("Compile", out var compileItems)
+                || compileItems.ValueKind is not JsonValueKind.Array)
+            {
+                return false;
+            }
+
+            var values = new List<string>();
+            foreach (var item in compileItems.EnumerateArray())
+            {
+                if (!item.TryGetProperty("FullPath", out var fullPath)
+                    || fullPath.ValueKind is not JsonValueKind.String
+                    || string.IsNullOrWhiteSpace(fullPath.GetString()))
+                {
+                    return false;
+                }
+
+                values.Add(Path.GetFullPath(fullPath.GetString()!));
+            }
+
+            paths = values.ToArray();
+            return true;
+        }
+        catch (JsonException)
+        {
+            return false;
         }
     }
 
@@ -1238,9 +1350,8 @@ internal static partial class CodexDiscoveryBenchmarkPreparation
             "syntax-candidate-partial-verification" =>
             [
                 "candidate: <repo-relative-path>:<1-based-line>",
-                "coverage: <coverage-value>",
-                "reason: <partial-reason-value>",
-                "status: <candidate-status-value>",
+                "compiler-verification: <availability-value>",
+                "ownership: <presence-value>",
             ],
             "bounded-symbol-show" =>
             [
@@ -1281,7 +1392,7 @@ internal static partial class CodexDiscoveryBenchmarkPreparation
             "ambiguous-symbol-correction" =>
             ["Use selected value none when no declaration is resolved, and translate error code evidence.ambiguous_id to normalized status ambiguous."],
             "syntax-candidate-partial-verification" =>
-            ["Use the structured coverage, partial_reason, and per-candidate status values literally."],
+            ["Map the evaluated evidence to canonical values: ownership is present when at least one evaluated C# project includes the file as a Compile item and absent otherwise; compiler-verification is available when at least one owning project can run compiler-backed verification for the candidate and unavailable otherwise."],
             "bounded-symbol-show" =>
             ["Use retrieval value available when a nonblank retrieval_command is present and unavailable otherwise; use a lowercase boolean for truncated."],
             "document-exact-line-span" =>
@@ -1295,12 +1406,24 @@ internal static partial class CodexDiscoveryBenchmarkPreparation
             ],
             _ => [],
         };
+        string[] disallowedSemanticVocabulary =
+        [
+            "coverage",
+            "partial_reason",
+            "ownership.not_found",
+            "unresolved",
+        ];
         if (approvedDeclarations is null
             || !declarations.SequenceEqual(
                 approvedDeclarations,
                 StringComparer.Ordinal)
             || requiredDirectives.Any(directive =>
                 !task.Prompt.Contains(directive, StringComparison.Ordinal))
+            || task.Id == "syntax-candidate-partial-verification"
+            && disallowedSemanticVocabulary.Any(value =>
+                task.Prompt.Contains(value, StringComparison.Ordinal)
+                || task.SuccessOracle.ExpectedFacts.Any(fact =>
+                    fact.Contains(value, StringComparison.Ordinal)))
             || declarations.Length != task.SuccessOracle.ExpectedFacts.Count)
         {
             return false;
@@ -1313,6 +1436,24 @@ internal static partial class CodexDiscoveryBenchmarkPreparation
         if (!string.Equals(contract, exactContract, StringComparison.Ordinal))
         {
             return false;
+        }
+
+        if (task.Id == "syntax-candidate-partial-verification")
+        {
+            const string approvedSemanticInstructions =
+                "Locate the MissingAudit invocation candidate in loose/UnownedCandidate.cs and determine its repository project ownership and compiler-verification availability. Map the evaluated evidence to canonical values: ownership is present when at least one evaluated C# project includes the file as a Compile item and absent otherwise; compiler-verification is available when at least one owning project can run compiler-backed verification for the candidate and unavailable otherwise.";
+            var exactPrompt = approvedSemanticInstructions
+                + " " + evidenceMarker
+                + " Return exactly these three newline-delimited facts in this order, "
+                + responseMarker
+                + " " + exactContract;
+            if (!string.Equals(
+                task.Prompt,
+                exactPrompt,
+                StringComparison.Ordinal))
+            {
+                return false;
+            }
         }
 
         for (var index = 0; index < declarations.Length; index++)

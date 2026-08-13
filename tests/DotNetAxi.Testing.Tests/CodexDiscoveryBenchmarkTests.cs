@@ -495,6 +495,22 @@ public sealed class CodexDiscoveryBenchmarkTests
     }
 
     [Fact]
+    public async Task Preparation_rejects_raw_dotnet_without_compile_item_evaluation()
+    {
+        using var fixture = await PreparedFixture.CreateAsync(
+            rawDotnetSupportsCompileItems: false);
+
+        var exception = await Assert.ThrowsAsync<AgentBenchmarkException>(
+            async () => await CodexDiscoveryBenchmarkPreparation.PrepareAsync(
+                fixture.RequestPath));
+
+        Assert.Contains(
+            "cannot evaluate repository project ownership",
+            exception.Message,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task Preparation_rejects_an_unusable_raw_source_search_command()
     {
         using var fixture = await PreparedFixture.CreateAsync(
@@ -2639,10 +2655,11 @@ public sealed class CodexDiscoveryBenchmarkTests
             string candidateVersion = "0.5.0",
             bool includeBoundedReader = true,
             bool boundedReaderSucceeds = true,
-            string harnessVersion = "2.8.0",
+            string harnessVersion = "2.9.0",
             bool includeRawDotnet = true,
             bool includeRawSourceSearch = true,
             bool rawDotnetSucceeds = true,
+            bool rawDotnetSupportsCompileItems = true,
             bool rawSourceSearchSucceeds = true,
             bool rawSourceSearchSupportsCodexArguments = true,
             bool rawSourceSearchUsesWindowsSeparators = false,
@@ -2691,6 +2708,14 @@ public sealed class CodexDiscoveryBenchmarkTests
                 File.WriteAllText(
                     Path.Combine(rawToolsPath, "dotnet.raw-probe-enabled"),
                     "enabled");
+                if (rawDotnetSupportsCompileItems)
+                {
+                    File.WriteAllText(
+                        Path.Combine(
+                            rawToolsPath,
+                            "dotnet.compile-items-enabled"),
+                        "enabled");
+                }
                 if (!rawDotnetSucceeds)
                 {
                     File.WriteAllText(
