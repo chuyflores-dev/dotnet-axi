@@ -2454,15 +2454,16 @@ internal static partial class CodexBenchmarkCommandEvidence
         if (match.Success)
         {
             var body = match.Groups["body"].Value;
-            return match.Groups["quote"].Value == "\""
+            var unwrapped = match.Groups["quote"].Value == "\""
                 ? body.Replace("\\\"", "\"", StringComparison.Ordinal)
                 : body.Replace("'\\''", "'", StringComparison.Ordinal);
+            return UnwrapPinnedFeedGuard(unwrapped);
         }
 
         var display = CodexPosixShellDisplayRegex().Match(trimmed);
         if (!display.Success)
         {
-            return trimmed;
+            return UnwrapPinnedFeedGuard(trimmed);
         }
 
         var displayBody = display.Groups["body"].Value;
@@ -2481,7 +2482,7 @@ internal static partial class CodexBenchmarkCommandEvidence
                 opening + openingMarker.Length,
                 StringComparison.Ordinal) >= 0)
         {
-            return trimmed;
+            return UnwrapPinnedFeedGuard(trimmed);
         }
 
         var closing = displayBody.IndexOf(
@@ -2489,15 +2490,21 @@ internal static partial class CodexBenchmarkCommandEvidence
             opening + openingMarker.Length);
         if (closing < 0)
         {
-            return trimmed;
+            return UnwrapPinnedFeedGuard(trimmed);
         }
 
-        return string.Concat(
+        return UnwrapPinnedFeedGuard(string.Concat(
             displayBody[..opening],
             "\"",
             displayBody[(opening + openingMarker.Length)..closing],
             "\"",
-            displayBody[(closing + 1)..]);
+            displayBody[(closing + 1)..]));
+    }
+
+    private static string UnwrapPinnedFeedGuard(string command)
+    {
+        var match = PinnedFeedGuardRegex().Match(command.Trim());
+        return match.Success ? match.Groups["body"].Value.Trim() : command;
     }
 
     private static string StripSupportedRedirections(string command)
@@ -2616,6 +2623,11 @@ internal static partial class CodexBenchmarkCommandEvidence
         "^(?:(?:/[^/\\s]+/)?(?:zsh|bash|sh))\\s+(?:-lc|-c)\\s+'(?<body>.*)\"\\s*$",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex CodexPosixShellDisplayRegex();
+
+    [GeneratedRegex(
+        "^if\\s+\\[\\s+-n\\s+\"\\$(?:\\{)?DNAXI_LOCAL_FEED(?:\\})?\"\\s+\\]\\s*;\\s*then\\s+(?<body>.+)\\s*;\\s*else\\s+exit\\s+2\\s*;\\s*fi$",
+        RegexOptions.CultureInvariant)]
+    private static partial Regex PinnedFeedGuardRegex();
 
     [GeneratedRegex(
         "(?:\"[^\"\\r\\n]*\"|'[^'\\r\\n]*'|[^\\s]+)",
