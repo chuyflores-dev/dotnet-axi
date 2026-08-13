@@ -622,7 +622,7 @@ public sealed class CodexAgentBenchmarkAdapter : IAgentBenchmarkAdapter
         {
             "\":root\"=\"deny\"",
             "\":minimal\"=\"read\"",
-            "\":tmpdir\"=\"write\"",
+            "\":tmpdir\"=\"deny\"",
             "\":slash_tmp\"=\"deny\"",
             $"{JsonSerializer.Serialize(workspace)}={JsonSerializer.Serialize(workspaceAccess)}",
             $"{JsonSerializer.Serialize(artifacts)}=\"read\"",

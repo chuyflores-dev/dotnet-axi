@@ -387,6 +387,7 @@ static int CodexIsolationProbe(
         || codexHome is null
         || !configuration.Contains("\":root\"=\"deny\"", StringComparison.Ordinal)
         || !configuration.Contains("\":minimal\"=\"read\"", StringComparison.Ordinal)
+        || !configuration.Contains("\":tmpdir\"=\"deny\"", StringComparison.Ordinal)
         || !configuration.Contains("\":slash_tmp\"=\"deny\"", StringComparison.Ordinal)
         || configuration.Contains("/tmp/.dotnet", StringComparison.Ordinal)
         || !configuration.Contains(
