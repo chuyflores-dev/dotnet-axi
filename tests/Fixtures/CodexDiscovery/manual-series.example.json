@@ -1,5 +1,5 @@
 {
-  "schema": "dotnet-axi/codex-discovery-request/v4",
+  "schema": "dotnet-axi/codex-discovery-request/v5",
   "seriesId": "codex-050-symbol-context-20260811",
   "codexExecutable": {
     "path": "/absolute/path/to/version-pinned/codex-executable-not-a-symlink",
@@ -60,7 +60,7 @@
   "randomizationSeed": 20260811,
   "maximumStartAttempts": 1,
   "cleanupTimeoutSeconds": 10,
-  "harnessVersion": "2.7.0",
+  "harnessVersion": "2.8.0",
   "fixtureCommit": "replace-with-40-or-64-lowercase-hex-fixture-commit",
   "productCommit": "replace-with-40-or-64-lowercase-hex-product-commit",
   "baseline": {

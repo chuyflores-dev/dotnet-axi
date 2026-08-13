@@ -162,6 +162,8 @@ internal static class CodexDiscoveryBenchmarkProgram
             $"authentication_method: {preparation.Pins.AuthenticationMethod}");
         Console.WriteLine("candidate_execution_preflight: passed");
         Console.WriteLine(
+            $"isolation_preflight: {preparation.Isolation.Protocol} baseline=passed candidate=passed");
+        Console.WriteLine(
             $"request_hash: {preparation.RequestHash}");
     }
 

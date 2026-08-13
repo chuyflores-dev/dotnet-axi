@@ -77,7 +77,12 @@ public sealed class CodexAgentBenchmarkAdapterOptions
                      ?? new Dictionary<string, string>())
         {
             if (!AuthenticationVariableNames.Contains(variable.Key)
-                || string.IsNullOrEmpty(variable.Value))
+                || string.IsNullOrEmpty(variable.Value)
+                || (string.Equals(
+                        variable.Key,
+                        "CODEX_HOME",
+                        StringComparison.Ordinal)
+                    && !Path.IsPathFullyQualified(variable.Value)))
             {
                 throw new ArgumentException(
                     $"Authentication environment variable '{variable.Key}' is not supported.",
@@ -142,7 +147,9 @@ public sealed class CodexAgentBenchmarkAdapterOptions
             || (exposure.EnvironmentVariables
                 ?? new Dictionary<string, string>()).Any(variable =>
                 !ConditionVariableNames.Contains(variable.Key)
-                || string.IsNullOrEmpty(variable.Value)))
+                || string.IsNullOrEmpty(variable.Value)
+                || !Path.IsPathFullyQualified(variable.Value)
+                || !Directory.Exists(variable.Value)))
         {
             throw new ArgumentException(
                 $"The {condition} Codex exposure is malformed.",
@@ -174,7 +181,6 @@ public sealed class CodexAgentBenchmarkAdapter : IAgentBenchmarkAdapter
         "DOTNET_AXI_BENCHMARK_PATH";
     internal const string RuntimePermissionProfileName =
         "dnaxi-benchmark";
-    internal const string UnixDotNetMutexDirectory = "/tmp/.dotnet";
 
     private static readonly string[] RuntimeStatePathVariables =
     [
@@ -215,7 +221,7 @@ public sealed class CodexAgentBenchmarkAdapter : IAgentBenchmarkAdapter
     }
 
     public AgentBenchmarkAdapterDescriptor Descriptor { get; } =
-        new("codex", "1.7.0");
+        new("codex", "1.8.0");
 
     public ValueTask PrepareWorkspaceAsync(
         AgentBenchmarkAdapterInput input,
@@ -244,6 +250,11 @@ public sealed class CodexAgentBenchmarkAdapter : IAgentBenchmarkAdapter
                 cancellationToken);
         }
 
+        MaterializeConditionArtifacts(
+            input.WorkspacePath,
+            exposure,
+            cancellationToken);
+
         return ValueTask.CompletedTask;
     }
 
@@ -259,7 +270,9 @@ public sealed class CodexAgentBenchmarkAdapter : IAgentBenchmarkAdapter
         {
             await ValidateLoginShellDnxResolutionAsync(
                 startInfo,
-                _options.ExpectedDnxExecutablePath,
+                GetMaterializedExecutablePath(
+                    input,
+                    _options.ExpectedDnxExecutablePath),
                 cancellationToken);
         }
 
@@ -354,9 +367,11 @@ public sealed class CodexAgentBenchmarkAdapter : IAgentBenchmarkAdapter
         var exposure = Exposure(input.Condition);
         if (exposure.ExecutableSearchPathEntries is { Count: > 0 })
         {
+            var materializedSearchPathEntries =
+                GetMaterializedSearchPathEntries(input, exposure);
             var searchPath = string.Join(
                 Path.PathSeparator,
-                exposure.ExecutableSearchPathEntries);
+                materializedSearchPathEntries);
             startInfo.Environment["PATH"] = searchPath;
             startInfo.Environment[ShellSearchPathEnvironmentVariable] =
                 searchPath;
@@ -365,7 +380,9 @@ public sealed class CodexAgentBenchmarkAdapter : IAgentBenchmarkAdapter
         foreach (var variable in exposure.EnvironmentVariables
                      ?? new Dictionary<string, string>())
         {
-            startInfo.Environment[variable.Key] = variable.Value;
+            startInfo.Environment[variable.Key] = variable.Key == "DNAXI_LOCAL_FEED"
+                ? GetMaterializedFeedPath(input.WorkspacePath)
+                : variable.Value;
         }
 
         return startInfo;
@@ -493,23 +510,17 @@ public sealed class CodexAgentBenchmarkAdapter : IAgentBenchmarkAdapter
         arguments.Add(input.Execution.ModelId);
         arguments.Add("--cd");
         arguments.Add(input.WorkspacePath);
-        var runtimeStateRoot = GetRuntimeStateRoot(input);
-        if (runtimeStateRoot is null)
-        {
-            arguments.Add("--sandbox");
-            arguments.Add(input.Execution.Sandbox);
-        }
-        else
-        {
-            AddConfig(
-                arguments,
-                "default_permissions",
-                RuntimePermissionProfileName);
-            arguments.Add("--config");
-            arguments.Add(CreateRuntimePermissionProfileConfig(
-                runtimeStateRoot,
-                input.Execution.Sandbox));
-        }
+        AddConfig(
+            arguments,
+            "default_permissions",
+            RuntimePermissionProfileName);
+        arguments.Add("--config");
+        arguments.Add(CreateRuntimePermissionProfileConfig(
+            input.WorkspacePath,
+            GetRuntimeStateRoot(input),
+            GetMaterializedArtifactRoot(input.WorkspacePath),
+            GetAuthenticationHomePath(),
+            input.Execution.Sandbox));
 
         AddConfig(
             arguments,
@@ -520,12 +531,6 @@ public sealed class CodexAgentBenchmarkAdapter : IAgentBenchmarkAdapter
             "approval_policy",
             input.Execution.PermissionProfile);
         AddConfig(arguments, "web_search", "disabled");
-        if (runtimeStateRoot is null)
-        {
-            arguments.Add("--config");
-            arguments.Add("sandbox_workspace_write.network_access=false");
-        }
-
         var exposure = Exposure(input.Condition);
         foreach (var configurationOverride in exposure.ConfigurationOverrides)
         {
@@ -538,42 +543,240 @@ public sealed class CodexAgentBenchmarkAdapter : IAgentBenchmarkAdapter
     }
 
     internal static string CreateRuntimePermissionProfileConfig(
-        string runtimeStateRoot,
+        string workspacePath,
+        string? runtimeStateRoot,
+        string artifactRoot,
+        string? authenticationHomePath,
         string sandbox)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(runtimeStateRoot);
-        if (!Path.IsPathFullyQualified(runtimeStateRoot))
+        ArgumentException.ThrowIfNullOrWhiteSpace(workspacePath);
+        ArgumentException.ThrowIfNullOrWhiteSpace(artifactRoot);
+        if (!Path.IsPathFullyQualified(workspacePath)
+            || !Path.IsPathFullyQualified(artifactRoot)
+            || (runtimeStateRoot is not null
+                && !Path.IsPathFullyQualified(runtimeStateRoot))
+            || (authenticationHomePath is not null
+                && !Path.IsPathFullyQualified(authenticationHomePath)))
         {
             throw new ArgumentException(
-                "The benchmark runtime state root must be absolute.",
-                nameof(runtimeStateRoot));
+                "The benchmark isolation roots must be absolute.",
+                nameof(workspacePath));
         }
 
-        var parentProfile = sandbox switch
+        var workspaceAccess = sandbox switch
         {
-            "read-only" => ":read-only",
-            "workspace-write" => ":workspace",
+            "read-only" => "read",
+            "workspace-write" => "write",
             _ => throw new ArgumentException(
                 "The benchmark sandbox cannot be represented by the isolated runtime permission profile.",
                 nameof(sandbox)),
         };
-        var writableFileSystem = string.Concat(
-            JsonSerializer.Serialize(Path.GetFullPath(runtimeStateRoot)),
-            "=\"write\"",
-            OperatingSystem.IsWindows()
-                ? string.Empty
-                : string.Concat(
-                    ",",
-                    JsonSerializer.Serialize(UnixDotNetMutexDirectory),
-                    "=\"write\""));
+
+        var workspace = Path.GetFullPath(workspacePath);
+        var artifacts = Path.GetFullPath(artifactRoot);
+        var runtime = runtimeStateRoot is null
+            ? null
+            : Path.GetFullPath(runtimeStateRoot);
+        var authentication = authenticationHomePath is null
+            ? null
+            : Path.GetFullPath(authenticationHomePath);
+        if (IsContained(workspace, artifacts)
+            || IsContained(artifacts, workspace)
+            || (runtime is not null
+                && (IsContained(workspace, runtime)
+                    || IsContained(runtime, workspace)
+                    || IsContained(artifacts, runtime)
+                    || IsContained(runtime, artifacts))))
+        {
+            throw new ArgumentException(
+                "The benchmark workspace, runtime, and artifacts must be isolated roots.",
+                nameof(workspacePath));
+        }
+
+        var fileSystem = new List<string>
+        {
+            "\":root\"=\"deny\"",
+            "\":minimal\"=\"read\"",
+            "\":tmpdir\"=\"write\"",
+            "\":slash_tmp\"=\"deny\"",
+            $"{JsonSerializer.Serialize(workspace)}={JsonSerializer.Serialize(workspaceAccess)}",
+            $"{JsonSerializer.Serialize(artifacts)}=\"read\"",
+        };
+        if (runtime is not null)
+        {
+            fileSystem.Add(
+                $"{JsonSerializer.Serialize(runtime)}=\"write\"");
+        }
+
+        if (authentication is not null)
+        {
+            fileSystem.Add(
+                $"{JsonSerializer.Serialize(authentication)}=\"deny\"");
+        }
+
         return string.Concat(
             "permissions={",
             RuntimePermissionProfileName,
-            "={extends=",
-            JsonSerializer.Serialize(parentProfile),
-            ",filesystem={",
-            writableFileSystem,
+            "={filesystem={",
+            string.Join(',', fileSystem),
             "},network={enabled=false}}}");
+    }
+
+    internal static string GetMaterializedArtifactRoot(string workspacePath)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(workspacePath);
+        var parent = Path.GetDirectoryName(Path.GetFullPath(workspacePath))
+            ?? throw new AgentBenchmarkException(
+                "The materialized benchmark workspace has no parent directory.");
+        return Path.Combine(
+            parent,
+            $"agent-boundary-{Path.GetFileName(Path.GetFullPath(workspacePath))}");
+    }
+
+    internal IReadOnlyList<string> GetMaterializedSearchPathEntries(
+        AgentBenchmarkAdapterInput input) =>
+        GetMaterializedSearchPathEntries(input, Exposure(input.Condition));
+
+    internal string GetMaterializedExecutablePath(
+        AgentBenchmarkAdapterInput input,
+        string sourceExecutablePath)
+    {
+        var exposure = Exposure(input.Condition);
+        var sourceDirectory = Path.GetDirectoryName(
+                Path.GetFullPath(sourceExecutablePath))
+            ?? throw new AgentBenchmarkStartException(
+                "The pinned executable has no parent directory.",
+                retryable: false);
+        var index = (exposure.ExecutableSearchPathEntries ?? [])
+            .Select((path, candidate) => new { path, candidate })
+            .Where(value => PathsEqual(value.path, sourceDirectory))
+            .Select(static value => value.candidate)
+            .DefaultIfEmpty(-1)
+            .Single();
+        if (index < 0)
+        {
+            throw new AgentBenchmarkStartException(
+                "The pinned executable is not assigned to this condition's materialized tool path.",
+                retryable: false);
+        }
+
+        var path = Path.Combine(
+            GetMaterializedToolPath(input.WorkspacePath, index),
+            Path.GetFileName(sourceExecutablePath));
+        if (!File.Exists(path))
+        {
+            throw new AgentBenchmarkStartException(
+                "The condition-assigned executable was not materialized for this run.",
+                retryable: false);
+        }
+
+        return path;
+    }
+
+    internal static IReadOnlyList<string> GetAgentReadableRoots(
+        AgentBenchmarkAdapterInput input)
+    {
+        var roots = new List<string>
+        {
+            Path.GetFullPath(input.WorkspacePath),
+            Path.GetFullPath(GetMaterializedArtifactRoot(input.WorkspacePath)),
+        };
+        var runtimeStateRoot = GetRuntimeStateRoot(input);
+        if (runtimeStateRoot is not null)
+        {
+            roots.Add(runtimeStateRoot);
+        }
+
+        return roots.AsReadOnly();
+    }
+
+    internal static IReadOnlyList<string> GetAgentReadableRoots(
+        string workspacePath)
+    {
+        var workspace = Path.GetFullPath(workspacePath);
+        var parent = Path.GetDirectoryName(workspace)
+            ?? throw new AgentBenchmarkException(
+                "The recorded benchmark workspace has no parent directory.");
+        return Array.AsReadOnly(
+            new[]
+            {
+                workspace,
+                GetMaterializedArtifactRoot(workspace),
+                Path.Combine(parent, "state"),
+            });
+    }
+
+    private static IReadOnlyList<string> GetMaterializedSearchPathEntries(
+        AgentBenchmarkAdapterInput input,
+        CodexBenchmarkConditionExposure exposure)
+    {
+        var entries = Enumerable.Range(
+                0,
+                (exposure.ExecutableSearchPathEntries ?? []).Count)
+            .Select(index => GetMaterializedToolPath(
+                input.WorkspacePath,
+                index))
+            .ToArray();
+        if (entries.Any(static path => !Directory.Exists(path)))
+        {
+            throw new AgentBenchmarkStartException(
+                "The condition-assigned executable path was not materialized for this run.",
+                retryable: false);
+        }
+
+        return Array.AsReadOnly(entries);
+    }
+
+    private static string GetMaterializedToolPath(
+        string workspacePath,
+        int index) =>
+        Path.Combine(
+            GetMaterializedArtifactRoot(workspacePath),
+            "tools",
+            index.ToString("D4", System.Globalization.CultureInfo.InvariantCulture));
+
+    private static string GetMaterializedFeedPath(string workspacePath) =>
+        Path.Combine(GetMaterializedArtifactRoot(workspacePath), "feed");
+
+    private string? GetAuthenticationHomePath() =>
+        _options.AuthenticationEnvironment.TryGetValue(
+            "CODEX_HOME",
+            out var path)
+            ? Path.GetFullPath(path)
+            : null;
+
+    private static void MaterializeConditionArtifacts(
+        string workspacePath,
+        CodexBenchmarkConditionExposure exposure,
+        CancellationToken cancellationToken)
+    {
+        var artifactRoot = GetMaterializedArtifactRoot(workspacePath);
+        if (File.Exists(artifactRoot) || Directory.Exists(artifactRoot))
+        {
+            throw new AgentBenchmarkException(
+                "The materialized benchmark run already contains agent-boundary artifacts.");
+        }
+
+        Directory.CreateDirectory(artifactRoot);
+        var sourcePaths = exposure.ExecutableSearchPathEntries ?? [];
+        for (var index = 0; index < sourcePaths.Count; index++)
+        {
+            CopyDirectory(
+                sourcePaths[index],
+                GetMaterializedToolPath(workspacePath, index),
+                cancellationToken);
+        }
+
+        if ((exposure.EnvironmentVariables
+             ?? new Dictionary<string, string>()).TryGetValue(
+                "DNAXI_LOCAL_FEED",
+                out var feedPath))
+        {
+            CopyDirectory(
+                feedPath,
+                GetMaterializedFeedPath(workspacePath),
+                cancellationToken);
+        }
     }
 
     private static string? GetRuntimeStateRoot(
@@ -664,42 +867,54 @@ public sealed class CodexAgentBenchmarkAdapter : IAgentBenchmarkAdapter
     internal static void CopySkillDirectory(
         string source,
         string destination,
+        CancellationToken cancellationToken) =>
+        CopyDirectory(source, destination, cancellationToken);
+
+    private static void CopyDirectory(
+        string source,
+        string destination,
         CancellationToken cancellationToken)
     {
-        RejectReparsePoint(source);
+        var sourceRoot = Path.GetFullPath(source);
+        var destinationRoot = Path.GetFullPath(destination);
+        if (!Directory.Exists(sourceRoot)
+            || IsContained(sourceRoot, destinationRoot))
+        {
+            throw new AgentBenchmarkException(
+                "The pinned benchmark artifact source or destination is unsafe.");
+        }
+
+        RejectReparsePoint(sourceRoot);
         Directory.CreateDirectory(destination);
+        CopyDirectoryEntries(sourceRoot, destinationRoot, cancellationToken);
+    }
+
+    private static void CopyDirectoryEntries(
+        string source,
+        string destination,
+        CancellationToken cancellationToken)
+    {
         foreach (var entry in Directory.EnumerateFileSystemEntries(
                      source,
                      "*",
-                     SearchOption.AllDirectories)
+                     SearchOption.TopDirectoryOnly)
                  .Order(StringComparer.Ordinal))
         {
             cancellationToken.ThrowIfCancellationRequested();
             RejectReparsePoint(entry);
-            var relative = Path.GetRelativePath(source, entry);
-            if (Path.IsPathFullyQualified(relative)
-                || relative.Split(
-                    Path.DirectorySeparatorChar,
-                    Path.AltDirectorySeparatorChar).Contains(
-                    "..",
-                    StringComparer.Ordinal))
-            {
-                throw new AgentBenchmarkException(
-                    "The pinned Agent Skill contains an unsafe relative path.");
-            }
-
-            var target = Path.Combine(destination, relative);
+            var target = Path.Combine(destination, Path.GetFileName(entry));
             if (Directory.Exists(entry))
             {
                 Directory.CreateDirectory(target);
+                CopyDirectoryEntries(entry, target, cancellationToken);
             }
             else
             {
-                Directory.CreateDirectory(
-                    Path.GetDirectoryName(target)
-                    ?? throw new AgentBenchmarkException(
-                        "The Agent Skill destination has no parent directory."));
                 File.Copy(entry, target, overwrite: false);
+                if (!OperatingSystem.IsWindows())
+                {
+                    File.SetUnixFileMode(target, File.GetUnixFileMode(entry));
+                }
             }
         }
     }
@@ -709,7 +924,7 @@ public sealed class CodexAgentBenchmarkAdapter : IAgentBenchmarkAdapter
         if ((File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0)
         {
             throw new AgentBenchmarkException(
-                $"The pinned Agent Skill path '{path}' is a reparse point.");
+                $"The pinned benchmark artifact path '{path}' is a reparse point.");
         }
     }
 

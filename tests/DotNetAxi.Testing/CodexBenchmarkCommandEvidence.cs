@@ -17,14 +17,9 @@ internal static partial class CodexBenchmarkCommandEvidence
         IReadOnlyList<string> permittedTools)
     {
         var invocation = UnwrapShell(command);
-        if (SourceSearchCommandRegex().IsMatch(invocation))
+        if (IsSourceSearchInvocation(invocation))
         {
             return "source-search";
-        }
-
-        if (RepositoryReadCommandRegex().IsMatch(invocation))
-        {
-            return "repository-read";
         }
 
         if (IsExecutableNamed(invocation, "dotnet"))
@@ -35,6 +30,11 @@ internal static partial class CodexBenchmarkCommandEvidence
         if (IsExecutableNamed(invocation, "git"))
         {
             return "git";
+        }
+
+        if (IsRepositoryReadInvocation(invocation))
+        {
+            return "repository-read";
         }
 
         return string.Equals(sandbox, "read-only", StringComparison.Ordinal)
@@ -1072,16 +1072,382 @@ internal static partial class CodexBenchmarkCommandEvidence
         string command,
         string? workspacePath,
         ISet<string> files,
-        ISet<string> projects)
+        ISet<string> projects,
+        IReadOnlyList<string>? allowedReadRoots = null)
     {
         var invocation = UnwrapShell(command);
-        if (SourceSearchCommandRegex().IsMatch(invocation))
+        var readAnalysis = AnalyzeReadAttempts(
+                invocation,
+                workspacePath,
+                allowedReadRoots);
+        if (!readAnalysis.Complete || readAnalysis.Attempts.Count > 0)
+        {
+            return false;
+        }
+
+        if (IsSourceSearchInvocation(invocation))
         {
             return RejectOutsideSearchPaths(invocation, workspacePath);
         }
 
         return ObserveScopeText(invocation, workspacePath, files, projects);
     }
+
+    internal static IReadOnlyList<CodexBenchmarkOutOfBoundReadAttempt>
+        FindOutOfBoundReadAttempts(
+            string command,
+            string? workspacePath,
+            IReadOnlyList<string>? allowedReadRoots = null) =>
+        AnalyzeReadAttempts(command, workspacePath, allowedReadRoots).Attempts;
+
+    internal static CodexBenchmarkReadAnalysis AnalyzeReadAttempts(
+        string command,
+        string? workspacePath,
+        IReadOnlyList<string>? allowedReadRoots = null)
+    {
+        var invocation = UnwrapShell(command);
+        if (workspacePath is null)
+        {
+            return CodexBenchmarkReadAnalysis.CompleteWithoutAttempts;
+        }
+
+        var roots = (allowedReadRoots ?? [workspacePath])
+            .Where(Path.IsPathFullyQualified)
+            .Select(Path.GetFullPath)
+            .Distinct(PathComparer())
+            .ToArray();
+        var attempts = new List<CodexBenchmarkOutOfBoundReadAttempt>();
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        var complete = !ContainsUnsupportedReadGrammar(invocation);
+        foreach (var segment in SplitShellSegments(invocation))
+        {
+            var tokens = CommandArgumentRegex().Matches(segment)
+                .Select(static match => Unquote(match.Value))
+                .ToArray();
+            var executable = FindExecutable(tokens);
+            if (executable < 0)
+            {
+                continue;
+            }
+
+            var executableName = NormalizeExecutableName(tokens[executable]);
+            var scansOperands = IsReadExecutableName(executableName)
+                                || IsSourceSearchExecutable(
+                                    executableName,
+                                    tokens,
+                                    executable);
+            complete &= scansOperands || IsNoReadExecutableName(executableName);
+            for (var index = executable + 1; index < tokens.Length; index++)
+            {
+                var rawOperand = TrimControlSuffix(tokens[index]);
+                var inputRedirect =
+                    TryGetAttachedInputRedirectionOperand(
+                        rawOperand,
+                        out var redirectedOperand)
+                    || TryGetSeparatedInputRedirectionOperand(
+                        tokens,
+                        ref index,
+                        rawOperand,
+                        out redirectedOperand);
+                if (!scansOperands && !inputRedirect)
+                {
+                    continue;
+                }
+
+                var operand = inputRedirect
+                    ? redirectedOperand
+                    : NormalizeReaderOperand(rawOperand);
+                if (string.IsNullOrWhiteSpace(operand))
+                {
+                    continue;
+                }
+
+                if (IsSharedStateEnvironmentReference(operand))
+                {
+                    if (seen.Add(operand))
+                    {
+                        attempts.Add(
+                            new CodexBenchmarkOutOfBoundReadAttempt(
+                                operand,
+                                operand));
+                    }
+
+                    continue;
+                }
+
+                if (!RequiresMandatoryContainment(operand)
+                    && !IsExistingPathOperand(operand, workspacePath))
+                {
+                    continue;
+                }
+
+                string resolved;
+                if (Path.IsPathFullyQualified(operand))
+                {
+                    try
+                    {
+                        resolved = ResolveExistingLinks(
+                            Path.GetFullPath(operand));
+                    }
+                    catch (Exception exception)
+                        when (exception is ArgumentException
+                              or IOException
+                              or NotSupportedException)
+                    {
+                        resolved = operand;
+                    }
+                }
+                else if (IsCrossPlatformFullyQualified(operand))
+                {
+                    resolved = operand;
+                }
+                else
+                {
+                    try
+                    {
+                        resolved = ResolveExistingLinks(Path.GetFullPath(
+                            operand,
+                            workspacePath));
+                    }
+                    catch (Exception exception)
+                        when (exception is ArgumentException
+                              or IOException
+                              or NotSupportedException)
+                    {
+                        resolved = operand;
+                    }
+                }
+
+                if (Path.IsPathFullyQualified(resolved)
+                    && roots.Any(root => IsContainedOrEqual(root, resolved)))
+                {
+                    continue;
+                }
+
+                var identity = string.Concat(operand, "\n", resolved);
+                if (seen.Add(identity))
+                {
+                    attempts.Add(
+                        new CodexBenchmarkOutOfBoundReadAttempt(
+                            operand,
+                            resolved));
+                }
+            }
+        }
+
+        return new CodexBenchmarkReadAnalysis(
+            attempts.AsReadOnly(),
+            complete);
+    }
+
+    internal static bool CommandContainsReadOperand(
+        string command,
+        string attemptedPath)
+    {
+        if (string.IsNullOrWhiteSpace(attemptedPath))
+        {
+            return false;
+        }
+
+        foreach (var segment in SplitShellSegments(UnwrapShell(command)))
+        {
+            var tokens = CommandArgumentRegex().Matches(segment)
+                .Select(static match => Unquote(match.Value))
+                .ToArray();
+            var executable = FindExecutable(tokens);
+            if (executable < 0)
+            {
+                continue;
+            }
+
+            var executableName = NormalizeExecutableName(tokens[executable]);
+            var scansOperands = IsReadExecutableName(executableName)
+                                || IsSourceSearchExecutable(
+                                    executableName,
+                                    tokens,
+                                    executable);
+            for (var index = executable + 1; index < tokens.Length; index++)
+            {
+                var rawOperand = TrimControlSuffix(tokens[index]);
+                var inputRedirect =
+                    TryGetAttachedInputRedirectionOperand(
+                        rawOperand,
+                        out var redirectedOperand)
+                    || TryGetSeparatedInputRedirectionOperand(
+                        tokens,
+                        ref index,
+                        rawOperand,
+                        out redirectedOperand);
+                if (!scansOperands && !inputRedirect)
+                {
+                    continue;
+                }
+
+                var operand = inputRedirect
+                    ? redirectedOperand
+                    : NormalizeReaderOperand(rawOperand);
+                if (string.Equals(
+                        operand,
+                        attemptedPath,
+                        StringComparison.Ordinal))
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    internal static bool IsReportedOutOfBoundReadAttempt(
+        string attemptedPath,
+        string resolvedPath,
+        IReadOnlyList<string> allowedReadRoots)
+    {
+        if (string.IsNullOrWhiteSpace(attemptedPath)
+            || string.IsNullOrWhiteSpace(resolvedPath))
+        {
+            return false;
+        }
+
+        if (IsSharedStateEnvironmentReference(attemptedPath))
+        {
+            return string.Equals(
+                attemptedPath,
+                resolvedPath,
+                StringComparison.Ordinal);
+        }
+
+        if (!IsCrossPlatformFullyQualified(resolvedPath))
+        {
+            return false;
+        }
+
+        if (!Path.IsPathFullyQualified(resolvedPath))
+        {
+            return true;
+        }
+
+        return !allowedReadRoots.Any(root =>
+            IsContainedOrEqual(root, resolvedPath));
+    }
+
+    private static string TrimControlSuffix(string value)
+    {
+        var end = value.Length;
+        foreach (var marker in new[] { "&&", "||", ";", "|" })
+        {
+            var index = value.IndexOf(marker, StringComparison.Ordinal);
+            if (index >= 0)
+            {
+                end = Math.Min(end, index);
+            }
+        }
+
+        return value[..end].Trim();
+    }
+
+    private static bool IsSharedStateEnvironmentReference(string value)
+    {
+        var normalized = value.Trim('"', '\'').Replace('\\', '/');
+        return new[]
+        {
+            "$CODEX_HOME",
+            "${CODEX_HOME}",
+            "%CODEX_HOME%",
+            "$env:CODEX_HOME",
+        }.Any(prefix => normalized.StartsWith(
+            prefix,
+            StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static string ResolveExistingLinks(string path)
+    {
+        var fullPath = Path.GetFullPath(path);
+        var root = Path.GetPathRoot(fullPath);
+        if (string.IsNullOrEmpty(root))
+        {
+            return fullPath;
+        }
+
+        var current = root;
+        var relative = Path.GetRelativePath(root, fullPath);
+        foreach (var segment in relative.Split(
+                     Path.DirectorySeparatorChar,
+                     StringSplitOptions.RemoveEmptyEntries))
+        {
+            var next = Path.Combine(current, segment);
+            if (File.Exists(next) || Directory.Exists(next))
+            {
+                var attributes = File.GetAttributes(next);
+                if ((attributes & FileAttributes.ReparsePoint) != 0)
+                {
+                    FileSystemInfo info = Directory.Exists(next)
+                        ? new DirectoryInfo(next)
+                        : new FileInfo(next);
+                    current = info.ResolveLinkTarget(returnFinalTarget: true)
+                                  ?.FullName
+                              ?? next;
+                    continue;
+                }
+            }
+
+            current = next;
+        }
+
+        return Path.GetFullPath(current);
+    }
+
+    private static bool IsExistingPathOperand(
+        string operand,
+        string workspacePath)
+    {
+        if (operand.IndexOfAny(['*', '?', '{', '}', '[', ']']) >= 0)
+        {
+            return false;
+        }
+
+        try
+        {
+            var path = Path.IsPathFullyQualified(operand)
+                ? operand
+                : Path.GetFullPath(operand, workspacePath);
+            return File.Exists(path) || Directory.Exists(path);
+        }
+        catch (Exception exception)
+            when (exception is ArgumentException
+                  or IOException
+                  or NotSupportedException)
+        {
+            return false;
+        }
+    }
+
+    private static bool IsContainedOrEqual(string root, string path)
+    {
+        var normalizedRoot = NormalizeMacOsPrivatePath(Path.GetFullPath(root));
+        var normalizedPath = NormalizeMacOsPrivatePath(Path.GetFullPath(path));
+        var relative = Path.GetRelativePath(normalizedRoot, normalizedPath);
+        return string.Equals(relative, ".", PathComparison())
+               || (!Path.IsPathFullyQualified(relative)
+                   && !string.Equals(relative, "..", PathComparison())
+                   && !relative.StartsWith(
+                       $"..{Path.DirectorySeparatorChar}",
+                       PathComparison())
+                   && !relative.StartsWith(
+                       $"..{Path.AltDirectorySeparatorChar}",
+                       PathComparison()));
+    }
+
+    private static StringComparer PathComparer() =>
+        OperatingSystem.IsWindows()
+            ? StringComparer.OrdinalIgnoreCase
+            : StringComparer.Ordinal;
+
+    private static StringComparison PathComparison() =>
+        OperatingSystem.IsWindows()
+            ? StringComparison.OrdinalIgnoreCase
+            : StringComparison.Ordinal;
 
     public static bool ObserveOutputScope(
         string value,
@@ -1803,9 +2169,282 @@ internal static partial class CodexBenchmarkCommandEvidence
         var executable = FindExecutable(tokens);
         return executable >= 0
                && string.Equals(
-                   Path.GetFileName(tokens[executable]),
+                   NormalizeExecutableName(tokens[executable]),
                    name,
                    StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsSourceSearchInvocation(string command)
+    {
+        foreach (var segment in SplitShellSegments(command))
+        {
+            var tokens = CommandArgumentRegex().Matches(segment)
+                .Select(static match => Unquote(match.Value))
+                .ToArray();
+            var executable = FindExecutable(tokens);
+            if (executable >= 0
+                && IsSourceSearchExecutable(
+                    NormalizeExecutableName(tokens[executable]),
+                    tokens,
+                    executable))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool IsRepositoryReadInvocation(string command)
+    {
+        foreach (var segment in SplitShellSegments(command))
+        {
+            var tokens = CommandArgumentRegex().Matches(segment)
+                .Select(static match => Unquote(match.Value))
+                .ToArray();
+            var executable = FindExecutable(tokens);
+            var executableName = executable >= 0
+                ? NormalizeExecutableName(tokens[executable])
+                : string.Empty;
+            if (executable >= 0
+                && executableName is not ("dotnet" or "git")
+                && IsReadExecutableName(executableName))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool IsSourceSearchExecutable(
+        string executableName,
+        IReadOnlyList<string> tokens,
+        int executable)
+    {
+        if (executableName is "rg" or "grep" or "find" or "fd")
+        {
+            return true;
+        }
+
+        if (executableName == "dnaxi")
+        {
+            return executable + 1 < tokens.Count
+                   && IsDiscoveryRoute(tokens[executable + 1]);
+        }
+
+        if (executableName != "dnx")
+        {
+            return false;
+        }
+
+        var delimiter = tokens.ToList().FindIndex(
+            executable + 1,
+            static token => string.Equals(token, "--", StringComparison.Ordinal));
+        return delimiter >= 0
+               && delimiter + 1 < tokens.Count
+               && IsDiscoveryRoute(tokens[delimiter + 1]);
+    }
+
+    private static bool IsDiscoveryRoute(string value) =>
+        value is "search" or "show" or "outline" or "context";
+
+    private static bool IsReadExecutableName(string executableName) =>
+        executableName is
+            "cat" or "sed" or "head" or "tail" or "type"
+            or "get-content" or "more" or "less" or "awk" or "gawk"
+            or "mawk" or "dd" or "sort" or "uniq" or "cut" or "strings"
+            or "xxd" or "od" or "wc" or "file" or "stat" or "ls"
+            or "dir" or "dotnet" or "git";
+
+    private static bool IsNoReadExecutableName(string executableName) =>
+        executableName is
+            "true" or "false" or "pwd" or "cd"
+            or "mkdir" or "touch" or "rm" or "rmdir" or "mv" or "chmod"
+            or "chown" or "sleep" or "kill" or "exit";
+
+    private static string NormalizeExecutableName(string value)
+    {
+        var name = Path.GetFileName(value.Trim().TrimStart('(').TrimEnd(')'));
+        return Path.GetFileNameWithoutExtension(name).ToLowerInvariant();
+    }
+
+    private static string NormalizeReaderOperand(string value)
+    {
+        var operand = value.Trim();
+        if (operand is "<" or ">" or ">>" or "1>" or "2>"
+            || string.Equals(operand, "--", StringComparison.Ordinal))
+        {
+            return string.Empty;
+        }
+
+        var equals = operand.IndexOf('=');
+        if (equals > 0)
+        {
+            var optionName = operand[..equals];
+            if (optionName is "of" or "outfile" or "output")
+            {
+                return string.Empty;
+            }
+
+            operand = operand[(equals + 1)..];
+        }
+        else if (operand.StartsWith("-", StringComparison.Ordinal))
+        {
+            return string.Empty;
+        }
+
+        if (operand.StartsWith('@') && operand.Length > 1)
+        {
+            operand = operand[1..];
+        }
+
+        return operand.Trim('(', ')');
+    }
+
+    private static bool TryGetAttachedInputRedirectionOperand(
+        string value,
+        out string operand)
+    {
+        operand = string.Empty;
+        var trimmed = value.Trim();
+        var marker = trimmed.IndexOf('<');
+        if (marker < 0
+            || marker + 1 >= trimmed.Length
+            || trimmed[marker + 1] is '<' or '&' or '(')
+        {
+            return false;
+        }
+
+        operand = trimmed[(marker + 1)..].Trim();
+        return operand.Length > 0;
+    }
+
+    private static bool TryGetSeparatedInputRedirectionOperand(
+        IReadOnlyList<string> tokens,
+        ref int index,
+        string value,
+        out string operand)
+    {
+        operand = string.Empty;
+        if (value is not ("<" or "0<") || index + 1 >= tokens.Count)
+        {
+            return false;
+        }
+
+        operand = TrimControlSuffix(tokens[++index]);
+        return operand.Length > 0;
+    }
+
+    private static bool ContainsUnsupportedReadGrammar(string command) =>
+        command.Contains("$(", StringComparison.Ordinal)
+        || command.Contains('`')
+        || command.Contains("<(", StringComparison.Ordinal)
+        || command.Contains(">(", StringComparison.Ordinal)
+        || command.Contains("<<", StringComparison.Ordinal)
+        || ContainsUnsupportedEnvironmentExpansion(command)
+        || ContainsUnquotedExpansion(command);
+
+    private static bool ContainsUnsupportedEnvironmentExpansion(
+        string command) =>
+        EnvironmentReferenceRegex().Matches(command)
+            .Select(static match => match.Groups["name"].Value)
+            .Any(static name => name is not ("CODEX_HOME" or "DNAXI_LOCAL_FEED"));
+
+    private static bool ContainsUnquotedExpansion(string command)
+    {
+        var quote = '\0';
+        var escaped = false;
+        for (var index = 0; index < command.Length; index++)
+        {
+            var character = command[index];
+            if (escaped)
+            {
+                escaped = false;
+                continue;
+            }
+
+            if (quote != '\'' && character == '\\')
+            {
+                escaped = true;
+                continue;
+            }
+
+            if (character is '\'' or '"')
+            {
+                quote = quote == '\0'
+                    ? character
+                    : quote == character ? '\0' : quote;
+                continue;
+            }
+
+            if (quote == '\'' || character is not ('*' or '?' or '[' or '{'))
+            {
+                continue;
+            }
+
+            return true;
+        }
+
+        return false;
+    }
+
+    private static IReadOnlyList<string> SplitShellSegments(string command)
+    {
+        var segments = new List<string>();
+        var start = 0;
+        var quote = '\0';
+        var escaped = false;
+        for (var index = 0; index < command.Length; index++)
+        {
+            var character = command[index];
+            if (escaped)
+            {
+                escaped = false;
+                continue;
+            }
+
+            if (quote != '\'' && character == '\\')
+            {
+                escaped = true;
+                continue;
+            }
+
+            if (character is '\'' or '"')
+            {
+                quote = quote == '\0'
+                    ? character
+                    : quote == character ? '\0' : quote;
+                continue;
+            }
+
+            if (quote != '\0' || character is not (';' or '|' or '&'))
+            {
+                continue;
+            }
+
+            var segment = command[start..index].Trim();
+            if (segment.Length > 0)
+            {
+                segments.Add(segment);
+            }
+
+            while (index + 1 < command.Length
+                   && command[index + 1] == character)
+            {
+                index++;
+            }
+
+            start = index + 1;
+        }
+
+        var final = command[start..].Trim();
+        if (final.Length > 0)
+        {
+            segments.Add(final);
+        }
+
+        return segments.AsReadOnly();
     }
 
     private static string UnwrapShell(string command)
@@ -1997,14 +2636,9 @@ internal static partial class CodexBenchmarkCommandEvidence
     private static partial Regex EnvironmentAssignmentRegex();
 
     [GeneratedRegex(
-        "(?:^|[\\s;'\"|&()])(?:rg|grep|find|fd)(?=$|[\\s;'\"|&()])|(?:^|[\\s;'\"|&()])dnaxi\\s+(?:search|show|outline|context)(?=$|[\\s;'\"|&()])|(?:^|[\\s;'\"|&()])dnx\\s+\\S+[^\\r\\n;|&]*\\s--\\s+(?:search|show|outline|context)(?=$|[\\s;'\"|&()])",
+        "(?:\\$\\{?(?<name>[A-Za-z_][A-Za-z0-9_]*)\\}?|%(?<name>[A-Za-z_][A-Za-z0-9_]*)%|\\$env:(?<name>[A-Za-z_][A-Za-z0-9_]*))",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
-    private static partial Regex SourceSearchCommandRegex();
-
-    [GeneratedRegex(
-        "(?:^|[\\s;'\"|&()])(?:cat|sed|head|tail|type|Get-Content)(?=$|[\\s;'\"|&()])",
-        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
-    private static partial Regex RepositoryReadCommandRegex();
+    private static partial Regex EnvironmentReferenceRegex();
 
     [GeneratedRegex(
         "(?:(?<quote>[\"'])(?<quotedPath>[^\"'\\r\\n]+\\.(?:csproj|cs))\\k<quote>|(?<path>(?:(?:[A-Za-z]:[\\\\/]|/|\\\\\\\\)?[A-Za-z0-9_.-]+(?:[\\\\/][A-Za-z0-9_.-]+)*)\\.(?:csproj|cs)))",
@@ -2027,6 +2661,18 @@ internal sealed record CodexBenchmarkDnxInvocation(
     bool IncludeTests,
     bool IncludeGenerated,
     IReadOnlyList<string> Arguments);
+
+internal sealed record CodexBenchmarkOutOfBoundReadAttempt(
+    string Operand,
+    string ResolvedPath);
+
+internal sealed record CodexBenchmarkReadAnalysis(
+    IReadOnlyList<CodexBenchmarkOutOfBoundReadAttempt> Attempts,
+    bool Complete)
+{
+    internal static CodexBenchmarkReadAnalysis CompleteWithoutAttempts
+    { get; } = new([], true);
+}
 
 internal sealed record CodexBenchmarkTaskRouteStep(
     int Sequence,

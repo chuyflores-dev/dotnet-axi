@@ -16,9 +16,9 @@ namespace DotNetAxi.Testing;
 internal static partial class CodexDiscoveryBenchmarkPreparation
 {
     internal const string RequestSchema =
-        "dotnet-axi/codex-discovery-request/v4";
+        "dotnet-axi/codex-discovery-request/v5";
     internal const string PreparationSchema =
-        "dotnet-axi/codex-discovery-preparation/v4";
+        "dotnet-axi/codex-discovery-preparation/v5";
     internal const string SettingsSchema =
         "dotnet-axi/codex-discovery-settings/v1";
     internal const string ToolConfigurationSchema =
@@ -36,7 +36,9 @@ internal static partial class CodexDiscoveryBenchmarkPreparation
     internal const string PackageId = "dnaxi";
     internal const string PackageVersion = "0.5.0";
     internal const string ProductSchema = "dotnet-axi/v1";
-    internal const string HarnessVersion = "2.7.0";
+    internal const string HarnessVersion = "2.8.0";
+    internal const string IsolationProtocol =
+        "codex-permission-profile/v1";
     internal const string PackageSourceEnvironmentVariable =
         "DNAXI_LOCAL_FEED";
     internal const string ExactCandidateInvocation =
@@ -352,11 +354,28 @@ internal static partial class CodexDiscoveryBenchmarkPreparation
                          candidateProbeManifest,
                          cancellationToken: cancellationToken))
         {
+            var candidateProbeInput = CreateProbeInput(
+                request,
+                selectedCorpus.Tasks[0],
+                candidateProbeFixture,
+                AgentBenchmarkCondition.Candidate);
+            await adapter.PrepareWorkspaceAsync(
+                candidateProbeInput,
+                cancellationToken);
             await ValidateCandidateExecutionAsync(
                 request,
                 candidateProbeFixture,
+                adapter,
+                candidateProbeInput,
                 cancellationToken);
         }
+
+        await ValidateIsolationAsync(
+            request,
+            adapter,
+            selectedCorpus.Tasks[0],
+            candidateProbeManifest,
+            cancellationToken);
 
         var configuration = new AgentBenchmarkConfiguration(
             request.SeriesId,
@@ -441,6 +460,13 @@ internal static partial class CodexDiscoveryBenchmarkPreparation
                 request.ProductCommit),
             prepared.Manifest,
             prepared.Schedule,
+            new CodexDiscoveryIsolationPreparation(
+                IsolationProtocol,
+                RootDenied: true,
+                HostTemporaryDenied: true,
+                SharedAuthenticationHomeDenied: true,
+                BaselinePassed: true,
+                CandidatePassed: true),
             new CodexDiscoveryUsageBoundary(
                 prepared.Schedule.Count,
                 taskTimeoutBudgetSeconds,
@@ -1791,19 +1817,438 @@ internal static partial class CodexDiscoveryBenchmarkPreparation
         }
     }
 
+    private static async ValueTask ValidateIsolationAsync(
+        CodexDiscoveryBenchmarkRequest request,
+        CodexAgentBenchmarkAdapter adapter,
+        AgentTaskDefinition task,
+        string fixtureManifestPath,
+        CancellationToken cancellationToken)
+    {
+        var factory = new RepositoryFixtureFactory();
+        await using var baselineFixture = await factory.CreateAsync(
+            fixtureManifestPath,
+            cancellationToken: cancellationToken);
+        await using var candidateFixture = await factory.CreateAsync(
+            fixtureManifestPath,
+            cancellationToken: cancellationToken);
+        var baselineInput = CreateProbeInput(
+            request,
+            task,
+            baselineFixture,
+            AgentBenchmarkCondition.Baseline);
+        var candidateInput = CreateProbeInput(
+            request,
+            task,
+            candidateFixture,
+            AgentBenchmarkCondition.Candidate);
+        await adapter.PrepareWorkspaceAsync(baselineInput, cancellationToken);
+        await adapter.PrepareWorkspaceAsync(candidateInput, cancellationToken);
+
+        var nonce = Guid.NewGuid().ToString("N");
+        var sealedRoot = Directory.CreateDirectory(Path.Combine(
+            baselineFixture.RootPath,
+            "sealed-isolation-probe")).FullName;
+        var requestSentinel = await WriteIsolationSentinelAsync(
+            sealedRoot,
+            "request",
+            nonce,
+            cancellationToken);
+        var preparationSentinel = await WriteIsolationSentinelAsync(
+            sealedRoot,
+            "preparation",
+            nonce,
+            cancellationToken);
+        var evidenceSentinel = await WriteIsolationSentinelAsync(
+            sealedRoot,
+            "evidence",
+            nonce,
+            cancellationToken);
+        var otherRunSentinel = await WriteIsolationSentinelAsync(
+            sealedRoot,
+            "other-run",
+            nonce,
+            cancellationToken);
+        var sharedHome = Directory.CreateDirectory(Path.Combine(
+            sealedRoot,
+            "shared-codex-home")).FullName;
+        var sharedStateSentinel = await WriteIsolationSentinelAsync(
+            sharedHome,
+            "shared-state",
+            nonce,
+            cancellationToken);
+        var baselineWorkspaceSentinel = await WriteIsolationSentinelAsync(
+            baselineFixture.WorkspacePath,
+            "baseline-workspace",
+            nonce,
+            cancellationToken);
+        var candidateWorkspaceSentinel = await WriteIsolationSentinelAsync(
+            candidateFixture.WorkspacePath,
+            "candidate-workspace",
+            nonce,
+            cancellationToken);
+        var baselineArtifactSentinel = await WriteIsolationSentinelAsync(
+            CodexAgentBenchmarkAdapter.GetMaterializedArtifactRoot(
+                baselineFixture.WorkspacePath),
+            "baseline-artifact",
+            nonce,
+            cancellationToken);
+        var candidateArtifactSentinel = await WriteIsolationSentinelAsync(
+            CodexAgentBenchmarkAdapter.GetMaterializedArtifactRoot(
+                candidateFixture.WorkspacePath),
+            "candidate-only",
+            nonce,
+            cancellationToken);
+        var baselineLink = Path.Combine(
+            baselineFixture.WorkspacePath,
+            "sealed-request-link.sentinel");
+        var candidateLink = Path.Combine(
+            candidateFixture.WorkspacePath,
+            "sealed-request-link.sentinel");
+        try
+        {
+            File.CreateSymbolicLink(baselineLink, requestSentinel);
+            File.CreateSymbolicLink(candidateLink, requestSentinel);
+        }
+        catch (Exception exception)
+            when (exception is IOException
+                  or UnauthorizedAccessException
+                  or PlatformNotSupportedException)
+        {
+            throw new AgentBenchmarkException(
+                "The isolation preflight could not create its cross-boundary symlink probe.",
+                exception);
+        }
+
+        var hostTemporaryRoots = new List<string>();
+        try
+        {
+            var platformTemporary = Directory.CreateTempSubdirectory(
+                "dnaxi-isolation-").FullName;
+            hostTemporaryRoots.Add(platformTemporary);
+            var platformTemporarySentinel =
+                await WriteIsolationSentinelAsync(
+                    platformTemporary,
+                    "platform-temp",
+                    nonce,
+                    cancellationToken);
+            string? slashTemporarySentinel = null;
+            if (!OperatingSystem.IsWindows()
+                && Directory.Exists("/tmp")
+                && !PathsEqual(
+                    Path.GetFullPath("/tmp"),
+                    Path.GetFullPath(Path.GetTempPath())))
+            {
+                var slashTemporary = Directory.CreateDirectory(Path.Combine(
+                    "/tmp",
+                    $"dnaxi-isolation-{nonce}")).FullName;
+                hostTemporaryRoots.Add(slashTemporary);
+                slashTemporarySentinel =
+                    await WriteIsolationSentinelAsync(
+                        slashTemporary,
+                        "slash-tmp",
+                        nonce,
+                        cancellationToken);
+            }
+
+            var commonForbidden = new List<string>
+            {
+                requestSentinel,
+                preparationSentinel,
+                evidenceSentinel,
+                otherRunSentinel,
+                sharedStateSentinel,
+                platformTemporarySentinel,
+            };
+            if (slashTemporarySentinel is not null)
+            {
+                commonForbidden.Add(slashTemporarySentinel);
+            }
+
+            if (!OperatingSystem.IsWindows()
+                && Directory.Exists("/tmp"))
+            {
+                var sharedDotNetTemporary = Directory.CreateDirectory(
+                    Path.Combine(
+                        "/tmp",
+                        ".dotnet",
+                        $"dnaxi-isolation-{nonce}"))
+                    .FullName;
+                hostTemporaryRoots.Add(sharedDotNetTemporary);
+                commonForbidden.Add(
+                    await WriteIsolationSentinelAsync(
+                        sharedDotNetTemporary,
+                        "shared-dotnet-temp",
+                        nonce,
+                        cancellationToken));
+            }
+
+            var baselineForbidden = commonForbidden.Concat(
+                [
+                    candidateArtifactSentinel,
+                    candidateWorkspaceSentinel,
+                    Path.GetRelativePath(
+                        baselineFixture.WorkspacePath,
+                        requestSentinel),
+                    baselineLink,
+                ]).ToArray();
+            var candidateForbidden = commonForbidden.Concat(
+                [
+                    baselineArtifactSentinel,
+                    baselineWorkspaceSentinel,
+                    Path.GetRelativePath(
+                        candidateFixture.WorkspacePath,
+                        requestSentinel),
+                    candidateLink,
+                ]).ToArray();
+
+            await RunConditionIsolationProbeAsync(
+                request,
+                adapter,
+                baselineInput,
+                baselineFixture,
+                sharedHome,
+                baselineWorkspaceSentinel,
+                baselineArtifactSentinel,
+                baselineForbidden,
+                cancellationToken);
+            await RunConditionIsolationProbeAsync(
+                request,
+                adapter,
+                candidateInput,
+                candidateFixture,
+                sharedHome,
+                candidateWorkspaceSentinel,
+                candidateArtifactSentinel,
+                candidateForbidden,
+                cancellationToken);
+        }
+        finally
+        {
+            foreach (var root in hostTemporaryRoots)
+            {
+                if (Directory.Exists(root))
+                {
+                    Directory.Delete(root, recursive: true);
+                }
+            }
+        }
+    }
+
+    private static async ValueTask RunConditionIsolationProbeAsync(
+        CodexDiscoveryBenchmarkRequest request,
+        CodexAgentBenchmarkAdapter adapter,
+        AgentBenchmarkAdapterInput input,
+        RepositoryFixture fixture,
+        string sharedHome,
+        string allowedWorkspaceSentinel,
+        string allowedArtifactSentinel,
+        IReadOnlyList<string> forbiddenSentinels,
+        CancellationToken cancellationToken)
+    {
+        var searchPaths = adapter.GetMaterializedSearchPathEntries(input);
+        var reader = searchPaths
+            .Select(path => ResolveExecutableCommand(
+                path,
+                BoundedSkillReaderCommand))
+            .FirstOrDefault(static path => path is not null)
+            ?? throw new AgentBenchmarkException(
+                "The isolation preflight could not resolve its materialized bounded reader.");
+        var rawSearch = searchPaths
+            .Select(path => ResolveExecutableCommand(path, "rg"))
+            .FirstOrDefault(static path => path is not null)
+            ?? throw new AgentBenchmarkException(
+                "The isolation preflight could not resolve its materialized raw source search.");
+        var rawDotNet = searchPaths
+            .Select(path => ResolveExecutableCommand(path, "dotnet"))
+            .FirstOrDefault(static path => path is not null)
+            ?? throw new AgentBenchmarkException(
+                "The isolation preflight could not resolve its materialized raw dotnet command.");
+        var artifactRoot = CodexAgentBenchmarkAdapter
+            .GetMaterializedArtifactRoot(fixture.WorkspacePath);
+        var scriptPath = Path.Combine(
+            artifactRoot,
+            OperatingSystem.IsWindows()
+                ? "isolation-probe.cmd"
+                : "isolation-probe.sh");
+        await File.WriteAllTextAsync(
+            scriptPath,
+            OperatingSystem.IsWindows()
+                ? WindowsIsolationProbeScript
+                : UnixIsolationProbeScript,
+            new UTF8Encoding(encoderShouldEmitUTF8Identifier: false),
+            cancellationToken);
+        if (!OperatingSystem.IsWindows())
+        {
+            File.SetUnixFileMode(
+                scriptPath,
+                UnixFileMode.UserRead
+                | UnixFileMode.UserWrite
+                | UnixFileMode.UserExecute);
+        }
+
+        var materialized = adapter.CreateStartInfo(input);
+        var environment = materialized.Environment.ToDictionary(
+            static variable => variable.Key,
+            static variable => variable.Value ?? string.Empty,
+            StringComparer.Ordinal);
+        environment["CODEX_HOME"] = sharedHome;
+        var command = OperatingSystem.IsWindows()
+            ? environment.GetValueOrDefault("ComSpec", "cmd.exe")
+            : "/bin/sh";
+        var commandArguments = new List<string>();
+        if (OperatingSystem.IsWindows())
+        {
+            commandArguments.Add("/d");
+            commandArguments.Add("/c");
+        }
+
+        commandArguments.Add(scriptPath);
+        commandArguments.Add(reader);
+        commandArguments.Add(rawSearch);
+        commandArguments.Add(rawDotNet);
+        commandArguments.Add(allowedWorkspaceSentinel);
+        commandArguments.Add(allowedArtifactSentinel);
+        commandArguments.Add("--");
+        commandArguments.AddRange(forbiddenSentinels);
+        var arguments = new List<string>
+        {
+            "sandbox",
+            "--permission-profile",
+            CodexAgentBenchmarkAdapter.RuntimePermissionProfileName,
+            "--config",
+            CodexAgentBenchmarkAdapter.CreateRuntimePermissionProfileConfig(
+                fixture.WorkspacePath,
+                fixture.StatePath,
+                artifactRoot,
+                sharedHome,
+                Sandbox),
+            "--cd",
+            fixture.WorkspacePath,
+            "--",
+            command,
+        };
+        arguments.AddRange(commandArguments);
+        var result = await new ProcessRunner().RunAsync(
+            new ProcessRunRequest(
+                request.CodexExecutable.Path,
+                fixture.WorkspacePath,
+                arguments,
+                environment,
+                new ProcessOutputLimits(64 * 1024, 64 * 1024),
+                TimeSpan.FromSeconds(CodexLocalProbeTimeoutSeconds)),
+            cancellationToken);
+        var expectedOutput = string.Concat(
+            await File.ReadAllTextAsync(
+                allowedWorkspaceSentinel,
+                cancellationToken),
+            await File.ReadAllTextAsync(
+                allowedArtifactSentinel,
+                cancellationToken),
+            string.Join(
+                '\n',
+                Enumerable.Range(0, forbiddenSentinels.Count)
+                    .Select(static index => $"denied:{index}")),
+            "\n");
+        if (!IsSuccessfulProbe(result)
+            || !string.Equals(
+                result.StandardOutput.Text.ReplaceLineEndings("\n"),
+                expectedOutput,
+                StringComparison.Ordinal)
+            || !string.IsNullOrEmpty(result.StandardError.Text))
+        {
+            throw new AgentBenchmarkException(
+                $"The {input.Condition} Codex isolation preflight did not enforce the sealed run boundary; no paid benchmark run may start.");
+        }
+    }
+
+    private static async ValueTask<string> WriteIsolationSentinelAsync(
+        string root,
+        string name,
+        string nonce,
+        CancellationToken cancellationToken)
+    {
+        Directory.CreateDirectory(root);
+        var path = Path.Combine(root, $"{name}.sentinel");
+        await File.WriteAllTextAsync(
+            path,
+            $"{name}:{nonce}\n",
+            new UTF8Encoding(encoderShouldEmitUTF8Identifier: false),
+            cancellationToken);
+        return path;
+    }
+
+    private const string UnixIsolationProbeScript =
+        "#!/bin/sh\n"
+        + "reader=$1\n"
+        + "raw_search=$2\n"
+        + "raw_dotnet=$3\n"
+        + "allowed_workspace=$4\n"
+        + "allowed_artifact=$5\n"
+        + "shift 6\n"
+        + "\"$raw_search\" -n -F workspace: \"$allowed_workspace\" >/dev/null 2>&1 || exit 82\n"
+        + "\"$raw_dotnet\" msbuild src/Core/Core.csproj -nologo -getProperty:TargetFrameworks >/dev/null 2>&1 || exit 82\n"
+        + "\"$reader\" -n 1,110p \"$allowed_workspace\" || exit 80\n"
+        + "\"$reader\" -n 1,110p \"$allowed_artifact\" || exit 80\n"
+        + "index=0\n"
+        + "for target in \"$@\"; do\n"
+        + "  if \"$reader\" -n 1,110p \"$target\" >/dev/null 2>&1; then\n"
+        + "    exit 81\n"
+        + "  fi\n"
+        + "  printf 'denied:%s\\n' \"$index\"\n"
+        + "  index=$((index + 1))\n"
+        + "done\n";
+
+    private const string WindowsIsolationProbeScript =
+        "@echo off\r\n"
+        + "setlocal\r\n"
+        + "set \"reader=%~1\"\r\n"
+        + "set \"raw_search=%~2\"\r\n"
+        + "set \"raw_dotnet=%~3\"\r\n"
+        + "set \"allowed_workspace=%~4\"\r\n"
+        + "set \"allowed_artifact=%~5\"\r\n"
+        + "shift\r\nshift\r\nshift\r\nshift\r\nshift\r\nshift\r\n"
+        + "\"%raw_search%\" -n -F workspace: \"%allowed_workspace%\" >nul 2>&1 || exit /b 82\r\n"
+        + "\"%raw_dotnet%\" msbuild src/Core/Core.csproj -nologo -getProperty:TargetFrameworks >nul 2>&1 || exit /b 82\r\n"
+        + "\"%reader%\" -n 1,110p \"%allowed_workspace%\" || exit /b 80\r\n"
+        + "\"%reader%\" -n 1,110p \"%allowed_artifact%\" || exit /b 80\r\n"
+        + "set /a index=0\r\n"
+        + ":loop\r\n"
+        + "if \"%~1\"==\"\" exit /b 0\r\n"
+        + "\"%reader%\" -n 1,110p \"%~1\" >nul 2>&1\r\n"
+        + "if not errorlevel 1 exit /b 81\r\n"
+        + "echo denied:%index%\r\n"
+        + "set /a index+=1\r\n"
+        + "shift\r\n"
+        + "goto loop\r\n";
+
+    private static bool PathsEqual(string left, string right) =>
+        string.Equals(
+            Path.GetFullPath(left),
+            Path.GetFullPath(right),
+            OperatingSystem.IsWindows()
+                ? StringComparison.OrdinalIgnoreCase
+                : StringComparison.Ordinal);
+
     private static async ValueTask ValidateCandidateExecutionAsync(
         CodexDiscoveryBenchmarkRequest request,
         RepositoryFixture fixture,
+        CodexAgentBenchmarkAdapter adapter,
+        AgentBenchmarkAdapterInput input,
         CancellationToken cancellationToken)
     {
         var codexHome = Directory.CreateDirectory(Path.Combine(
             fixture.StatePath,
             "codex-preflight-home")).FullName;
-        var environment = fixture.EnvironmentVariables.ToDictionary(
+        var materializedStartInfo = adapter.CreateStartInfo(input);
+        var environment = materializedStartInfo.Environment.ToDictionary(
             static variable => variable.Key,
-            static variable => variable.Value,
+            static variable => variable.Value ?? string.Empty,
             StringComparer.Ordinal);
         environment["CODEX_HOME"] = codexHome;
+        var materializedDnx = adapter.GetMaterializedExecutablePath(
+            input,
+            request.DnxExecutable.Path);
+        var materializedFeed = environment[PackageSourceEnvironmentVariable];
         var workspaceBaseline =
             await AgentBenchmarkWorkspaceHasher.CaptureBaselineAsync(
                 fixture.WorkspacePath,
@@ -1821,15 +2266,20 @@ internal static partial class CodexDiscoveryBenchmarkPreparation
                     "--config",
                     CodexAgentBenchmarkAdapter
                         .CreateRuntimePermissionProfileConfig(
+                            fixture.WorkspacePath,
                             fixture.StatePath,
+                            CodexAgentBenchmarkAdapter
+                                .GetMaterializedArtifactRoot(
+                                    fixture.WorkspacePath),
+                            codexHome,
                             Sandbox),
                     "--cd",
                     fixture.WorkspacePath,
                     "--",
-                    request.DnxExecutable.Path,
+                    materializedDnx,
                     $"{request.Product.PackageId}@{request.Product.PackageVersion}",
                     "--source",
-                    request.Product.PackageSource.Path,
+                    materializedFeed,
                     "--verbosity",
                     "quiet",
                     "--",
@@ -1859,6 +2309,37 @@ internal static partial class CodexDiscoveryBenchmarkPreparation
             throw new AgentBenchmarkException(
                 "The exact source-pinned dnaxi candidate failed its bounded local execution preflight; no paid benchmark run may start.");
         }
+    }
+
+    private static AgentBenchmarkAdapterInput CreateProbeInput(
+        CodexDiscoveryBenchmarkRequest request,
+        AgentTaskDefinition task,
+        RepositoryFixture fixture,
+        AgentBenchmarkCondition condition)
+    {
+        var conditionPin = condition == AgentBenchmarkCondition.Baseline
+            ? request.Baseline
+            : request.Candidate;
+        return new AgentBenchmarkAdapterInput(
+            $"{request.SeriesId}/isolation-{condition.ToString().ToLowerInvariant()}",
+            1,
+            0,
+            1,
+            condition,
+            task,
+            fixture.WorkspacePath,
+            fixture.EnvironmentVariables,
+            new AgentBenchmarkExecutionSettings(
+                CodexCliVersion,
+                ModelId,
+                ReasoningSetting,
+                request.Settings.Sha256,
+                Sandbox,
+                PermissionProfile,
+                NetworkPolicy),
+            AgentBenchmarkHash.Compute(task.Prompt),
+            conditionPin.Instructions.Sha256,
+            conditionPin.ToolConfiguration.Sha256);
     }
 
     private static bool IsExpectedCandidateVersionOutput(
@@ -2430,12 +2911,21 @@ internal sealed record CodexDiscoveryUsageBoundary(
     long? ProviderTokenLimit,
     string Detail);
 
+internal sealed record CodexDiscoveryIsolationPreparation(
+    string Protocol,
+    bool RootDenied,
+    bool HostTemporaryDenied,
+    bool SharedAuthenticationHomeDenied,
+    bool BaselinePassed,
+    bool CandidatePassed);
+
 internal sealed record CodexDiscoverySeriesPreparation(
     string Schema,
     string RequestHash,
     CodexDiscoveryRetainedPins Pins,
     AgentBenchmarkSeriesManifest Manifest,
     IReadOnlyList<AgentBenchmarkScheduledRun> Schedule,
+    CodexDiscoveryIsolationPreparation Isolation,
     CodexDiscoveryUsageBoundary UsageBoundary);
 
 internal sealed record CodexDiscoveryPreparedContext(

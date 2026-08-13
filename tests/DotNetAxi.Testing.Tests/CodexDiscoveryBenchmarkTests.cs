@@ -299,6 +299,15 @@ public sealed class CodexDiscoveryBenchmarkTests
             context.Preparation.Manifest.Execution.PermissionProfile);
         Assert.Equal("disabled",
             context.Preparation.Manifest.Execution.NetworkPolicy);
+        Assert.Equal(
+            "codex-permission-profile/v1",
+            context.Preparation.Isolation.Protocol);
+        Assert.True(context.Preparation.Isolation.RootDenied);
+        Assert.True(context.Preparation.Isolation.HostTemporaryDenied);
+        Assert.True(
+            context.Preparation.Isolation.SharedAuthenticationHomeDenied);
+        Assert.True(context.Preparation.Isolation.BaselinePassed);
+        Assert.True(context.Preparation.Isolation.CandidatePassed);
         Assert.True(CodexDiscoveryEvidenceValidator.CanonicalEquals(
             context.Preparation.Schedule,
             second.Preparation.Schedule));
@@ -314,31 +323,36 @@ public sealed class CodexDiscoveryBenchmarkTests
             Enumerable.Range(0, 70),
             context.Preparation.Schedule.Select(run => run.ExecutionOrder));
         var task = context.Corpus.Tasks[0];
-        var baselineStart = context.Adapter.CreateStartInfo(AdapterInput(
+        var baselineInput = AdapterInput(
             context,
             task,
             AgentBenchmarkCondition.Baseline,
-            fixture.Root));
-        var candidateStart = context.Adapter.CreateStartInfo(AdapterInput(
+            Path.Combine(fixture.Root, "baseline-run", "workspace"));
+        var candidateInput = AdapterInput(
             context,
             task,
             AgentBenchmarkCondition.Candidate,
-            fixture.Root));
-        Assert.Equal(
-            string.Join(Path.PathSeparator,
-                context.BaselineTools.ExecutableSearchPathEntries.Select(
-                    static entry => entry.Path)),
-            baselineStart.Environment["PATH"]);
-        Assert.Equal(
-            string.Join(Path.PathSeparator,
-                context.CandidateTools.ExecutableSearchPathEntries.Select(
-                    static entry => entry.Path)),
-            candidateStart.Environment["PATH"]);
-        Assert.Equal(
+            Path.Combine(fixture.Root, "candidate-run", "workspace"));
+        Directory.CreateDirectory(baselineInput.WorkspacePath);
+        Directory.CreateDirectory(candidateInput.WorkspacePath);
+        await context.Adapter.PrepareWorkspaceAsync(baselineInput);
+        await context.Adapter.PrepareWorkspaceAsync(candidateInput);
+        var baselineStart = context.Adapter.CreateStartInfo(baselineInput);
+        var candidateStart = context.Adapter.CreateStartInfo(candidateInput);
+        Assert.DoesNotContain(
+            context.BaselineTools.ExecutableSearchPathEntries[0].Path,
+            baselineStart.Environment["PATH"],
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            context.CandidateTools.ExecutableSearchPathEntries[0].Path,
+            candidateStart.Environment["PATH"],
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
             context.Request.Product.PackageSource.Path,
             candidateStart.Environment[
                 CodexDiscoveryBenchmarkPreparation
-                    .PackageSourceEnvironmentVariable]);
+                    .PackageSourceEnvironmentVariable],
+            StringComparison.Ordinal);
         Assert.False(baselineStart.Environment.ContainsKey(
             CodexDiscoveryBenchmarkPreparation
                 .PackageSourceEnvironmentVariable));
@@ -354,7 +368,7 @@ public sealed class CodexDiscoveryBenchmarkTests
         Assert.Equal(
             context.Request.Product.Skill.Path,
             context.CandidateTools.SkillDirectoryPath);
-        Assert.Equal("1.7.0", context.Adapter.Descriptor.Version);
+        Assert.Equal("1.8.0", context.Adapter.Descriptor.Version);
 
         var preparationPath = Path.Combine(fixture.Root, "preparation.json");
         await CodexDiscoveryBenchmarkPreparation.WriteCreateNewAsync(
@@ -378,6 +392,22 @@ public sealed class CodexDiscoveryBenchmarkTests
 
         Assert.Contains(
             "no paid benchmark run may start",
+            exception.Message,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Preparation_fails_closed_when_either_condition_can_read_a_sealed_sentinel()
+    {
+        using var fixture = await PreparedFixture.CreateAsync(
+            isolationProbeLeaks: true);
+
+        var exception = await Assert.ThrowsAsync<AgentBenchmarkException>(() =>
+            CodexDiscoveryBenchmarkPreparation.PrepareAsync(
+                fixture.RequestPath).AsTask());
+
+        Assert.Contains(
+            "isolation preflight did not enforce the sealed run boundary",
             exception.Message,
             StringComparison.Ordinal);
     }
@@ -1526,7 +1556,7 @@ public sealed class CodexDiscoveryBenchmarkTests
             {
                 id = "fallback",
                 type = "command_execution",
-                command = "/bin/zsh -lc \"python3 -c 'print(1)'\"",
+                command = "/bin/zsh -lc \"cat src/Discovery/Cases/InvocationCases.cs\"",
                 aggregated_output =
                     "./src/Discovery/Cases/InvocationCases.cs\n",
                 exit_code = 0,
@@ -1563,6 +1593,158 @@ public sealed class CodexDiscoveryBenchmarkTests
             [reconciled]);
 
         CodexDiscoveryEvidenceValidator.ValidateReport(context, report);
+    }
+
+    [Fact]
+    public async Task Raw_reconciliation_requires_a_denial_report_for_a_successful_out_of_bound_command()
+    {
+        using var fixture = await PreparedFixture.CreateAsync();
+        var context = await CodexDiscoveryBenchmarkPreparation.PrepareAsync(
+            fixture.RequestPath);
+        var scheduled = context.Preparation.Schedule[0];
+        var run = CreateSuccessfulRun(context, scheduled);
+        var sentinel = Path.Combine(fixture.Root, "sealed-read.sentinel");
+        await File.WriteAllTextAsync(sentinel, "sealed");
+        var command = $"cat \"{sentinel}\" && true";
+        var commandPayload = JsonSerializer.Serialize(new
+        {
+            type = "item.completed",
+            item = new
+            {
+                id = "read-outside",
+                type = "command_execution",
+                command,
+                aggregated_output = string.Empty,
+                exit_code = 0,
+                status = "completed",
+            },
+        });
+        var workspacePath = Path.GetDirectoryName(
+            context.Request.Corpus.Artifact.Path)!;
+        var attempt = Assert.Single(
+            CodexBenchmarkCommandEvidence.FindOutOfBoundReadAttempts(
+                command,
+                workspacePath,
+                CodexAgentBenchmarkAdapter.GetAgentReadableRoots(
+                    workspacePath)));
+        var denialPayload = JsonSerializer.Serialize(new
+        {
+            commandHash = AgentBenchmarkHash.Compute(command),
+            attemptedPath = attempt.Operand,
+            resolvedPath = attempt.ResolvedPath,
+        });
+        var rawEvents = run.RawEvents.Take(3)
+            .Concat([
+                Raw(3, "item.completed", commandPayload),
+                Raw(4, "adapter.filesystem.read.denied", denialPayload),
+            ])
+            .Concat(run.RawEvents.Skip(3).Select((raw, index) =>
+                Raw(index + 5, raw.Kind, raw.Payload)))
+            .ToArray();
+        var reconciled = WithPermissionDeniedEvidence(
+            run,
+            [ToolCall(0, "repository-read", commandPayload)],
+            rawEvents);
+        var report = new CodexDiscoverySeriesReport(
+            CodexDiscoveryEvidenceStore.ReportSchema,
+            context.Preparation.RequestHash,
+            context.Preparation.Manifest,
+            context.Preparation.Schedule.Count,
+            Complete: false,
+            Failure: null,
+            [reconciled]);
+
+        CodexDiscoveryEvidenceValidator.ValidateReport(context, report);
+
+        var missingReport = report with
+        {
+            Runs = [WithPermissionDeniedEvidence(
+                run,
+                [ToolCall(0, "repository-read", commandPayload)],
+                rawEvents.Where(static value => value.Kind
+                        != "adapter.filesystem.read.denied")
+                    .Select((value, index) => Raw(
+                        index,
+                        value.Kind,
+                        value.Payload))
+                    .ToArray())],
+        };
+        Assert.Throws<AgentBenchmarkException>(() =>
+            CodexDiscoveryEvidenceValidator.ValidateReport(
+                context,
+                missingReport));
+    }
+
+    [Fact]
+    public async Task Raw_reconciliation_requires_an_unreconciled_report_for_an_ambiguous_reader()
+    {
+        using var fixture = await PreparedFixture.CreateAsync();
+        var context = await CodexDiscoveryBenchmarkPreparation.PrepareAsync(
+            fixture.RequestPath);
+        var scheduled = context.Preparation.Schedule[0];
+        var run = CreateSuccessfulRun(context, scheduled);
+        const string command =
+            "python3 -c 'open(\"/outside/request.sentinel\").read()'";
+        var commandPayload = JsonSerializer.Serialize(new
+        {
+            type = "item.completed",
+            item = new
+            {
+                id = "ambiguous-reader",
+                type = "command_execution",
+                command,
+                aggregated_output = string.Empty,
+                exit_code = 0,
+                status = "completed",
+            },
+        });
+        var unreconciledPayload = JsonSerializer.Serialize(new
+        {
+            commandHash = AgentBenchmarkHash.Compute(command),
+        });
+        var rawEvents = run.RawEvents.Take(3)
+            .Concat([
+                Raw(3, "item.completed", commandPayload),
+                Raw(
+                    4,
+                    "adapter.filesystem.read.unreconciled",
+                    unreconciledPayload),
+            ])
+            .Concat(run.RawEvents.Skip(3).Select((raw, index) =>
+                Raw(index + 5, raw.Kind, raw.Payload)))
+            .ToArray();
+        var reconciled = WithPermissionDeniedEvidence(
+            run,
+            [ToolCall(0, "repository-read", commandPayload)],
+            rawEvents);
+        var report = new CodexDiscoverySeriesReport(
+            CodexDiscoveryEvidenceStore.ReportSchema,
+            context.Preparation.RequestHash,
+            context.Preparation.Manifest,
+            context.Preparation.Schedule.Count,
+            Complete: false,
+            Failure: null,
+            [reconciled]);
+
+        CodexDiscoveryEvidenceValidator.ValidateReport(context, report);
+
+        var missingReport = report with
+        {
+            Runs = [WithPermissionDeniedEvidence(
+                run,
+                [ToolCall(0, "repository-read", commandPayload)],
+                rawEvents.Where(static value => value.Kind
+                        != "adapter.filesystem.read.unreconciled")
+                    .Select((value, index) => Raw(
+                        index,
+                        value.Kind,
+                        value.Payload))
+                    .ToArray())],
+        };
+        Assert.Throws<AgentBenchmarkException>(() =>
+            CodexDiscoveryEvidenceValidator.ValidateReport(
+                context,
+                missingReport));
     }
 
     [Fact]
@@ -2335,6 +2517,49 @@ public sealed class CodexDiscoveryBenchmarkTests
             run.NetworkPolicy,
             rawEvents);
 
+    private static AgentBenchmarkRunResult WithPermissionDeniedEvidence(
+        AgentBenchmarkRunResult run,
+        IReadOnlyList<AgentBenchmarkToolCall> toolCalls,
+        IReadOnlyList<AgentBenchmarkRawEvent> rawEvents) =>
+        new(
+            run.RunId,
+            run.TaskId,
+            run.Condition,
+            run.Repetition,
+            run.ExecutionOrder,
+            run.StartAttempts,
+            run.TimeoutSeconds,
+            run.TimedOut,
+            "permission-denied",
+            run.Answer,
+            false,
+            false,
+            run.InputTokens,
+            run.OutputTokens,
+            run.Turns,
+            toolCalls,
+            run.Duration,
+            new AgentBenchmarkInspectedScope([], []),
+            [
+                new("claims-supported", false, "reconciled"),
+                new("network-unused", true, "reconciled"),
+                new("workspace-unchanged", true, "reconciled"),
+            ],
+            [
+                new("fixture-content-hash", true, true, "reconciled"),
+                new("safety-oracle", true, false, "reconciled"),
+                new("success-oracle", true, false, "reconciled"),
+            ],
+            run.Versions,
+            run.Hashes with
+            {
+                RawTrajectory = AgentBenchmarkHash.Trajectory(rawEvents),
+            },
+            run.Sandbox,
+            run.PermissionProfile,
+            run.NetworkPolicy,
+            rawEvents);
+
     private static AgentBenchmarkToolCall ToolCall(
         int sequence,
         string toolClass,
@@ -2414,7 +2639,7 @@ public sealed class CodexDiscoveryBenchmarkTests
             string candidateVersion = "0.5.0",
             bool includeBoundedReader = true,
             bool boundedReaderSucceeds = true,
-            string harnessVersion = "2.7.0",
+            string harnessVersion = "2.8.0",
             bool includeRawDotnet = true,
             bool includeRawSourceSearch = true,
             bool rawDotnetSucceeds = true,
@@ -2423,7 +2648,8 @@ public sealed class CodexDiscoveryBenchmarkTests
             bool rawSourceSearchUsesWindowsSeparators = false,
             bool canonicalPriorSummary = true,
             bool useHistoricalCorpusNormalizer = false,
-            bool omitSemanticDotnetToolClass = false)
+            bool omitSemanticDotnetToolClass = false,
+            bool isolationProbeLeaks = false)
         {
             var root = Path.Combine(
                 Path.GetTempPath(),
@@ -2441,6 +2667,12 @@ public sealed class CodexDiscoveryBenchmarkTests
                         ? $"raw{Path.PathSeparator}tools"
                         : "raw-tools")).FullName;
             var executable = InstallCodexProbe(root);
+            if (isolationProbeLeaks)
+            {
+                File.WriteAllText(
+                    Path.Combine(root, "codex.isolation-leak"),
+                    "enabled");
+            }
             var dnxExecutable = InstallDnxProbe(
                 rawToolsPath,
                 dnxProbeSucceeds,
