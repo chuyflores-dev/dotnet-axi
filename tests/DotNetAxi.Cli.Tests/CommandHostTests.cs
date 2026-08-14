@@ -169,6 +169,13 @@ public sealed class CommandHostTests
                     OperationPolicy.ExecutingInspection,
                     operation.Policy);
             },
+            operation =>
+            {
+                Assert.Equal("search implementations", operation.Name);
+                Assert.Same(
+                    OperationPolicy.ExecutingInspection,
+                    operation.Policy);
+            },
             operation => Assert.Equal("show", operation.Name),
             operation => Assert.Equal("show symbol", operation.Name),
             operation => Assert.Equal("show document", operation.Name),
@@ -182,7 +189,8 @@ public sealed class CommandHostTests
             operation => Assert.Equal("search syntax catch", operation.Name));
         Assert.All(host.Operations, operation =>
         {
-            if (operation.Name != "search references")
+            if (operation.Name is not "search references"
+                && operation.Name is not "search implementations")
             {
                 Assert.Same(OperationPolicy.Passive, operation.Policy);
             }

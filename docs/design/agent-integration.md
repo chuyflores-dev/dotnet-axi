@@ -157,10 +157,9 @@ teach agents to:
   requesting a larger character budget or complete output. Compose declaration,
   owner, document, and outline sections through bounded symbol context when
   those sections are needed together.
-- Treat references, callers, callees, tests, implementations, and other graph
-  or relationship sections as unavailable until the invoked version reports
-  them. The skill names the `0.5.0` context sections without inventing later
-  commands or conclusions.
+- Treat references, callers, callees, tests, and other graph or relationship
+  sections as unavailable until the invoked version reports them. The skill names
+  the `0.5.0` context sections without inventing later commands or conclusions.
 - Inspect impact before public changes.
 - Request bounded context.
 - Run fast validation during work.

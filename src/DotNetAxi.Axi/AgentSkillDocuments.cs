@@ -121,6 +121,7 @@ public static class AgentSkillDocuments
             "- Object creation: `search syntax object-creation --type <type> --path <scope> --limit 20`",
             "- Catch clause: `search syntax catch --type <type> --path <scope> --limit 20`",
             "- Declaration owner: `search symbol '<name>' --project <csproj> --fields id,kind,signature,owning_projects,variant_count,variants --limit 20`; use `--solution <sln>` instead of `--project` when solution scope is required, never both",
+            "- Concrete implementations: `search implementations '<symbol/v2/...>' --project <csproj> --fields id,owner,project,framework,target_identity --limit 20`; preserve all owner/framework variants.",
             string.Empty,
             "Increase the limit only when exhaustive output requires it. Follow a reported `retrieval_command` only when omitted rows matter. When coverage is complete, use the returned facts without a redundant help probe or matched-file reread.",
             string.Empty,

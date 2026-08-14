@@ -126,7 +126,7 @@ public static class AgentGuidanceCatalog
     public const string SkillName = "dotnet-axi";
 
     public const string SkillDescription =
-        "Use dnaxi 0.5.0 for deterministic evidence in .NET repositories: file, text, stable C# syntax, declaration, symbol, document, outline, and bounded context discovery. When a .NET task names a symbol, namespace, or owner project but no exact source path, first run Roslyn/MSBuild-backed search symbol with explicit project or solution scope before listing or reading source. When a controlled benchmark supplies the local feed, use dnx dnaxi@0.5.0 --source \"$DNAXI_LOCAL_FEED\" --verbosity quiet -- <command>. Skip non-.NET work and direct reads of already-known files.";
+        "Use dnaxi 0.5.0 for deterministic evidence in .NET repositories: file, text, stable C# syntax, declaration, symbol, document, outline, implementation relationships, and bounded context discovery. When a .NET task names a symbol, namespace, or owner project but no exact source path, first run Roslyn/MSBuild-backed search symbol with explicit project or solution scope before listing or reading source. When a controlled benchmark supplies the local feed, use dnx dnaxi@0.5.0 --source \"$DNAXI_LOCAL_FEED\" --verbosity quiet -- <command>. Skip non-.NET work and direct reads of already-known files.";
 
     public static AgentCommandGuidance Command { get; } =
         CreateCommand(SkillPackageVersion);
@@ -204,6 +204,7 @@ public static class AgentGuidanceCatalog
         [
             "Use text search for literals.",
             "Use stable syntax queries for syntax shape.",
+            "Use `search implementations` for compiler-verified implementation discovery.",
             "Use declaration search and resolved symbol operations for exact source identity.",
             "Request bounded context.",
         ],
@@ -225,13 +226,14 @@ public static class AgentGuidanceCatalog
         [
             $"Find C# declarations with `{commandPrefix} search symbol '<name>' --solution <solution> --fields id,kind,signature,owning_projects,variant_count,variants --limit 20`. Select `--solution` or `--project` explicitly when a repository has multiple entry points, and add `--include-tests` when the target may be test-only.",
             "Treat `search symbol` rows, owner projects, and framework/configuration variants as passive declaration candidates with unresolved compiler meaning. Preserve all reported variants; do not select one implicitly or call the row compiler-verified.",
+            $"Find concrete declaration implementations with `{commandPrefix} search implementations '<symbol/v2/...>' --solution <solution> --fields id,owner,project,framework,target_identity --limit 20`. Preserve every reported owner and framework variant; do not infer framework-specific behavior without a concrete match.",
             $"When compiler proof of a supported syntax construct is required and repository code execution is allowed, rerun its stable syntax query with `--verify`, for example `{commandPrefix} search syntax invocation --name SaveChangesAsync --path <scope> --verify --limit 20`. Report each construct and owner/framework variant as `verified`, `rejected`, or `unresolved`; do not generalize that proof into a different symbol claim.",
             $"Resolve one selected canonical `symbol/v2` identity with `{commandPrefix} show symbol '<symbol/v2/...>' --solution <solution> --max-chars 2000`. Reuse the complete discovery scope, including project, paths, tests, and generated-source eligibility. If the ID is stale or ambiguous, follow the structured correction and bounded replacement candidates, rerun the reported symbol query when needed, and select a replacement explicitly; never silently bind it.",
             $"Retrieve an exact document span with `{commandPrefix} show document '<path>' --start-line <line> --end-line <line> --max-chars 4000`. Follow its larger-budget recovery only when omitted characters matter; use `--full` only for an explicitly required complete document.",
             "For a code edit, once declaration search establishes the exact small file and owner, read that file directly. Do not guess a document end line or repeat semantic discovery after the edit when build or test validation is the required evidence.",
             $"Inspect source structure with `{commandPrefix} outline '<path-or-symbol>' --limit 100`. Keep symbol scope consistent, and use the reported full retrieval command only when omitted outline items matter.",
             $"Compose bounded symbol evidence with `{commandPrefix} context symbol '<symbol/v2/...>' --include declaration,owner,document,outline --max-chars 12000`. Reuse the selected symbol scope. Increase the budget or use `--full` only when the omitted whole sections are required.",
-            "In 0.5.0, `context symbol` supports only `declaration`, `owner`, `document`, and `outline`. Treat `references`, `callers`, `callees`, `tests`, implementations, and other relationship or graph requests as unavailable capability corrections; do not invent commands, sections, or conclusions.",
+            "In 0.5.0, `context symbol` supports only `declaration`, `owner`, `document`, and `outline`. Treat `references`, `callers`, `callees`, `tests`, and other relationship or graph requests as unavailable capability corrections; do not invent commands, sections, or conclusions.",
         ],
         safetyFlow:
         [

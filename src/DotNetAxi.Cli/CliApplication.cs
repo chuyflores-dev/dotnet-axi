@@ -327,6 +327,84 @@ internal static class CliApplication
             static () => new ReferenceSearchCommandHandler(),
             host.ResponseWriter);
 
+        var implementationsCommand = new Command(
+            "implementations",
+            "Find exact compiler implementations in dependency-aware project and framework scope.");
+        var implementationsTarget = new Argument<string>("symbol")
+        {
+            Description = "Canonical symbol/v2 ID, fully qualified name, or declaration query.",
+        };
+        var implementationsSolution = new Option<string?>("--solution")
+        {
+            Description = "Select one solution scope.",
+        };
+        var implementationsProject = new Option<string?>("--project")
+        {
+            Description = "Select one project and its evaluated dependency scope.",
+        };
+        var implementationsIncludeTests = new Option<bool>("--include-tests");
+        var implementationsIncludeGenerated = new Option<bool>("--include-generated");
+        var implementationsConfiguration = new Option<string?>("--configuration")
+        {
+            Description = "Select one evaluated MSBuild configuration.",
+        };
+        var implementationsFramework = new Option<string?>("--framework")
+        {
+            Description = "Select one declared target framework.",
+        };
+        var implementationsProperties = new Option<string[]>("--property")
+        {
+            AllowMultipleArgumentsPerToken = false,
+            Description = "Set an MSBuild name=value property; repeat for additional properties.",
+        };
+        var implementationsComplete = new Option<bool>("--complete")
+        {
+            Description = "Analyze the transitive reverse project graph and every supported framework variant.",
+        };
+        var implementationsLimit = new Option<int>("--limit")
+        {
+            DefaultValueFactory = static _ => 100,
+        };
+        var implementationsFull = new Option<bool>("--full");
+        var implementationsFields = CreateFieldsOption();
+        implementationsCommand.Arguments.Add(implementationsTarget);
+        implementationsCommand.Options.Add(implementationsSolution);
+        implementationsCommand.Options.Add(implementationsProject);
+        implementationsCommand.Options.Add(implementationsIncludeTests);
+        implementationsCommand.Options.Add(implementationsIncludeGenerated);
+        implementationsCommand.Options.Add(implementationsConfiguration);
+        implementationsCommand.Options.Add(implementationsFramework);
+        implementationsCommand.Options.Add(implementationsProperties);
+        implementationsCommand.Options.Add(implementationsComplete);
+        implementationsCommand.Options.Add(implementationsLimit);
+        implementationsCommand.Options.Add(implementationsFull);
+        implementationsCommand.Options.Add(implementationsFields);
+        host.RegisterCommand(
+            searchCommand,
+            implementationsCommand,
+            OperationPolicy.ExecutingInspection,
+            [
+                "dnaxi search implementations <symbol/v2/...>",
+                "dnaxi search implementations Demo.Service.Run --complete",
+            ]);
+        implementationsCommand.BindHandler(
+            result => ImplementationSearchCommandRequest.Create(
+                result.GetValue(implementationsTarget)!,
+                result.GetValue(implementationsSolution),
+                result.GetValue(implementationsProject),
+                result.GetValue(implementationsIncludeTests),
+                result.GetValue(implementationsIncludeGenerated),
+                result.GetValue(implementationsConfiguration),
+                result.GetValue(implementationsFramework),
+                result.GetValue(implementationsProperties) ?? [],
+                result.GetValue(implementationsComplete),
+                result.GetValue(implementationsLimit),
+                result.Tokens.Any(token => token.Value == "--limit"),
+                result.GetValue(implementationsFull),
+                result.GetValue(implementationsFields) ?? []),
+            static () => new ImplementationSearchCommandHandler(),
+            host.ResponseWriter);
+
         var showCommand = new Command(
             "show",
             "Show bounded detail for one stable evidence identity or document.");
