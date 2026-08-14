@@ -16,51 +16,81 @@ Durable delivery scope lives in
 [stories and epics](https://github.com/chuyflores-dev/dotnet-axi/blob/main/docs/stories/README.md);
 GitHub Issues track live status.
 
-## Run 0.4.0
+## Run 0.5.0
 
-`dnaxi` 0.4.0 requires the .NET 10 SDK. The primary path is an exact-version
+`dnaxi` 0.5.0 requires the .NET 10 SDK. The primary path is an exact-version
 one-shot invocation with no persistent tool installation:
 
 ```bash
-dnx dnaxi@0.4.0 --verbosity quiet -- --version
+dnx dnaxi@0.5.0 --verbosity quiet -- --version
 ```
 
-Version 0.4.0 moves the package ID from `dotnet-axi` to `dnaxi` while keeping
-the installed command `dnaxi`. The immutable 0.2.0 and 0.3.0 packages remain
-under the old ID. See the
-[0.4.0 release notes](https://github.com/chuyflores-dev/dotnet-axi/blob/main/docs/releases/0.4.0.md)
-for the exact surface, measured Codex evidence, and known limitations.
+Version 0.5.0 adds stable source identity and bounded context to the 0.4.0
+discovery surface. See the
+[0.5.0 release notes](https://github.com/chuyflores-dev/dotnet-axi/blob/main/docs/releases/0.5.0.md)
+for the exact surface, benchmark evidence, and known limitations.
 
 ## Source discovery
 
 Search normalized paths or literal source text without a persistent index:
 
 ```bash
-dnx dnaxi@0.4.0 --verbosity quiet -- search file 'Handler.cs' --path . --limit 20
-dnx dnaxi@0.4.0 --verbosity quiet -- search text 'Archive pipeline ready.' --path . --limit 20
+dnx dnaxi@0.5.0 --verbosity quiet -- search file 'Handler.cs' --path . --limit 20
+dnx dnaxi@0.5.0 --verbosity quiet -- search text 'Archive pipeline ready.' --path . --limit 20
 ```
 
 Use .NET regular-expression semantics explicitly, or request a stable syntax
 shape backed by Roslyn:
 
 ```bash
-dnx dnaxi@0.4.0 --verbosity quiet -- search text 'Handle(?:Audit|Retry)Async' --regex --path . --limit 20
-dnx dnaxi@0.4.0 --verbosity quiet -- search syntax invocation --name Record --path . --limit 20
+dnx dnaxi@0.5.0 --verbosity quiet -- search text 'Handle(?:Audit|Retry)Async' --regex --path . --limit 20
+dnx dnaxi@0.5.0 --verbosity quiet -- search syntax invocation --name Record --path . --limit 20
 ```
 
 Syntax results are candidates for the requested shape, not compiler-verified
 symbol identity. Use the returned retrieval command only when the bounded
 response omits rows that are needed.
 
+## Symbol identity and bounded context
+
+Find a declaration with explicit project or solution scope and request its
+opaque `symbol/v2` identity:
+
+```bash
+dnx dnaxi@0.5.0 --verbosity quiet -- search symbol 'LedgerService' \
+  --project src/Core/Core.csproj \
+  --fields id,kind,signature,owning_projects,variant_count,variants \
+  --limit 20
+```
+
+Reuse the returned identity and the same scope for bounded evidence:
+
+```bash
+dnx dnaxi@0.5.0 --verbosity quiet -- show symbol '<symbol/v2/...>' \
+  --project src/Core/Core.csproj --max-chars 2000
+dnx dnaxi@0.5.0 --verbosity quiet -- show document src/Core/LedgerService.cs \
+  --start-line 20 --end-line 80 --max-chars 4000
+dnx dnaxi@0.5.0 --verbosity quiet -- outline src/Core/LedgerService.cs --limit 100
+dnx dnaxi@0.5.0 --verbosity quiet -- context symbol '<symbol/v2/...>' \
+  --project src/Core/Core.csproj \
+  --include declaration,owner,document,outline --max-chars 12000
+```
+
+`context symbol` in 0.5.0 contains only declaration, owner, document, and
+outline sections. Semantic relationships and graphs are not part of this
+release. Syntax searches support opt-in `--verify`; verification executes
+repository design-time build targets and reports every owner/framework result
+without turning unresolved candidates into verified facts.
+
 Global and repository-local tool installation remain compatibility paths:
 
 ```bash
-dotnet tool install --global dnaxi --version 0.4.0
+dotnet tool install --global dnaxi --version 0.5.0
 dnaxi --version
 
 # Run this first only when the repository has no tool manifest.
 dotnet new tool-manifest
-dotnet tool install dnaxi --version 0.4.0
+dotnet tool install dnaxi --version 0.5.0
 dotnet tool run dnaxi -- --version
 ```
 
@@ -89,11 +119,11 @@ Create and verify a disposable local package without publishing it:
 
 ```bash
 pwsh ./eng/pack-local-candidate.ps1 \
-  -Version 0.4.0-alpha.1 \
+  -Version 0.5.0-alpha.1 \
   -PackageRoot artifacts/packages/local
 
 pwsh ./eng/verify-tool-package.ps1 \
-  -PackageDirectory artifacts/packages/local/0.4.0-alpha.1
+  -PackageDirectory artifacts/packages/local/0.5.0-alpha.1
 
 # Pack and run exact stable and prerelease versions through dnx only.
 pwsh ./eng/verify-dnx-version-matrix.ps1
@@ -103,8 +133,8 @@ With .NET 10 or later, the local package can be invoked once without a
 persistent installation:
 
 ```bash
-dnx dnaxi@0.4.0-alpha.1 \
-  --source ./artifacts/packages/local/0.4.0-alpha.1 \
+dnx dnaxi@0.5.0-alpha.1 \
+  --source ./artifacts/packages/local/0.5.0-alpha.1 \
   --verbosity quiet \
   -- --version
 ```
