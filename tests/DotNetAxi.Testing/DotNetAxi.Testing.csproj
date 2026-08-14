@@ -5,8 +5,6 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="DotNetAxi.Testing.Tests" />
-    <InternalsVisibleTo Include="DotNetAxi.CodexSmoke" />
-    <InternalsVisibleTo Include="DotNetAxi.CodexBenchmark" />
   </ItemGroup>
 
   <ItemGroup>

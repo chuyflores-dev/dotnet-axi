@@ -19,6 +19,8 @@ public sealed record StaleGeneratedDocument(
 public static class AgentSkillDocuments
 {
     public const string SkillRelativePath = "skills/dotnet-axi/SKILL.md";
+    public const string AdvancedEvidenceRelativePath =
+        "skills/dotnet-axi/references/advanced-evidence.md";
 
     private static readonly UTF8Encoding Utf8 = new(
         encoderShouldEmitUTF8Identifier: false,
@@ -33,6 +35,9 @@ public static class AgentSkillDocuments
             new GeneratedAgentSkillDocument(
                 SkillRelativePath,
                 RenderSkill(guidance)),
+            new GeneratedAgentSkillDocument(
+                AdvancedEvidenceRelativePath,
+                RenderAdvancedEvidence(guidance)),
         ]);
     }
 
@@ -82,6 +87,10 @@ public static class AgentSkillDocuments
 
     private static string RenderSkill(AgentCommandGuidance guidance)
     {
+        var commandPrefix =
+            $"dnx dnaxi@{AgentGuidanceCatalog.SkillPackageVersion} --verbosity quiet --";
+        var sourcePinnedPrefix =
+            $"dnx dnaxi@{AgentGuidanceCatalog.SkillPackageVersion} --source \"$DNAXI_LOCAL_FEED\" --verbosity quiet --";
         var lines = new List<string>
         {
             "---",
@@ -91,51 +100,65 @@ public static class AgentSkillDocuments
             string.Empty,
             "# Use dotnet-axi",
             string.Empty,
+            "## Invoke safely",
+            string.Empty,
+            $"- When `DNAXI_LOCAL_FEED` is set, use `{sourcePinnedPrefix} <command>`.",
+            $"- Otherwise use the exact installed version: `{commandPrefix} <command>`.",
+            "- Do not install hooks, edit agent configuration, or change sandbox, approval, trust, or network policy.",
+            "- Run documented routes directly. Use narrow help once only when the required grammar is unknown.",
+            "- When the task does not provide the exact target file or declaration, use one narrow `dnaxi` discovery route before opening source; do not guess a path from names.",
+            "- Read an already-known file directly when that is smaller. Fall back to ordinary tools when the invoked version does not expose the required capability.",
+            string.Empty,
+            "## Discover source",
+            string.Empty,
+            "Use a narrow `--path` and bounded `--limit`:",
+            string.Empty,
+            "- File path: `search file '<path-fragment>' --path <scope> --limit 20`",
+            "- Literal text: `search text '<literal>' --path <scope> --limit 20`",
+            "- .NET regex: `search text '<dotnet-regex>' --regex --path <scope> --limit 20`",
+            "- Invocation: `search syntax invocation --name <method> --path <scope> --limit 20`",
+            "- Attributed class: `search syntax class --attribute <attribute> --path <scope> --limit 20`",
+            "- Object creation: `search syntax object-creation --type <type> --path <scope> --limit 20`",
+            "- Catch clause: `search syntax catch --type <type> --path <scope> --limit 20`",
+            "- Declaration owner: `search symbol '<name>' --project <csproj> --fields id,kind,signature,owning_projects,variant_count,variants --limit 20`; use `--solution <sln>` instead of `--project` when solution scope is required, never both",
+            string.Empty,
+            "Increase the limit only when exhaustive output requires it. Follow a reported `retrieval_command` only when omitted rows matter. When coverage is complete, use the returned facts without a redundant help probe or matched-file reread.",
+            string.Empty,
+            "Treat syntax results as syntax candidates, not compiler-proven identity. For object creation, keep only `type_match: exact`; do not report `type_match: unresolved` target-typed `new()` unless compiler verification is explicitly requested and allowed.",
+            string.Empty,
+            "## Use advanced evidence on demand",
+            string.Empty,
+            "Read [references/advanced-evidence.md](references/advanced-evidence.md) only when the task requires symbol identity, document spans, outlines, composed context, or compiler verification beyond declaration ownership.",
+            "When a target is identified by symbol name, namespace, or owner project rather than exact file, use its Roslyn/MSBuild declaration search; do not substitute text search for semantic ownership.",
+            string.Empty,
+            "## Preserve evidence",
+            string.Empty,
+            "- Start passive and keep commands scoped and bounded.",
+            "- Treat package acquisition, repository-code execution, network access, and writes as explicit operations subject to host policy.",
+            "- Report the command, scope, result status, coverage, and any uncertainty or validation gap.",
+            "- Do not retry denied access until policy changes, and never invent unsupported commands or conclusions.",
         };
-        AddBullets(lines, guidance.Boundaries);
 
-        lines.AddRange(
-        [
-            string.Empty,
-            "## Route the task",
-            string.Empty,
-        ]);
-        AddBullets(lines, guidance.UseWhen);
-        AddBullets(lines, guidance.SkipWhen);
+        return JoinLines(lines);
+    }
 
-        lines.AddRange(
-        [
+    private static string RenderAdvancedEvidence(
+        AgentCommandGuidance guidance)
+    {
+        var lines = new List<string>
+        {
+            "# Advanced dnaxi evidence",
             string.Empty,
-            "## Start with dnx",
-            string.Empty,
-        ]);
-        AddNumbered(lines, guidance.ActivationFlow);
-
-        lines.AddRange(
-        [
-            string.Empty,
-            "## Invoke on demand",
-            string.Empty,
-        ]);
-        AddNumbered(lines, guidance.InvocationFlow);
-
-        lines.AddRange(
-        [
+            "Read this reference only for declarations, symbol identity, bounded source context, or compiler verification.",
             string.Empty,
             "## Follow reported capabilities",
             string.Empty,
             guidance.CapabilityCondition,
             string.Empty,
-        ]);
+            guidance.Authority,
+            string.Empty,
+        };
         AddBullets(lines, guidance.CapabilityFlow);
-
-        lines.AddRange(
-        [
-            string.Empty,
-            "## Discover source with bounded queries",
-            string.Empty,
-        ]);
-        AddNumbered(lines, guidance.SourceDiscoveryFlow);
 
         lines.AddRange(
         [

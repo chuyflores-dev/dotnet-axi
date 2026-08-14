@@ -1,5 +1,0 @@
-{"type":"thread.started","thread_id":"thread-scope-paths"}
-{"type":"turn.started"}
-{"type":"item.completed","item":{"id":"scope-command","type":"command_execution","command":"cat Program.cs \"src/My Folder/Quoted.cs\" \"{{WORKSPACE}}/Nested/Absolute.cs\"","aggregated_output":"Program.cs\n\"src/My Folder/Quoted.cs\"\n{{WORKSPACE}}/Nested/Absolute.cs\n","exit_code":0,"status":"completed"}}
-{"type":"item.completed","item":{"id":"scope-message","type":"agent_message","text":"scope"}}
-{"type":"turn.completed","usage":{"input_tokens":13,"output_tokens":2}}

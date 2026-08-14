@@ -58,17 +58,6 @@ public sealed class RepositoryFixtureFactoryTests
                 Assert.Contains("\"version\": \"10.0.302\"", globalJson);
                 Assert.True(File.Exists(first.MetadataPath));
                 Assert.True(File.Exists(first.NuGetConfigPath));
-                foreach (var profile in new[]
-                         {
-                             ".zprofile", ".bash_profile", ".profile",
-                         })
-                {
-                    Assert.Contains(
-                        CodexAgentBenchmarkAdapter
-                            .ShellSearchPathEnvironmentVariable,
-                        await File.ReadAllTextAsync(
-                            Path.Combine(first.HomePath, profile)));
-                }
             }
 
             Assert.False(Directory.Exists(firstRoot));

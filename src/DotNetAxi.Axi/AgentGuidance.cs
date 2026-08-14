@@ -126,7 +126,7 @@ public static class AgentGuidanceCatalog
     public const string SkillName = "dotnet-axi";
 
     public const string SkillDescription =
-        "Use dotnet-axi for deterministic .NET repository evidence. Trigger for finding .NET files by path, searching literal or regular-expression text, locating stable C# syntax shapes or declarations, resolving symbol identity, retrieving bounded source context, inspecting workspace, semantic, impact, or analysis evidence, and validating completion. When a controlled benchmark supplies the local feed, route applicable discovery through dnx dnaxi@0.5.0 --source \"$DNAXI_LOCAL_FEED\" --verbosity quiet -- <command>; skip non-.NET work and direct reads of already-known files.";
+        "Use dnaxi 0.5.0 for deterministic evidence in .NET repositories: file, text, stable C# syntax, declaration, symbol, document, outline, and bounded context discovery. When a .NET task names a symbol, namespace, or owner project but no exact source path, first run Roslyn/MSBuild-backed search symbol with explicit project or solution scope before listing or reading source. When a controlled benchmark supplies the local feed, use dnx dnaxi@0.5.0 --source \"$DNAXI_LOCAL_FEED\" --verbosity quiet -- <command>. Skip non-.NET work and direct reads of already-known files.";
 
     public static AgentCommandGuidance Command { get; } =
         CreateCommand(SkillPackageVersion);
@@ -171,7 +171,9 @@ public static class AgentGuidanceCatalog
         useWhen:
         [
             "Use dotnet-axi for a .NET workspace when deterministic structured evidence is useful.",
-            "Use only a workspace, source, semantic, impact, analysis, or validation capability reported by the invoked version.",
+            "When the task does not provide the exact target file or declaration, use one narrow matching discovery route before opening source instead of guessing a path from names.",
+            "When a task identifies a declaration by symbol name, namespace, or owner project, use Roslyn/MSBuild-backed declaration search instead of text search.",
+            "Use only a workspace, source, or semantic discovery capability reported by the invoked version.",
         ],
         skipWhen:
         [
@@ -181,6 +183,8 @@ public static class AgentGuidanceCatalog
         ],
         activationFlow:
         [
+            $"When the task does not provide the exact target file or declaration, run one narrow matching discovery route through `{commandPrefix}` before opening source; do not guess a path from names.",
+            "When the target is identified by symbol name, namespace, or owner project, use declaration search with explicit project or solution scope; do not substitute literal text search for semantic ownership.",
             $"For .NET file, literal, regular-expression, stable-syntax, declaration, or bounded symbol-context discovery, run the matching route through `{commandPrefix}` when the invoked version reports it.",
             "Invoke known source-discovery routes directly; do not add a help probe before a known route. Inspect only the narrowest relevant help once when no documented route or option applies.",
             "Read an already-known file directly when that is smaller. If the required capability is unavailable, use an available direct tool and report the gap.",
@@ -201,13 +205,11 @@ public static class AgentGuidanceCatalog
             "Use text search for literals.",
             "Use stable syntax queries for syntax shape.",
             "Use declaration search and resolved symbol operations for exact source identity.",
-            "Inspect impact before public changes.",
             "Request bounded context.",
-            "Run fast validation during work.",
-            "Run standard validation before completion.",
         ],
         sourceDiscoveryFlow:
         [
+            $"When the task does not provide the exact target file or declaration, establish it with one narrow `{commandPrefix}` discovery query before opening source.",
             "Use the exact routes below directly when the invoked version reports them. Do not run a redundant help command before a known file, literal, regular-expression, or stable-syntax route. If a route is unavailable, use an available direct tool and report the capability gap instead of inventing a command.",
             $"Find a file by normalized path with `{commandPrefix} search file '<path-fragment>' --path <scope> --limit 20`. If the exact file is already known and a direct read is smaller, read it directly.",
             $"Find literal text with `{commandPrefix} search text '<literal>' --path <scope> --limit 20`.",
@@ -226,6 +228,7 @@ public static class AgentGuidanceCatalog
             $"When compiler proof of a supported syntax construct is required and repository code execution is allowed, rerun its stable syntax query with `--verify`, for example `{commandPrefix} search syntax invocation --name SaveChangesAsync --path <scope> --verify --limit 20`. Report each construct and owner/framework variant as `verified`, `rejected`, or `unresolved`; do not generalize that proof into a different symbol claim.",
             $"Resolve one selected canonical `symbol/v2` identity with `{commandPrefix} show symbol '<symbol/v2/...>' --solution <solution> --max-chars 2000`. Reuse the complete discovery scope, including project, paths, tests, and generated-source eligibility. If the ID is stale or ambiguous, follow the structured correction and bounded replacement candidates, rerun the reported symbol query when needed, and select a replacement explicitly; never silently bind it.",
             $"Retrieve an exact document span with `{commandPrefix} show document '<path>' --start-line <line> --end-line <line> --max-chars 4000`. Follow its larger-budget recovery only when omitted characters matter; use `--full` only for an explicitly required complete document.",
+            "For a code edit, once declaration search establishes the exact small file and owner, read that file directly. Do not guess a document end line or repeat semantic discovery after the edit when build or test validation is the required evidence.",
             $"Inspect source structure with `{commandPrefix} outline '<path-or-symbol>' --limit 100`. Keep symbol scope consistent, and use the reported full retrieval command only when omitted outline items matter.",
             $"Compose bounded symbol evidence with `{commandPrefix} context symbol '<symbol/v2/...>' --include declaration,owner,document,outline --max-chars 12000`. Reuse the selected symbol scope. Increase the budget or use `--full` only when the omitted whole sections are required.",
             "In 0.5.0, `context symbol` supports only `declaration`, `owner`, `document`, and `outline`. Treat `references`, `callers`, `callees`, `tests`, implementations, and other relationship or graph requests as unavailable capability corrections; do not invent commands, sections, or conclusions.",
@@ -238,7 +241,7 @@ public static class AgentGuidanceCatalog
             "Treat denied filesystem, process, or network access as a host restriction; retry only after a confirmed policy change and do not loop.",
         ],
         completion:
-            $"Do not claim completion solely because files changed. When the invoked version exposes validate, use the strongest applicable `{commandPrefix} validate` evidence available within the requested scope. Otherwise run the strongest applicable project validation and report the evidence and any gaps.",
+            "Do not claim completion solely because files changed. The pinned 0.5.0 command set does not include a `validate` route; run the repository's own applicable `dotnet` build or test validation and report the evidence and any gaps.",
         evidenceReport:
             "Report the command, requested scope, result status, resolution, coverage, confidence when applicable, and any remaining blocker or validation gap.");
     }

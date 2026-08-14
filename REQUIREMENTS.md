@@ -110,9 +110,14 @@ The MVP is acceptable when:
   artifact safety tests pass on the published compatibility matrix.
 - The deterministic performance fixture meets the documented cold P95 targets
   on the designated reference runner.
-- Agent-task benchmarks show no safety-critical regression, equal or higher
-  aggregate success, and at least 10% lower median total token use than the
-  documented raw-tool baseline for the tested agent/model/harness.
+- A candidate agent canary completes every release-critical repository task
+  with an allowed diff and passing deterministic validation. Any `dnaxi`
+  diagnostic is retained, while an unrecovered tool problem is observed as a
+  task failure; final-answer wording is not graded.
+- A named agent-experience improvement claim uses a paired raw-tool comparison
+  to show equal or higher verified task success, no safety-critical regression,
+  and at least 10% lower median total tokens and wall-clock duration for the
+  tested agent, model, and harness.
 - Generated agent guidance requires applicable validation evidence before
   claiming completion.
 

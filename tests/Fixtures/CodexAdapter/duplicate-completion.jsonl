@@ -1,4 +1,0 @@
-{"type":"thread.started","thread_id":"thread-duplicate-completion"}
-{"type":"turn.started"}
-{"type":"turn.completed","usage":{"input_tokens":3,"output_tokens":2}}
-{"type":"turn.completed","usage":{"input_tokens":3,"output_tokens":2}}

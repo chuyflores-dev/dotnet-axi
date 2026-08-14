@@ -17,16 +17,23 @@ public sealed class AgentSkillGenerationTests
         Assert.Equal(
             [
                 AgentSkillDocuments.SkillRelativePath,
+                AgentSkillDocuments.AdvancedEvidenceRelativePath,
             ],
             first.Select(static document => document.RelativePath));
 
         var skill = first.Single(document =>
             document.RelativePath == AgentSkillDocuments.SkillRelativePath).Content;
+        var advanced = first.Single(document =>
+            document.RelativePath ==
+            AgentSkillDocuments.AdvancedEvidenceRelativePath).Content;
 
         AssertPortableMetadata(skill);
-        AssertBounded(skill, maximumLines: 125, maximumUtf8Bytes: 12_000);
+        AssertBounded(skill, maximumLines: 60, maximumUtf8Bytes: 5_000);
+        AssertBounded(advanced, maximumLines: 80, maximumUtf8Bytes: 12_000);
         Assert.DoesNotContain('\r', skill);
+        Assert.DoesNotContain('\r', advanced);
         Assert.EndsWith("\n", skill);
+        Assert.EndsWith("\n", advanced);
 
         var guidance = AgentGuidanceCatalog.Command;
         Assert.Equal(
@@ -34,47 +41,54 @@ public sealed class AgentSkillGenerationTests
             guidance.Invocation);
         Assert.DoesNotContain("<exact-version>", skill);
         Assert.Contains(guidance.Invocation, skill);
-        Assert.Contains(guidance.HomeInvocation, skill);
-        Assert.Contains(guidance.HelpInvocation, skill);
-        Assert.Contains(guidance.VersionInvocation, skill);
-        Assert.Contains(guidance.Authority, skill);
-        Assert.Contains(guidance.CapabilityCondition, skill);
-        Assert.Contains(guidance.Completion, skill);
-        Assert.DoesNotContain("references/", skill);
+        Assert.Contains(
+            $"dnx dnaxi@{AgentGuidanceCatalog.SkillPackageVersion} --source \"$DNAXI_LOCAL_FEED\" --verbosity quiet -- <command>",
+            skill);
+        Assert.Contains(guidance.Authority, advanced);
+        Assert.Contains(guidance.CapabilityCondition, advanced);
+        Assert.Contains(guidance.Completion, advanced);
+        Assert.Contains(
+            "does not include a `validate` route",
+            advanced,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "-- validate",
+            skill + advanced,
+            StringComparison.Ordinal);
+        Assert.Contains("references/advanced-evidence.md", skill);
         Assert.DoesNotContain("Codex", skill);
-        Assert.Contains("## Start with dnx", skill);
-        Assert.Contains("Default to one-shot", skill);
-        Assert.Contains("do not add a help probe before a known route", skill);
+        Assert.Contains("## Invoke safely", skill);
+        Assert.Contains("Run documented routes directly", skill);
+        Assert.Contains(
+            "does not provide the exact target file or declaration",
+            skill,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "first run Roslyn/MSBuild-backed search symbol",
+            skill,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "do not substitute text search for semantic ownership",
+            skill,
+            StringComparison.Ordinal);
         Assert.DoesNotContain("search file --help", skill);
         Assert.DoesNotContain("search text --help", skill);
         Assert.DoesNotContain("search syntax --help", skill);
         Assert.DoesNotContain("search syntax invocation --help", skill);
         Assert.Contains(
-            "Inspect only the narrowest relevant help once when no documented route or option applies",
+            "use the returned facts without a redundant help probe or matched-file reread",
             skill);
         Assert.Contains(
-            "return its requested facts directly without a redundant help probe or matched-file reread",
-            skill);
-        Assert.DoesNotContain("route or options are unknown", skill);
-        Assert.DoesNotContain(
-            "Before source discovery, inspect the invoked version's structured help",
-            skill);
-        foreach (var item in guidance.ActivationFlow)
-        {
-            Assert.Contains(item, skill);
-        }
-        foreach (var item in guidance.UseWhen
-                     .Concat(guidance.SkipWhen)
-                     .Concat(guidance.CapabilityFlow)
-                     .Concat(guidance.SourceDiscoveryFlow)
-                     .Concat(guidance.SymbolContextFlow)
-                     .Concat(guidance.SafetyFlow))
-        {
-            Assert.Contains(item, skill);
-        }
+            "search symbol '<name>' --project <csproj>",
+            skill,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "never both",
+            skill,
+            StringComparison.Ordinal);
 
         AssertSourceDiscoveryGuidance(skill);
-        AssertSymbolContextGuidance(skill);
+        AssertSymbolContextGuidance(advanced);
 
         Assert.DoesNotContain("dnx dotnet-axi", skill);
         Assert.DoesNotContain("dnx dnaxi --", skill);
@@ -92,12 +106,12 @@ public sealed class AgentSkillGenerationTests
                      "--output-last-message",
                  })
         {
-            Assert.DoesNotContain(codexWorkerToken, skill);
+            Assert.DoesNotContain(codexWorkerToken, skill + advanced);
         }
         const string shortOutputFlagPattern =
             @"(?<![\p{L}\p{N}])-o(?=$|[\s`])";
         Assert.Matches(shortOutputFlagPattern, "Use `-o result.txt`.");
-        Assert.DoesNotMatch(shortOutputFlagPattern, skill);
+        Assert.DoesNotMatch(shortOutputFlagPattern, skill + advanced);
 
     }
 
@@ -232,7 +246,9 @@ public sealed class AgentSkillGenerationTests
             $"description: {AgentGuidanceCatalog.SkillDescription}",
             lines[2]);
         Assert.Equal("---", lines[3]);
-        Assert.Contains("Trigger for finding .NET files", lines[2]);
+        Assert.Contains(
+            "first run Roslyn/MSBuild-backed search symbol",
+            lines[2]);
         Assert.Contains(
             $"dnx dnaxi@{AgentGuidanceCatalog.SkillPackageVersion} --source \"$DNAXI_LOCAL_FEED\" --verbosity quiet -- <command>",
             lines[2]);
@@ -274,20 +290,34 @@ public sealed class AgentSkillGenerationTests
         string installation)
     {
         var skillPath = Path.Combine(installation, "SKILL.md");
+        var advancedPath = Path.Combine(
+            installation,
+            "references",
+            "advanced-evidence.md");
         Assert.True(File.Exists(skillPath));
+        Assert.True(File.Exists(advancedPath));
         AssertPortableMetadata(File.ReadAllText(skillPath));
         AssertSourceDiscoveryGuidance(File.ReadAllText(skillPath));
-        AssertSymbolContextGuidance(File.ReadAllText(skillPath));
+        AssertSymbolContextGuidance(File.ReadAllText(advancedPath));
         Assert.Equal(
             File.ReadAllBytes(Path.Combine(source, "SKILL.md")),
             File.ReadAllBytes(skillPath));
         Assert.Equal(
-            ["SKILL.md"],
+            File.ReadAllBytes(Path.Combine(
+                source,
+                "references",
+                "advanced-evidence.md")),
+            File.ReadAllBytes(advancedPath));
+        Assert.Equal(
+            ["SKILL.md", "references/advanced-evidence.md"],
             Directory.EnumerateFiles(
                     installation,
                     "*",
                     SearchOption.AllDirectories)
-                .Select(path => Path.GetRelativePath(installation, path)));
+                .Select(path => Path
+                    .GetRelativePath(installation, path)
+                    .Replace(Path.DirectorySeparatorChar, '/'))
+                .Order(StringComparer.Ordinal));
     }
 
     private static void AssertSourceDiscoveryGuidance(string content)
@@ -297,17 +327,16 @@ public sealed class AgentSkillGenerationTests
                      "search file '<path-fragment>'",
                      "search text '<literal>'",
                      "search text '<dotnet-regex>' --regex",
-                     "search syntax invocation --name SaveChangesAsync",
+                     "search syntax invocation --name <method>",
                      "search syntax class --attribute <attribute>",
                      "search syntax catch --type <type>",
                      "search syntax object-creation --type <type>",
                      "keep only `type_match: exact`",
                      "do not report `type_match: unresolved` target-typed `new()`",
                      "--path <scope> --limit 20",
-                     "built-in engine",
-                     "use an available direct tool",
+                     "Fall back to ordinary tools",
                      "retrieval_command",
-                     "syntax candidates, never as compiler-verified",
+                     "syntax candidates, not compiler-proven",
                  })
         {
             Assert.Contains(required, content);

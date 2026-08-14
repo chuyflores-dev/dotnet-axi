@@ -5,14 +5,19 @@
 The release has repeatable evidence for correctness, compatibility, security,
 performance, and complete agent-task outcomes.
 
+S40 supersedes the compiled runner and provider-adapter work items below. Their
+story files remain historical records; they do not define the current release
+gate.
+
 ## Scope
 
 - Shared unit, integration, oracle, golden-output, cross-platform, and security
   test infrastructure.
 - Deterministic large-repository fixture and cold P95 benchmark harness.
-- Agent-neutral task and runner contracts with Codex-first and later Claude
-  adapters.
-- Release evidence for the documented performance and agent-experience gates.
+- Deterministic CLI checks, a manual one-task benchmark script, and occasional
+  paired runs for named agent-experience claims.
+- Release evidence for the documented correctness, performance, and canary
+  gates.
 
 ## Boundary
 
@@ -68,11 +73,12 @@ testing until the end.
 - [MVP-E13-S34 — Separate Agent Skill installation from NuGet packaging](MVP-E13-S34-separate-skill-distribution.md)
 - [MVP-E13-S35 — Remove cross-agent skill activation noise](MVP-E13-S35-cross-agent-skill-activation.md)
 - [MVP-E13-S36 — Repair the 0.5.0 Codex symbol-context release gate](MVP-E13-S36-repair-0.5.0-codex-release-gate.md)
+- [MVP-E13-S40 — Simplify the agent outcome benchmark](MVP-E13-S40-simplify-agent-outcome-benchmark.md)
 
 ## Complete when
 
 - Required correctness, platform, security, and cold-performance gates pass on
   the published matrix and designated runner.
-- Codex and Claude agent-task runs independently demonstrate the MVP
-  release-bar outcome against the documented raw-tool baseline with
-  reproducible evidence.
+- The release candidate passes the applicable candidate agent canary.
+- Any named comparative agent-experience claim has separate paired raw-tool
+  evidence for the exact agent, model, corpus, and harness.

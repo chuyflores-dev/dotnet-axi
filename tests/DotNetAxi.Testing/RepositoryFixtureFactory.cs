@@ -120,26 +120,6 @@ public sealed class RepositoryFixtureFactory
                 """.ReplaceLineEndings("\n"),
                 Utf8WithoutBom,
                 cancellationToken);
-            var shellPathVariable = CodexAgentBenchmarkAdapter
-                .ShellSearchPathEnvironmentVariable;
-            var shellSearchPathProfile = string.Concat(
-                    "if [ -n \"${", shellPathVariable, ":-}\" ]; then\n",
-                    "    PATH=\"${", shellPathVariable, "}\"\n",
-                    "    export PATH\n",
-                    "fi\n")
-                .ReplaceLineEndings("\n");
-            foreach (var profile in new[]
-                     {
-                         ".zprofile", ".bash_profile", ".profile",
-                     })
-            {
-                await File.WriteAllTextAsync(
-                    Path.Combine(homePath, profile),
-                    shellSearchPathProfile,
-                    Utf8WithoutBom,
-                    cancellationToken);
-            }
-
             await File.WriteAllTextAsync(
                 nuGetConfigPath,
                 """

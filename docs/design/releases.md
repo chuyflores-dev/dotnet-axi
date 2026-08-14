@@ -45,7 +45,7 @@ compatibility, or quality work until a later milestone.
 | `0.6.0` | Semantic relationships and graphs | References, implementations, inheritance, callers/callees, project graphs, paths, cycles, and impact |
 | `0.7.0` | Analysis and structured SDK execution | Compiler/configured analysis plus noninteractive restore, build, test, format, and constrained `dotnet` execution |
 | `0.8.0` | Configurable validation | Repository configuration, freshness, affected scope, and deterministic fast and standard validation profiles |
-| `0.9.0` | Safe agent integration | Claude Code and Codex setup, repair, removal, effect disclosure, process safety, secret protection, diagnostic artifacts, and the Claude benchmark adapter |
+| `0.9.0` | Safe agent integration | Claude Code and Codex setup, repair, removal, effect disclosure, process safety, secret protection, and diagnostic artifacts |
 | `0.10.0` | Feature-complete MVP preview | Packaging and compatibility matrices plus release-level correctness, security, performance, and separate Codex and Claude agent-task evidence |
 | `1.0.0` | Supported MVP release | The complete requirements release bar passes with no known release blocker; only stabilization changes are expected after `0.10.0` |
 
