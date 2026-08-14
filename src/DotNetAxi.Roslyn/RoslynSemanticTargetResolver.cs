@@ -6,6 +6,7 @@ using DotNetAxi.Structural;
 using DotNetAxi.Workspaces;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.MSBuild;
 using Microsoft.CodeAnalysis.Text;
 
@@ -228,9 +229,24 @@ public sealed class RoslynSemanticTargetResolver
         WorkspaceTraversalRequest traversal,
         SymbolDeclarationScope? scope = null,
         CancellationToken cancellationToken = default)
+        => await ResolveAsync(
+                target,
+                traversal,
+                scope,
+                new ProjectGraphEvaluationOptions(),
+                cancellationToken)
+            .ConfigureAwait(false);
+
+    public async ValueTask<SemanticTargetResolution> ResolveAsync(
+        string target,
+        WorkspaceTraversalRequest traversal,
+        SymbolDeclarationScope? scope,
+        ProjectGraphEvaluationOptions evaluationOptions,
+        CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(target);
         ArgumentNullException.ThrowIfNull(traversal);
+        ArgumentNullException.ThrowIfNull(evaluationOptions);
         if (target.Contains('\0', StringComparison.Ordinal))
         {
             throw new ArgumentException(
@@ -261,6 +277,7 @@ public sealed class RoslynSemanticTargetResolver
         var compilerVariants = _variantResolver.Resolve(
             root,
             EffectiveProjects(scope),
+            evaluationOptions,
             cancellationToken);
         var contexts = new Dictionary<CompilerContextKey, CompilerContext>();
         try
@@ -274,6 +291,7 @@ public sealed class RoslynSemanticTargetResolver
                         candidate,
                         compilerVariants,
                         contexts,
+                        evaluationOptions,
                         cancellationToken)
                     .ConfigureAwait(false));
             }
@@ -419,6 +437,7 @@ public sealed class RoslynSemanticTargetResolver
         SymbolDeclarationMatch candidate,
         CompilerVariantResolution resolution,
         IDictionary<CompilerContextKey, CompilerContext> contexts,
+        ProjectGraphEvaluationOptions evaluationOptions,
         CancellationToken cancellationToken)
     {
         if (!resolution.IsAvailable)
@@ -468,6 +487,7 @@ public sealed class RoslynSemanticTargetResolver
                 context = await LoadContextAsync(
                         workspaceRoot,
                         variant,
+                        evaluationOptions,
                         cancellationToken)
                     .ConfigureAwait(false);
                 contexts.Add(key, context);
@@ -523,8 +543,17 @@ public sealed class RoslynSemanticTargetResolver
         var model = context.Compilation!.GetSemanticModel(
             tree,
             ignoreAccessibility: true);
-        var symbol = model.GetDeclaredSymbol(node, cancellationToken);
-        if (symbol is null || symbol.Kind is SymbolKind.ErrorType)
+        var symbol = node is BaseNamespaceDeclarationSyntax namespaceDeclaration
+            ? NamespaceSymbol(
+                context.Compilation,
+                namespaceDeclaration)
+            : model.GetDeclaredSymbol(node, cancellationToken);
+        if (symbol is null)
+        {
+            return Unresolved(variant, "semantic.target_unsupported");
+        }
+
+        if (symbol.Kind is SymbolKind.ErrorType)
         {
             return Unresolved(variant, "semantic.target_unsupported");
         }
@@ -542,9 +571,37 @@ public sealed class RoslynSemanticTargetResolver
             symbol);
     }
 
+    private static INamespaceSymbol? NamespaceSymbol(
+        CSharpCompilation compilation,
+        BaseNamespaceDeclarationSyntax declaration)
+    {
+        INamespaceSymbol current = compilation.GlobalNamespace;
+        var segments = declaration.AncestorsAndSelf()
+            .OfType<BaseNamespaceDeclarationSyntax>()
+            .Reverse()
+            .SelectMany(static item => item.Name
+                .DescendantTokens()
+                .Where(static token => token.IsKind(SyntaxKind.IdentifierToken))
+                .Select(static token => token.ValueText));
+        foreach (var segment in segments)
+        {
+            var next = current.GetNamespaceMembers().FirstOrDefault(candidate =>
+                candidate.Name.Equals(segment, StringComparison.Ordinal));
+            if (next is null)
+            {
+                return null;
+            }
+
+            current = next;
+        }
+
+        return current;
+    }
+
     private async ValueTask<CompilerContext> LoadContextAsync(
         string workspaceRoot,
         FileCompilerVariant variant,
+        ProjectGraphEvaluationOptions evaluationOptions,
         CancellationToken cancellationToken)
     {
         var projectPath = Path.GetFullPath(
@@ -556,15 +613,17 @@ public sealed class RoslynSemanticTargetResolver
         }
 
         var properties = new Dictionary<string, string>(
-            StringComparer.OrdinalIgnoreCase)
+            StringComparer.OrdinalIgnoreCase);
+        foreach (var property in evaluationOptions.Properties)
         {
-            ["Configuration"] = variant.Configuration ?? "Debug",
-            ["DesignTimeBuild"] = "true",
-            ["BuildingInsideVisualStudio"] = "true",
-            ["BuildProjectReferences"] = "false",
-            ["SkipCompilerExecution"] = "true",
-            ["ProvideCommandLineArgs"] = "true",
-        };
+            properties[property.Name] = property.Value;
+        }
+        properties["Configuration"] = variant.Configuration ?? "Debug";
+        properties["DesignTimeBuild"] = "true";
+        properties["BuildingInsideVisualStudio"] = "true";
+        properties["BuildProjectReferences"] = "false";
+        properties["SkipCompilerExecution"] = "true";
+        properties["ProvideCommandLineArgs"] = "true";
         if (variant.Framework is not null)
         {
             properties["TargetFramework"] = variant.Framework;
@@ -577,7 +636,7 @@ public sealed class RoslynSemanticTargetResolver
             workspace = MSBuildWorkspace.Create(properties);
             workspace.RegisterWorkspaceFailedHandler(args =>
                 workspaceDiagnostics.Add(args.Diagnostic));
-            workspace.LoadMetadataForReferencedProjects = true;
+            workspace.LoadMetadataForReferencedProjects = false;
             var project = await _projectLoader(
                     workspace,
                     projectPath,
@@ -736,7 +795,7 @@ public sealed class RoslynSemanticTargetResolver
             candidate.SourceSpanStart,
             candidate.SourceSpanLength);
         return tree.GetRoot(cancellationToken)
-            .DescendantNodesAndSelf()
+            .DescendantNodes()
             .FirstOrDefault(node => node.Span == span);
     }
 

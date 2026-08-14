@@ -40,9 +40,21 @@ public sealed class MsBuildCompilerVariantResolver
         string workspaceRoot,
         IEnumerable<string> projects,
         CancellationToken cancellationToken = default)
+        => Resolve(
+            workspaceRoot,
+            projects,
+            new ProjectGraphEvaluationOptions(),
+            cancellationToken);
+
+    public CompilerVariantResolution Resolve(
+        string workspaceRoot,
+        IEnumerable<string> projects,
+        ProjectGraphEvaluationOptions options,
+        CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(workspaceRoot);
         ArgumentNullException.ThrowIfNull(projects);
+        ArgumentNullException.ThrowIfNull(options);
         var root = Path.GetFullPath(workspaceRoot);
         var registration = _registration.Register(root, cancellationToken);
         if (!registration.IsAvailable)
@@ -56,7 +68,11 @@ public sealed class MsBuildCompilerVariantResolver
         var variants = projects
             .Distinct(StringComparer.Ordinal)
             .Order(StringComparer.Ordinal)
-            .SelectMany(project => ResolveProject(root, project, cancellationToken))
+            .SelectMany(project => ResolveProject(
+                root,
+                project,
+                options,
+                cancellationToken))
             .OrderBy(static variant => variant.Variant.Project, StringComparer.Ordinal)
             .ThenBy(static variant => variant.Variant.Configuration, StringComparer.Ordinal)
             .ThenBy(static variant => variant.Variant.Framework, StringComparer.Ordinal)
@@ -70,6 +86,7 @@ public sealed class MsBuildCompilerVariantResolver
     private static IReadOnlyList<EvaluatedCompilerVariant> ResolveProject(
         string workspaceRoot,
         string project,
+        ProjectGraphEvaluationOptions options,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -81,15 +98,7 @@ public sealed class MsBuildCompilerVariantResolver
             return [Failed(project, "project.path_escape")];
         }
 
-        var properties = new Dictionary<string, string>(
-            StringComparer.OrdinalIgnoreCase)
-        {
-            ["DesignTimeBuild"] = "true",
-            ["BuildingInsideVisualStudio"] = "true",
-            ["BuildProjectReferences"] = "false",
-            ["SkipCompilerExecution"] = "true",
-            ["ProvideCommandLineArgs"] = "true",
-        };
+        var properties = BuildProperties(options);
         try
         {
             using var collection = new ProjectCollection();
@@ -99,13 +108,15 @@ public sealed class MsBuildCompilerVariantResolver
                 toolsVersion: null,
                 collection,
                 ProjectLoadSettings.Default);
-            var configuration = Optional(
-                    outer.GetPropertyValue("Configuration"))
+            var configuration = options.Configuration
+                ?? Optional(outer.GetPropertyValue("Configuration"))
                 ?? "Debug";
             properties["Configuration"] = configuration;
             outer.SetGlobalProperty("Configuration", configuration);
             outer.ReevaluateIfNecessary();
-            var frameworks = Split(outer.GetPropertyValue("TargetFrameworks"));
+            var frameworks = options.Framework is null
+                ? Split(outer.GetPropertyValue("TargetFrameworks"))
+                : [options.Framework];
             if (frameworks.Count == 0)
             {
                 var framework = Optional(
@@ -113,6 +124,7 @@ public sealed class MsBuildCompilerVariantResolver
                 frameworks = framework is null ? [null] : [framework];
             }
 
+            collection.UnloadProject(outer);
             var variants = new List<EvaluatedCompilerVariant>(frameworks.Count);
             foreach (var framework in frameworks)
             {
@@ -150,6 +162,34 @@ public sealed class MsBuildCompilerVariantResolver
         {
             return [Failed(project, "project.load_failed")];
         }
+    }
+
+    private static Dictionary<string, string> BuildProperties(
+        ProjectGraphEvaluationOptions options)
+    {
+        var properties = new Dictionary<string, string>(
+            StringComparer.OrdinalIgnoreCase);
+        foreach (var property in options.Properties)
+        {
+            properties[property.Name] = property.Value;
+        }
+
+        properties["DesignTimeBuild"] = "true";
+        properties["BuildingInsideVisualStudio"] = "true";
+        properties["BuildProjectReferences"] = "false";
+        properties["SkipCompilerExecution"] = "true";
+        properties["ProvideCommandLineArgs"] = "true";
+        if (options.Configuration is not null)
+        {
+            properties["Configuration"] = options.Configuration;
+        }
+
+        if (options.Framework is not null)
+        {
+            properties["TargetFramework"] = options.Framework;
+        }
+
+        return properties;
     }
 
     private static EvaluatedCompilerVariant ResolveVariant(
