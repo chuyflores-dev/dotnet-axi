@@ -1,0 +1,1509 @@
+using System.Collections.Immutable;
+using System.Security.Cryptography;
+using System.Text;
+using DotNetAxi.Contracts;
+using DotNetAxi.DotNet;
+using DotNetAxi.Structural;
+using DotNetAxi.Workspaces;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.FindSymbols;
+using Microsoft.CodeAnalysis.MSBuild;
+
+namespace DotNetAxi.Roslyn;
+
+public enum ImplementationSearchScopeMode
+{
+    Default,
+    Complete,
+}
+
+public enum ImplementationSearchVariantStatus
+{
+    Analyzed,
+    Remaining,
+    Excluded,
+    Failed,
+}
+
+public sealed record ImplementationSearchVariant
+{
+    internal ImplementationSearchVariant(
+        string project,
+        string? configuration,
+        string? framework,
+        ImplementationSearchVariantStatus status,
+        string? reason,
+        string? correction)
+    {
+        Project = project;
+        Configuration = configuration;
+        Framework = framework;
+        Status = status;
+        Reason = reason;
+        Correction = correction;
+    }
+
+    public string Project { get; }
+
+    public string? Configuration { get; }
+
+    public string? Framework { get; }
+
+    public ImplementationSearchVariantStatus Status { get; }
+
+    public string? Reason { get; }
+
+    public string? Correction { get; }
+}
+
+public sealed record RoslynImplementationMatch
+{
+    internal RoslynImplementationMatch(
+        string id,
+        string targetIdentity,
+        string? owner,
+        string project,
+        string? configuration,
+        string? framework,
+        SourceLocation start,
+        SourceLocation end)
+    {
+        Id = id;
+        TargetIdentity = targetIdentity;
+        Owner = owner;
+        Project = project;
+        Configuration = configuration;
+        Framework = framework;
+        Start = start;
+        End = end;
+    }
+
+    public string Id { get; }
+
+    public string TargetIdentity { get; }
+
+    public string? Owner { get; }
+
+    public string Project { get; }
+
+    public string? Configuration { get; }
+
+    public string? Framework { get; }
+
+    public SourceLocation Start { get; }
+
+    public SourceLocation End { get; }
+}
+
+public sealed class RoslynImplementationSearchResult
+{
+    internal RoslynImplementationSearchResult(
+        string target,
+        SemanticTargetResolutionStatus targetStatus,
+        string? snapshot,
+        ImplementationSearchScopeMode scopeMode,
+        IEnumerable<RoslynImplementationMatch>? matches,
+        EvidenceCoverage coverage,
+        IEnumerable<ImplementationSearchVariant>? variants,
+        IEnumerable<SymbolDeclarationMatch>? candidates,
+        int candidateTotal,
+        string? errorCode,
+        string? correction,
+        IEnumerable<string>? partialReasons)
+    {
+        Target = target;
+        TargetStatus = targetStatus;
+        Snapshot = snapshot;
+        ScopeMode = scopeMode;
+        Matches = Array.AsReadOnly(matches?.ToArray() ?? []);
+        Coverage = coverage;
+        Variants = Array.AsReadOnly(variants?.ToArray() ?? []);
+        Candidates = Array.AsReadOnly(candidates?.ToArray() ?? []);
+        CandidateTotal = candidateTotal;
+        ErrorCode = errorCode;
+        Correction = correction;
+        PartialReasons = Array.AsReadOnly(
+            (partialReasons ?? [])
+            .Where(static reason => !string.IsNullOrWhiteSpace(reason))
+            .Distinct(StringComparer.Ordinal)
+            .Order(StringComparer.Ordinal)
+            .ToArray());
+    }
+
+    public string Target { get; }
+
+    public SemanticTargetResolutionStatus TargetStatus { get; }
+
+    public string? Snapshot { get; }
+
+    public ImplementationSearchScopeMode ScopeMode { get; }
+
+    public IReadOnlyList<RoslynImplementationMatch> Matches { get; }
+
+    public EvidenceCoverage Coverage { get; }
+
+    public IReadOnlyList<ImplementationSearchVariant> Variants { get; }
+
+    public IReadOnlyList<SymbolDeclarationMatch> Candidates { get; }
+
+    public int CandidateTotal { get; }
+
+    public int CandidateOmitted => CandidateTotal - Candidates.Count;
+
+    public bool CandidateTruncated => CandidateOmitted > 0;
+
+    public string? ErrorCode { get; }
+
+    public string? Correction { get; }
+
+    public IReadOnlyList<string> PartialReasons { get; }
+
+    public bool TargetResolved =>
+        TargetStatus is SemanticTargetResolutionStatus.Resolved;
+}
+
+/// <summary>
+/// Finds exact compiler implementations after resolving one target. The evaluated
+/// project graph limits candidate projects; complete mode expands the reverse
+/// dependency closure and every supported framework variant.
+/// </summary>
+public sealed class RoslynImplementationSearcher
+{
+    private readonly IReadOnlyList<string> _projects;
+    private readonly IWorkspacePathTraverser _traverser;
+    private readonly RoslynSemanticTargetResolver _targetResolver;
+    private readonly MsBuildProjectGraphEvaluator _graphEvaluator;
+    private readonly MsBuildCompilerVariantResolver _variantResolver;
+    private readonly ProjectCoverageReporter _coverageReporter = new();
+
+    public RoslynImplementationSearcher(
+        IWorkspacePathTraverser traverser,
+        IFileOwnershipResolver ownership,
+        IEnumerable<string> projects)
+        : this(
+            traverser,
+            ownership,
+            projects,
+            new DotNetHostResolver())
+    {
+    }
+
+    internal RoslynImplementationSearcher(
+        IWorkspacePathTraverser traverser,
+        IFileOwnershipResolver ownership,
+        IEnumerable<string> projects,
+        IDotNetHostResolver hostResolver)
+    {
+        ArgumentNullException.ThrowIfNull(traverser);
+        ArgumentNullException.ThrowIfNull(ownership);
+        ArgumentNullException.ThrowIfNull(projects);
+        ArgumentNullException.ThrowIfNull(hostResolver);
+        _traverser = traverser;
+        _projects = Array.AsReadOnly(projects
+            .Distinct(PathComparer())
+            .Order(StringComparer.Ordinal)
+            .ToArray());
+        _targetResolver = new RoslynSemanticTargetResolver(
+            traverser,
+            ownership,
+            _projects);
+        _graphEvaluator = new MsBuildProjectGraphEvaluator(hostResolver);
+        _variantResolver = new MsBuildCompilerVariantResolver(hostResolver);
+    }
+
+    public ValueTask<RoslynImplementationSearchResult> FindAsync(
+        string target,
+        WorkspaceDiscoveryResult discovery,
+        WorkspaceSelection selection,
+        WorkspaceTraversalRequest traversal,
+        SymbolDeclarationScope? declarationScope = null,
+        ImplementationSearchScopeMode scopeMode = ImplementationSearchScopeMode.Default,
+        CancellationToken cancellationToken = default)
+        => FindAsync(
+            target,
+            discovery,
+            selection,
+            traversal,
+            declarationScope,
+            scopeMode,
+            new ProjectGraphEvaluationOptions(),
+            cancellationToken);
+
+    public async ValueTask<RoslynImplementationSearchResult> FindAsync(
+        string target,
+        WorkspaceDiscoveryResult discovery,
+        WorkspaceSelection selection,
+        WorkspaceTraversalRequest traversal,
+        SymbolDeclarationScope? declarationScope,
+        ImplementationSearchScopeMode scopeMode,
+        ProjectGraphEvaluationOptions evaluationOptions,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(target);
+        ArgumentNullException.ThrowIfNull(discovery);
+        ArgumentNullException.ThrowIfNull(selection);
+        ArgumentNullException.ThrowIfNull(traversal);
+        ArgumentNullException.ThrowIfNull(evaluationOptions);
+        if (!Enum.IsDefined(scopeMode))
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(scopeMode),
+                scopeMode,
+                "The implementation-search scope mode is not defined.");
+        }
+
+        declarationScope ??= new SymbolDeclarationScope(
+            selection.Kind is WorkspaceEntryPointKind.Solution
+                ? selection.Path
+                : null,
+            _projects,
+            traversal.ExplicitPaths,
+            includeTests: false,
+            includeGenerated: traversal.IncludeGenerated == true);
+
+        using var resolution = await _targetResolver.ResolveAsync(
+                target,
+                traversal,
+                declarationScope,
+                evaluationOptions,
+                cancellationToken)
+            .ConfigureAwait(false);
+        if (!resolution.Resolved)
+        {
+            return TargetFailure(target, scopeMode, resolution);
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+        var eligiblePaths = _traverser
+            .Traverse(traversal, cancellationToken)
+            .Select(static path => path.RelativePath)
+            .ToHashSet(PathComparer());
+        var graph = _graphEvaluator.Evaluate(
+            discovery,
+            selection,
+            evaluationOptions,
+            cancellationToken: cancellationToken);
+        var candidateProjects = CandidateProjects(
+            graph,
+            resolution.Variants
+                .Where(static variant =>
+                    variant.Status is SemanticTargetVariantStatus.Resolved)
+                .Select(static variant => variant.ProjectPath),
+            declarationScope.IncludeTests);
+        var projectScope = scopeMode is ImplementationSearchScopeMode.Complete
+            ? candidateProjects.Complete
+            : candidateProjects.Default;
+        var report = _coverageReporter.Report(
+            graph,
+            scopeMode is ImplementationSearchScopeMode.Complete
+                ? ProjectFrameworkCoverageMode.Complete
+                : ProjectFrameworkCoverageMode.Default);
+        var plans = BuildPlans(
+            report,
+            candidateProjects.Complete,
+            projectScope,
+            graph);
+        var compilerVariants = _variantResolver.Resolve(
+            discovery.RootPath,
+            candidateProjects.Complete,
+            evaluationOptions,
+            cancellationToken);
+
+        var matches = new List<RoslynImplementationMatch>();
+        var variants = new List<ImplementationSearchVariant>(plans.Count);
+        var fingerprints = new List<VariantFingerprint>(plans.Count);
+        foreach (var plan in plans)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (!plan.Analyze)
+            {
+                variants.Add(plan.Variant);
+                fingerprints.Add(new VariantFingerprint(
+                    plan.Variant.Project,
+                    plan.Variant.Configuration,
+                    plan.Variant.Framework,
+                    "not-analyzed:" + (plan.Variant.Reason ?? "unknown")));
+                continue;
+            }
+
+            var analyzed = await AnalyzeVariantAsync(
+                    discovery.RootPath,
+                    plan.Coverage!,
+                    resolution.Variants,
+                    CompilerVariant(compilerVariants, plan.Coverage!),
+                    evaluationOptions.Properties,
+                    eligiblePaths,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            variants.Add(analyzed.Variant);
+            matches.AddRange(analyzed.Matches);
+            fingerprints.Add(new VariantFingerprint(
+                analyzed.Variant.Project,
+                analyzed.Variant.Configuration,
+                analyzed.Variant.Framework,
+                analyzed.SemanticFingerprint));
+        }
+
+        var orderedMatches = matches
+            .DistinctBy(static match => match.Id, StringComparer.Ordinal)
+            .OrderBy(static match => match.Start.Path, StringComparer.Ordinal)
+            .ThenBy(static match => match.Start.Line)
+            .ThenBy(static match => match.Start.Column)
+            .ThenBy(static match => match.Project, StringComparer.Ordinal)
+            .ThenBy(static match => match.Framework, StringComparer.Ordinal)
+            .ToArray();
+        var orderedVariants = variants
+            .OrderBy(static variant => variant.Project, StringComparer.Ordinal)
+            .ThenBy(static variant => variant.Configuration, StringComparer.Ordinal)
+            .ThenBy(static variant => variant.Framework, StringComparer.Ordinal)
+            .ToArray();
+        var coverage = Coverage(graph, resolution, orderedVariants);
+        var partialReasons = PartialReasons(
+            graph,
+            resolution,
+            orderedVariants);
+        return new RoslynImplementationSearchResult(
+            target,
+            SemanticTargetResolutionStatus.Resolved,
+            Snapshot(
+                resolution.Snapshot!,
+                graph,
+                orderedVariants,
+                fingerprints,
+                orderedMatches),
+            scopeMode,
+            orderedMatches,
+            coverage,
+            orderedVariants,
+            candidates: null,
+            candidateTotal: 0,
+            errorCode: null,
+            correction: null,
+            partialReasons);
+    }
+
+    private static RoslynImplementationSearchResult TargetFailure(
+        string target,
+        ImplementationSearchScopeMode scopeMode,
+        SemanticTargetResolution resolution) =>
+        new(
+            target,
+            resolution.Status,
+            resolution.Snapshot,
+            scopeMode,
+            matches: null,
+            new EvidenceCoverage(CoverageLevel.NotApplicable),
+            resolution.Variants.Select(static variant =>
+                new ImplementationSearchVariant(
+                    variant.ProjectPath,
+                    variant.Configuration,
+                    variant.Framework,
+                    ImplementationSearchVariantStatus.Failed,
+                    variant.Reason ?? "semantic.target_unresolved",
+                    "Fix the reported project or framework failure, then retry the implementation search.")),
+            resolution.Candidates,
+            resolution.CandidateTotal,
+            resolution.ErrorCode,
+            resolution.Correction,
+            resolution.PartialReasons);
+
+    private static CandidateProjectScope CandidateProjects(
+        EvaluatedProjectGraph graph,
+        IEnumerable<string> targetProjects,
+        bool includeTests)
+    {
+        var comparer = PathComparer();
+        var seeds = targetProjects
+            .ToHashSet(comparer);
+        var complete = new HashSet<string>(seeds, comparer);
+        var queue = new Queue<string>(seeds);
+        while (queue.TryDequeue(out var dependency))
+        {
+            foreach (var project in graph.Dependencies
+                         .Where(edge => comparer.Equals(
+                             edge.Dependency,
+                             dependency))
+                         .Select(static edge => edge.Project)
+                         .Where(project => includeTests
+                             || !IsTestProject(project)))
+            {
+                if (complete.Add(project))
+                {
+                    queue.Enqueue(project);
+                }
+            }
+        }
+
+        var direct = new HashSet<string>(seeds, comparer);
+        foreach (var project in graph.Dependencies
+                     .Where(edge => seeds.Contains(edge.Dependency))
+                     .Select(static edge => edge.Project)
+                     .Where(project => includeTests
+                         || !IsTestProject(project)))
+        {
+            direct.Add(project);
+        }
+
+        return new CandidateProjectScope(
+            direct.Order(StringComparer.Ordinal).ToArray(),
+            complete.Order(StringComparer.Ordinal).ToArray());
+    }
+
+    private static IReadOnlyList<VariantPlan> BuildPlans(
+        ProjectCoverageReport report,
+        IReadOnlyCollection<string> completeProjects,
+        IReadOnlyCollection<string> selectedProjects,
+        EvaluatedProjectGraph graph)
+    {
+        var comparer = PathComparer();
+        var complete = completeProjects.ToHashSet(comparer);
+        var selected = selectedProjects.ToHashSet(comparer);
+        var plans = report.Variants
+            .Where(variant => complete.Contains(variant.Project))
+            .GroupBy(static variant => variant.Project, PathComparer())
+            .SelectMany(group => group.Select((variant, index) => Plan(
+                variant,
+                selected.Contains(variant.Project),
+                fallbackSelected: index == 0,
+                report.FrameworkMode)))
+            .ToList();
+        var coveredProjects = plans
+            .Select(static plan => plan.Variant.Project)
+            .ToHashSet(comparer);
+        foreach (var project in complete.Where(project =>
+                     !coveredProjects.Contains(project)))
+        {
+            var failure = graph.Projects
+                .FirstOrDefault(item => comparer.Equals(item.Path, project))
+                ?.Failures.FirstOrDefault();
+            plans.Add(new VariantPlan(
+                Coverage: null,
+                Analyze: false,
+                new ImplementationSearchVariant(
+                    project,
+                    configuration: null,
+                    framework: null,
+                    ImplementationSearchVariantStatus.Failed,
+                    failure is null
+                        ? "project.coverage_unavailable"
+                        : FailureReason(failure.Reason),
+                    "Repair project evaluation, then retry `dnaxi search implementations`.")));
+        }
+
+        return Array.AsReadOnly(plans.ToArray());
+    }
+
+    private static EvaluatedCompilerVariant? CompilerVariant(
+        CompilerVariantResolution resolution,
+        ProjectVariantCoverage coverage) =>
+        resolution.Variants.FirstOrDefault(variant =>
+            PathComparer().Equals(
+                variant.Variant.Project,
+                coverage.Project)
+            && string.Equals(
+                variant.Variant.Configuration,
+                coverage.Configuration,
+                StringComparison.Ordinal)
+            && string.Equals(
+                variant.Variant.Framework,
+                coverage.Framework,
+                StringComparison.Ordinal));
+
+    private static VariantPlan Plan(
+        ProjectVariantCoverage coverage,
+        bool projectSelected,
+        bool fallbackSelected,
+        ProjectFrameworkCoverageMode frameworkMode)
+    {
+        var missingAssetsOnly =
+            coverage.State is ProjectVariantCoverageState.Unrestored
+            && coverage.Issues.Any(static issue =>
+                issue.Reason is ProjectCoverageIssueReason.MissingAssets)
+            && coverage.Issues.All(static issue =>
+                issue.Reason is ProjectCoverageIssueReason.MissingAssets
+                    or ProjectCoverageIssueReason.FrameworkNotSelected);
+        if (coverage.State is ProjectVariantCoverageState.Supported
+            || missingAssetsOnly)
+        {
+            var frameworkSelected = coverage.IsSelected
+                || missingAssetsOnly
+                && (frameworkMode is ProjectFrameworkCoverageMode.Complete
+                    || fallbackSelected);
+            if (projectSelected && frameworkSelected)
+            {
+                return new VariantPlan(
+                    coverage,
+                    Analyze: true,
+                    new ImplementationSearchVariant(
+                        coverage.Project,
+                        coverage.Configuration,
+                        coverage.Framework,
+                        ImplementationSearchVariantStatus.Analyzed,
+                        reason: null,
+                        correction: null));
+            }
+
+            return new VariantPlan(
+                coverage,
+                Analyze: false,
+                new ImplementationSearchVariant(
+                    coverage.Project,
+                    coverage.Configuration,
+                    coverage.Framework,
+                    ImplementationSearchVariantStatus.Remaining,
+                    projectSelected
+                        ? "framework.not_selected"
+                        : "project.not_selected",
+                    "Retry with `dnaxi search implementations <symbol> --complete`."));
+        }
+
+        var issue = coverage.Issues.FirstOrDefault();
+        var status = coverage.State is ProjectVariantCoverageState.Unsupported
+            ? ImplementationSearchVariantStatus.Excluded
+            : ImplementationSearchVariantStatus.Failed;
+        return new VariantPlan(
+            coverage,
+            Analyze: false,
+            new ImplementationSearchVariant(
+                coverage.Project,
+                coverage.Configuration,
+                coverage.Framework,
+                status,
+                issue is null
+                    ? "project.unsupported"
+                    : CoverageReason(issue.Reason),
+                issue?.Correction
+                    ?? "Repair the project or framework, then retry the implementation search."));
+    }
+
+    private static async ValueTask<AnalyzedVariant> AnalyzeVariantAsync(
+        string workspaceRoot,
+        ProjectVariantCoverage coverage,
+        IReadOnlyList<SemanticTargetVariant> targetVariants,
+        EvaluatedCompilerVariant? compilerVariant,
+        IReadOnlyList<MsBuildProperty> explicitProperties,
+        IReadOnlySet<string> eligiblePaths,
+        CancellationToken cancellationToken)
+    {
+        var targets = TargetDescriptors(targetVariants, coverage.Framework);
+        if (targets.Count == 0)
+        {
+            return Failed(coverage, "semantic.target_not_in_framework");
+        }
+
+        var retained = targetVariants.FirstOrDefault(variant =>
+            variant.Status is SemanticTargetVariantStatus.Resolved
+            && variant.Project is not null
+            && variant.Symbol is not null
+            && variant.Compilation is not null
+            && PathComparer().Equals(variant.ProjectPath, coverage.Project)
+            && string.Equals(
+                variant.Configuration,
+                coverage.Configuration,
+                StringComparison.Ordinal)
+            && string.Equals(
+                variant.Framework,
+                coverage.Framework,
+                StringComparison.Ordinal));
+        if (retained is not null)
+        {
+            var retainedSymbols = ExactTargetSymbols(
+                retained.Symbol!,
+                retained.Compilation!.Assembly.Identity.ToString());
+            var retainedMatches = await FindMatchesAsync(
+                    workspaceRoot,
+                    coverage,
+                    retained.Project!,
+                    retained.Compilation!,
+                    retainedSymbols.Select(symbol =>
+                        (retained.Identity!, symbol)),
+                    eligiblePaths,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            return Analyzed(
+                coverage,
+                retainedMatches,
+                await SemanticFingerprintAsync(
+                        workspaceRoot,
+                        retained.Project!,
+                        retained.Compilation!,
+                        retained.Variant.ContextFingerprint,
+                        cancellationToken)
+                    .ConfigureAwait(false));
+        }
+
+        var projectPath = Path.GetFullPath(
+            coverage.Project.Replace('/', Path.DirectorySeparatorChar),
+            workspaceRoot);
+        if (!IsWithin(workspaceRoot, projectPath))
+        {
+            return Failed(coverage, "project.path_escape");
+        }
+
+        var properties = new Dictionary<string, string>(
+            StringComparer.OrdinalIgnoreCase);
+        foreach (var property in explicitProperties)
+        {
+            properties[property.Name] = property.Value;
+        }
+
+        properties["Configuration"] = coverage.Configuration ?? "Debug";
+        properties["DesignTimeBuild"] = "true";
+        properties["BuildingInsideVisualStudio"] = "true";
+        properties["BuildProjectReferences"] = "false";
+        properties["SkipCompilerExecution"] = "true";
+        properties["ProvideCommandLineArgs"] = "true";
+        if (coverage.Framework is not null)
+        {
+            properties["TargetFramework"] = coverage.Framework;
+        }
+
+        try
+        {
+            using var workspace = MSBuildWorkspace.Create(properties);
+            var workspaceDiagnostics = new List<WorkspaceDiagnostic>();
+            workspace.RegisterWorkspaceFailedHandler(args =>
+                workspaceDiagnostics.Add(args.Diagnostic));
+            workspace.LoadMetadataForReferencedProjects = true;
+            var project = await workspace.OpenProjectAsync(
+                    projectPath,
+                    progress: null,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            var compilation = await project.GetCompilationAsync(cancellationToken)
+                .ConfigureAwait(false) as CSharpCompilation;
+            if (compilation is null)
+            {
+                return Failed(coverage, "project.compilation_unavailable");
+            }
+
+            var diagnosticReason = DiagnosticReason(
+                workspaceDiagnostics,
+                compilation.GetDiagnostics(cancellationToken)
+                    .Where(static diagnostic =>
+                        diagnostic.Severity is DiagnosticSeverity.Error)
+                    .ToArray());
+            if (diagnosticReason is not null)
+            {
+                return Failed(coverage, diagnosticReason);
+            }
+
+            var symbols = targets
+                .SelectMany(target => DocumentationCommentId
+                    .GetSymbolsForDeclarationId(target.Identity, compilation)
+                    .SelectMany(symbol => ExactTargetSymbols(
+                        symbol,
+                        target.AssemblyIdentity))
+                    .Select(symbol => (
+                        target.Identity,
+                        Symbol: symbol)))
+                .GroupBy(
+                    static item => item.Symbol!,
+                    SymbolEqualityComparer.Default)
+                .Select(static group => group.First())
+                .ToArray();
+            var matches = await FindMatchesAsync(
+                    workspaceRoot,
+                    coverage,
+                    project,
+                    compilation,
+                    symbols.Select(static item =>
+                        (item.Identity, item.Symbol!)),
+                    eligiblePaths,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            return Analyzed(
+                coverage,
+                matches,
+                await SemanticFingerprintAsync(
+                        workspaceRoot,
+                        project,
+                        compilation,
+                        compilerVariant?.Variant.ContextFingerprint
+                            ?? coverage.Project,
+                        cancellationToken)
+                    .ConfigureAwait(false));
+        }
+        catch (Exception exception) when (exception is InvalidOperationException
+            or IOException
+            or UnauthorizedAccessException
+            or TimeoutException)
+        {
+            return Failed(coverage, "project.load_failed");
+        }
+    }
+
+    private static async ValueTask<IReadOnlyList<RoslynImplementationMatch>>
+        FindMatchesAsync(
+        string workspaceRoot,
+        ProjectVariantCoverage coverage,
+        Project project,
+        CSharpCompilation compilation,
+        IEnumerable<(string Identity, ISymbol Symbol)> symbols,
+        IReadOnlySet<string> eligiblePaths,
+        CancellationToken cancellationToken)
+    {
+        var matches = new List<RoslynImplementationMatch>();
+        var projectSet = ImmutableHashSet.Create(project);
+        foreach (var (identity, symbol) in symbols)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var implementations = await SymbolFinder.FindImplementationsAsync(
+                    symbol,
+                    project.Solution,
+                    projectSet,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            var sourceImplementations = FindSourceImplementations(
+                compilation,
+                symbol);
+            foreach (var implementation in implementations
+                         .Concat(sourceImplementations)
+                         .Distinct(SymbolEqualityComparer.Default)
+                         .Where(static implementation =>
+                             implementation is not null
+                             && implementation.Locations.Any(location =>
+                                 location.IsInSource)))
+            {
+                var implementationIdentity = implementation.GetDocumentationCommentId()
+                    ?? implementation.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+                var matchOwners = implementation.Locations
+                    .Where(location =>
+                        location.IsInSource);
+                foreach (var location in matchOwners)
+                {
+                    var match = Match(
+                        workspaceRoot,
+                        coverage,
+                        identity,
+                        implementationIdentity,
+                        implementation,
+                        location);
+                    if (eligiblePaths.Contains(match.Start.Path))
+                    {
+                        matches.Add(match);
+                    }
+                }
+            }
+        }
+
+        return Array.AsReadOnly(matches.ToArray());
+    }
+
+    private static IEnumerable<ISymbol> FindSourceImplementations(
+        CSharpCompilation compilation,
+        ISymbol target)
+    {
+        foreach (var type in SourceNamedTypes(compilation.Assembly.GlobalNamespace))
+        {
+            if (target is INamedTypeSymbol targetType
+                && type.TypeKind is TypeKind.Class or TypeKind.Struct
+                && !SymbolEqualityComparer.Default.Equals(type, targetType)
+                && Implements(type, targetType))
+            {
+                yield return type;
+                continue;
+            }
+
+            if (target is IMethodSymbol targetMethod)
+            {
+                foreach (var method in type.GetMembers()
+                             .OfType<IMethodSymbol>()
+                             .Where(method =>
+                                 method.OverriddenMethod is not null
+                                 && SameSymbol(
+                                     method.OverriddenMethod,
+                                     targetMethod)
+                                 || method.ExplicitInterfaceImplementations
+                                     .Any(candidate => SameSymbol(
+                                         candidate,
+                                         targetMethod))))
+                {
+                    yield return method;
+                }
+            }
+        }
+    }
+
+    private static IEnumerable<INamedTypeSymbol> SourceNamedTypes(
+        INamespaceSymbol root)
+    {
+        foreach (var type in root.GetTypeMembers())
+        {
+            yield return type;
+            foreach (var nested in SourceNamedTypes(type))
+            {
+                yield return nested;
+            }
+        }
+
+        foreach (var child in root.GetNamespaceMembers())
+        {
+            foreach (var type in SourceNamedTypes(child))
+            {
+                yield return type;
+            }
+        }
+    }
+
+    private static IEnumerable<INamedTypeSymbol> SourceNamedTypes(
+        INamedTypeSymbol type)
+    {
+        foreach (var nested in type.GetTypeMembers())
+        {
+            yield return nested;
+            foreach (var descendant in SourceNamedTypes(nested))
+            {
+                yield return descendant;
+            }
+        }
+    }
+
+    private static bool Implements(
+        INamedTypeSymbol implementation,
+        INamedTypeSymbol target)
+    {
+        if (target.TypeKind is TypeKind.Interface)
+        {
+            return implementation.AllInterfaces.Any(candidate =>
+                SameSymbol(candidate, target));
+        }
+
+        for (var current = implementation.BaseType;
+             current is not null;
+             current = current.BaseType)
+        {
+            if (SameSymbol(current, target))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool SameSymbol(ISymbol left, ISymbol right) =>
+        SymbolEqualityComparer.Default.Equals(left, right)
+        || SymbolEqualityComparer.Default.Equals(
+            left.OriginalDefinition,
+            right.OriginalDefinition);
+
+    private static AnalyzedVariant Analyzed(
+        ProjectVariantCoverage coverage,
+        IReadOnlyList<RoslynImplementationMatch> matches,
+        string semanticFingerprint) =>
+        new(
+            new ImplementationSearchVariant(
+                coverage.Project,
+                coverage.Configuration,
+                coverage.Framework,
+                ImplementationSearchVariantStatus.Analyzed,
+                reason: null,
+                correction: null),
+            matches,
+            semanticFingerprint);
+
+    private static IReadOnlyList<TargetDescriptor> TargetDescriptors(
+        IReadOnlyList<SemanticTargetVariant> variants,
+        string? framework)
+    {
+        return Array.AsReadOnly(variants
+            .Where(variant =>
+                variant.Status is SemanticTargetVariantStatus.Resolved
+                && string.Equals(
+                    variant.Framework,
+                    framework,
+                    StringComparison.Ordinal)
+                && variant.Identity is not null
+                && variant.Symbol is not null
+                && variant.Compilation is not null)
+            .Select(static variant => new TargetDescriptor(
+                variant.Identity!,
+                variant.Compilation!.Assembly.Identity.ToString()))
+            .Distinct()
+            .OrderBy(static target => target.Identity, StringComparer.Ordinal)
+            .ThenBy(
+                static target => target.AssemblyIdentity,
+                StringComparer.Ordinal)
+            .ToArray());
+    }
+
+    private static IReadOnlyList<ISymbol> ExactTargetSymbols(
+        ISymbol symbol,
+        string assemblyIdentity)
+    {
+        if (symbol is INamespaceSymbol namespaceSymbol
+            && namespaceSymbol.ContainingAssembly is null
+            && namespaceSymbol.ConstituentNamespaces.Any(candidate =>
+                string.Equals(
+                    candidate.ContainingAssembly?.Identity.ToString(),
+                    assemblyIdentity,
+                    StringComparison.Ordinal)))
+        {
+            return [symbol];
+        }
+
+        IEnumerable<ISymbol> candidates = symbol is INamespaceSymbol value
+            ? value.ConstituentNamespaces
+            : [symbol];
+        return Array.AsReadOnly(candidates
+            .Where(candidate => string.Equals(
+                candidate.ContainingAssembly?.Identity.ToString(),
+                assemblyIdentity,
+                StringComparison.Ordinal))
+            .Distinct(SymbolEqualityComparer.Default)
+            .ToArray());
+    }
+
+    private static RoslynImplementationMatch Match(
+        string workspaceRoot,
+        ProjectVariantCoverage coverage,
+        string targetIdentity,
+        string identity,
+        ISymbol implementation,
+        Location location)
+    {
+        var filePath = location.SourceTree?.FilePath
+            ?? throw new InvalidOperationException(
+                "A source implementation must have a document path.");
+        var normalized = new WorkspacePathResolver(
+                workspaceRoot,
+                workspaceRoot)
+            .NormalizeOutput(filePath);
+        var span = location.GetLineSpan().Span;
+        var start = SourceLocation.FromZeroBasedUtf16(
+            normalized.Path,
+            span.Start.Line,
+            span.Start.Character,
+            normalized.IsExternal);
+        var end = SourceLocation.FromZeroBasedUtf16(
+            normalized.Path,
+            span.End.Line,
+            span.End.Character,
+            normalized.IsExternal);
+        var owner = (implementation as INamedTypeSymbol
+                ?? implementation.ContainingType)?.ToDisplayString(
+                    SymbolDisplayFormat.CSharpShortErrorMessageFormat);
+        var id = ImplementationId(
+            identity,
+            coverage,
+            normalized.Path,
+            location.SourceSpan.Start,
+            location.SourceSpan.Length);
+        return new RoslynImplementationMatch(
+            id,
+            targetIdentity,
+            owner,
+            coverage.Project,
+            coverage.Configuration,
+            coverage.Framework,
+            start,
+            end);
+    }
+
+    private static string ImplementationId(
+        string identity,
+        ProjectVariantCoverage coverage,
+        string path,
+        int start,
+        int length)
+    {
+        using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+        Append(hash, "dotnet-axi/implementation/v1");
+        Append(hash, identity);
+        Append(hash, coverage.Project);
+        Append(hash, coverage.Configuration ?? string.Empty);
+        Append(hash, coverage.Framework ?? string.Empty);
+        Append(hash, path);
+        Append(hash, start.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        Append(hash, length.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        return "implementation/v1/" + Convert.ToHexStringLower(hash.GetHashAndReset());
+    }
+
+    private static AnalyzedVariant Failed(
+        ProjectVariantCoverage coverage,
+        string reason) =>
+        new(
+            new ImplementationSearchVariant(
+                coverage.Project,
+                coverage.Configuration,
+                coverage.Framework,
+                ImplementationSearchVariantStatus.Failed,
+                reason,
+                Correction(reason)),
+            Array.Empty<RoslynImplementationMatch>(),
+            "failed:" + reason);
+
+    private static EvidenceCoverage Coverage(
+        EvaluatedProjectGraph graph,
+        SemanticTargetResolution target,
+        IReadOnlyCollection<ImplementationSearchVariant> variants)
+    {
+        var analyzed = variants.Count(static variant =>
+            variant.Status is ImplementationSearchVariantStatus.Analyzed);
+        var remaining = variants.Count(static variant =>
+            variant.Status is ImplementationSearchVariantStatus.Remaining);
+        var excluded = variants.Count(static variant =>
+            variant.Status is ImplementationSearchVariantStatus.Excluded);
+        var failed = variants.Count(static variant =>
+            variant.Status is ImplementationSearchVariantStatus.Failed);
+        var partial = graph.Completeness is not ProjectGraphCompleteness.Complete
+            || target.HasPartialCoverage
+            || remaining + excluded + failed > 0;
+        return new EvidenceCoverage(
+            partial ? CoverageLevel.Partial : CoverageLevel.Complete,
+            considered: variants.Count,
+            analyzed,
+            remaining,
+            excluded,
+            failed,
+            partialReason: partial
+                ? string.Join("; ", PartialReasons(graph, target, variants))
+                : null);
+    }
+
+    private static IReadOnlyList<string> PartialReasons(
+        EvaluatedProjectGraph graph,
+        SemanticTargetResolution target,
+        IEnumerable<ImplementationSearchVariant> variants)
+    {
+        var reasons = new List<string>();
+        if (graph.Completeness is not ProjectGraphCompleteness.Complete)
+        {
+            reasons.Add("project.graph_incomplete");
+        }
+
+        reasons.AddRange(target.PartialReasons);
+        reasons.AddRange(variants
+            .Where(static variant =>
+                variant.Status is not ImplementationSearchVariantStatus.Analyzed)
+            .Select(static variant => variant.Reason!));
+        return Array.AsReadOnly(reasons
+            .Where(static reason => !string.IsNullOrWhiteSpace(reason))
+            .Distinct(StringComparer.Ordinal)
+            .Order(StringComparer.Ordinal)
+            .ToArray());
+    }
+
+    private static string Snapshot(
+        string targetSnapshot,
+        EvaluatedProjectGraph graph,
+        IEnumerable<ImplementationSearchVariant> variants,
+        IEnumerable<VariantFingerprint> fingerprints,
+        IEnumerable<RoslynImplementationMatch> matches)
+    {
+        using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+        Append(hash, "dotnet-axi/implementation-search-snapshot/v1");
+        Append(hash, targetSnapshot);
+        Append(hash, graph.Runtime?.SdkVersion ?? string.Empty);
+        Append(hash, graph.Runtime?.MsBuildVersion ?? string.Empty);
+        Append(hash, graph.Completeness.ToString());
+        foreach (var edge in graph.Dependencies
+                     .OrderBy(static edge => edge.Project, StringComparer.Ordinal)
+                     .ThenBy(static edge => edge.Dependency, StringComparer.Ordinal))
+        {
+            Append(hash, edge.Project);
+            Append(hash, edge.Dependency);
+        }
+
+        foreach (var variant in variants)
+        {
+            Append(hash, variant.Project);
+            Append(hash, variant.Configuration ?? string.Empty);
+            Append(hash, variant.Framework ?? string.Empty);
+            Append(hash, variant.Status.ToString());
+            Append(hash, variant.Reason ?? string.Empty);
+        }
+
+        foreach (var fingerprint in fingerprints
+                     .OrderBy(
+                         static item => item.Project,
+                         StringComparer.Ordinal)
+                     .ThenBy(
+                         static item => item.Configuration,
+                         StringComparer.Ordinal)
+                     .ThenBy(
+                         static item => item.Framework,
+                         StringComparer.Ordinal))
+        {
+            Append(hash, fingerprint.Project);
+            Append(hash, fingerprint.Configuration ?? string.Empty);
+            Append(hash, fingerprint.Framework ?? string.Empty);
+            Append(hash, fingerprint.Value);
+        }
+
+        foreach (var match in matches)
+        {
+            Append(hash, match.Id);
+        }
+
+        return "ws_" + Convert.ToHexStringLower(hash.GetHashAndReset());
+    }
+
+    private static async ValueTask<string> SemanticFingerprintAsync(
+        string workspaceRoot,
+        Project project,
+        CSharpCompilation compilation,
+        string evaluatedProjectFingerprint,
+        CancellationToken cancellationToken)
+    {
+        using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+        Append(hash, "dotnet-axi/implementation-semantic-context/v1");
+        Append(hash, evaluatedProjectFingerprint);
+        Append(hash, compilation.Assembly.Identity.ToString());
+        Append(hash, compilation.Options.OutputKind.ToString());
+        Append(hash, compilation.Options.NullableContextOptions.ToString());
+        Append(hash, compilation.Options.OptimizationLevel.ToString());
+        Append(hash, compilation.Options.AllowUnsafe ? "unsafe" : "safe");
+        Append(hash, compilation.Options.CheckOverflow
+            ? "checked"
+            : "unchecked");
+
+        foreach (var tree in compilation.SyntaxTrees
+                     .OrderBy(
+                         static tree => tree.FilePath,
+                         StringComparer.Ordinal))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            Append(hash, FingerprintPath(workspaceRoot, tree.FilePath));
+            Append(hash, Convert.ToHexStringLower(
+                tree.GetText(cancellationToken).GetChecksum().AsSpan()));
+            if (tree.Options is CSharpParseOptions options)
+            {
+                Append(hash, options.LanguageVersion.ToString());
+                foreach (var symbol in options.PreprocessorSymbolNames
+                             .Order(StringComparer.Ordinal))
+                {
+                    Append(hash, symbol);
+                }
+
+                foreach (var feature in options.Features
+                             .OrderBy(
+                                 static feature => feature.Key,
+                                 StringComparer.Ordinal))
+                {
+                    Append(hash, feature.Key);
+                    Append(hash, feature.Value);
+                }
+            }
+        }
+
+        foreach (var document in project.AdditionalDocuments
+                     .OrderBy(
+                         static document => document.FilePath ?? document.Name,
+                         StringComparer.Ordinal))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            Append(hash, "additional");
+            Append(hash, DocumentPath(workspaceRoot, document));
+            Append(hash, Convert.ToHexStringLower(
+                (await document.GetTextAsync(cancellationToken)
+                    .ConfigureAwait(false)).GetChecksum().AsSpan()));
+        }
+
+        foreach (var document in project.AnalyzerConfigDocuments
+                     .OrderBy(
+                         static document => document.FilePath ?? document.Name,
+                         StringComparer.Ordinal))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            Append(hash, "analyzer-config");
+            Append(hash, DocumentPath(workspaceRoot, document));
+            Append(hash, Convert.ToHexStringLower(
+                (await document.GetTextAsync(cancellationToken)
+                    .ConfigureAwait(false)).GetChecksum().AsSpan()));
+        }
+
+        foreach (var reference in compilation.References
+                     .OrderBy(
+                         static reference => reference.Display,
+                         StringComparer.Ordinal))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            Append(hash, reference.Properties.Kind.ToString());
+            Append(hash, reference.Properties.EmbedInteropTypes
+                ? "embedded"
+                : "ordinary");
+            foreach (var alias in reference.Properties.Aliases
+                         .Order(StringComparer.Ordinal))
+            {
+                Append(hash, alias);
+            }
+
+            var display = reference.Display ?? string.Empty;
+            Append(hash, FingerprintPath(workspaceRoot, display));
+            if (reference is CompilationReference compilationReference)
+            {
+                Append(
+                    hash,
+                    compilationReference.Compilation.Assembly.Identity.ToString());
+                foreach (var tree in compilationReference.Compilation.SyntaxTrees
+                             .OrderBy(
+                                 static tree => tree.FilePath,
+                                 StringComparer.Ordinal))
+                {
+                    Append(hash, FingerprintPath(workspaceRoot, tree.FilePath));
+                    Append(hash, Convert.ToHexStringLower(
+                        tree.GetText(cancellationToken).GetChecksum().AsSpan()));
+                }
+            }
+            else if (Path.IsPathFullyQualified(display))
+            {
+                Append(hash, await FileFingerprintAsync(
+                        display,
+                        cancellationToken)
+                    .ConfigureAwait(false));
+            }
+        }
+
+        foreach (var reference in project.AnalyzerReferences
+                     .OrderBy(
+                         static reference => reference.FullPath
+                             ?? reference.Display,
+                         StringComparer.Ordinal))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            Append(hash, reference.Id.ToString() ?? string.Empty);
+            Append(hash, reference.Display ?? string.Empty);
+            Append(hash, FingerprintPath(
+                workspaceRoot,
+                reference.FullPath ?? string.Empty));
+            if (reference.FullPath is not null)
+            {
+                Append(hash, await FileFingerprintAsync(
+                        reference.FullPath,
+                        cancellationToken)
+                    .ConfigureAwait(false));
+            }
+        }
+
+        foreach (var item in project.ProjectReferences
+                     .Select(reference => (
+                         Reference: reference,
+                         Project: project.Solution.GetProject(
+                             reference.ProjectId)))
+                     .OrderBy(
+                         static item => item.Project?.FilePath
+                             ?? item.Project?.Name,
+                         StringComparer.Ordinal))
+        {
+            var reference = item.Reference;
+            Append(hash, item.Project?.FilePath is null
+                ? item.Project?.AssemblyName
+                    ?? item.Project?.Name
+                    ?? "unresolved-project-reference"
+                : FingerprintPath(workspaceRoot, item.Project.FilePath));
+            Append(hash, reference.EmbedInteropTypes
+                ? "embedded"
+                : "ordinary");
+            foreach (var alias in reference.Aliases.Order(StringComparer.Ordinal))
+            {
+                Append(hash, alias);
+            }
+        }
+
+        return Convert.ToHexStringLower(hash.GetHashAndReset());
+    }
+
+    private static string DocumentPath(
+        string workspaceRoot,
+        TextDocument document) =>
+        document.FilePath is null
+            ? document.Name
+            : FingerprintPath(workspaceRoot, document.FilePath);
+
+    private static async ValueTask<string> FileFingerprintAsync(
+        string path,
+        CancellationToken cancellationToken)
+    {
+        if (!File.Exists(path))
+        {
+            return "missing";
+        }
+
+        try
+        {
+            return Convert.ToHexStringLower(await File.ReadAllBytesAsync(
+                    path,
+                    cancellationToken)
+                .ConfigureAwait(false));
+        }
+        catch (Exception exception) when (exception is IOException
+            or UnauthorizedAccessException)
+        {
+            return "unreadable";
+        }
+    }
+
+    private static string FingerprintPath(string workspaceRoot, string path) =>
+        Path.IsPathFullyQualified(path) && IsWithin(workspaceRoot, path)
+            ? Path.GetRelativePath(workspaceRoot, path).Replace('\\', '/')
+            : Path.GetFileName(path);
+
+    private static void Append(IncrementalHash hash, string value)
+    {
+        var bytes = Encoding.UTF8.GetBytes(value);
+        Span<byte> length = stackalloc byte[4];
+        System.Buffers.Binary.BinaryPrimitives.WriteInt32BigEndian(
+            length,
+            bytes.Length);
+        hash.AppendData(length);
+        hash.AppendData(bytes);
+    }
+
+    private static string? DiagnosticReason(
+        IEnumerable<WorkspaceDiagnostic> workspaceDiagnostics,
+        IReadOnlyCollection<Diagnostic> compilationErrors)
+    {
+        var workspace = workspaceDiagnostics.ToArray();
+        if (workspace.Any(static diagnostic => IsMissingMetadata(
+                diagnostic.Message))
+            || compilationErrors.Any(static diagnostic => diagnostic.Id is
+                "CS0006" or "CS0012" or "CS0518"))
+        {
+            return "metadata.missing";
+        }
+
+        if (workspace.Any(static diagnostic =>
+                diagnostic.Kind is WorkspaceDiagnosticKind.Failure))
+        {
+            return "project.load_failed";
+        }
+
+        return compilationErrors.Count > 0
+            ? "project.compilation_errors"
+            : null;
+    }
+
+    private static bool IsMissingMetadata(string message) =>
+        message.Contains("metadata", StringComparison.OrdinalIgnoreCase)
+        || message.Contains("reference", StringComparison.OrdinalIgnoreCase)
+        && (message.Contains("missing", StringComparison.OrdinalIgnoreCase)
+            || message.Contains("not found", StringComparison.OrdinalIgnoreCase)
+            || message.Contains("could not", StringComparison.OrdinalIgnoreCase)
+            || message.Contains("unable", StringComparison.OrdinalIgnoreCase))
+        || message.Contains("project.assets.json", StringComparison.OrdinalIgnoreCase);
+
+    private static string CoverageReason(ProjectCoverageIssueReason reason) =>
+        reason switch
+        {
+            ProjectCoverageIssueReason.FrameworkNotSelected =>
+                "framework.not_selected",
+            ProjectCoverageIssueReason.UnsupportedLanguage =>
+                "project.language_unsupported",
+            ProjectCoverageIssueReason.UnsupportedProjectShape =>
+                "project.shape_unsupported",
+            ProjectCoverageIssueReason.MissingAssets => "metadata.missing",
+            ProjectCoverageIssueReason.CircularDependency =>
+                "project.circular_dependency",
+            ProjectCoverageIssueReason.ProjectNotFound => "project.not_found",
+            ProjectCoverageIssueReason.ImportNotFound =>
+                "project.import_not_found",
+            ProjectCoverageIssueReason.SdkNotFound => "sdk.not_found",
+            ProjectCoverageIssueReason.InvalidProjectFile => "project.invalid",
+            ProjectCoverageIssueReason.EvaluationAborted =>
+                "project.evaluation_aborted",
+            ProjectCoverageIssueReason.EvaluationFailed =>
+                "project.evaluation_failed",
+            ProjectCoverageIssueReason.MsBuildUnavailable =>
+                "msbuild.unavailable",
+            ProjectCoverageIssueReason.MsBuildIncompatible =>
+                "msbuild.incompatible",
+            ProjectCoverageIssueReason.WorkspacePathEscape =>
+                "project.path_escape",
+            ProjectCoverageIssueReason.InvalidAssetsFile =>
+                "metadata.invalid_assets",
+            _ => "project.evaluation_failed",
+        };
+
+    private static string FailureReason(ProjectEvaluationFailureReason reason) =>
+        reason switch
+        {
+            ProjectEvaluationFailureReason.MissingAssets => "metadata.missing",
+            ProjectEvaluationFailureReason.CircularDependency =>
+                "project.circular_dependency",
+            ProjectEvaluationFailureReason.ProjectNotFound => "project.not_found",
+            ProjectEvaluationFailureReason.ImportNotFound =>
+                "project.import_not_found",
+            ProjectEvaluationFailureReason.SdkNotFound => "sdk.not_found",
+            ProjectEvaluationFailureReason.InvalidProjectFile => "project.invalid",
+            ProjectEvaluationFailureReason.EvaluationAborted =>
+                "project.evaluation_aborted",
+            ProjectEvaluationFailureReason.EvaluationFailed =>
+                "project.evaluation_failed",
+            ProjectEvaluationFailureReason.MsBuildUnavailable => "msbuild.unavailable",
+            ProjectEvaluationFailureReason.MsBuildIncompatible =>
+                "msbuild.incompatible",
+            ProjectEvaluationFailureReason.WorkspacePathEscape =>
+                "project.path_escape",
+            ProjectEvaluationFailureReason.InvalidAssetsFile =>
+                "metadata.invalid_assets",
+            _ => "project.evaluation_failed",
+        };
+
+    private static string Correction(string reason) =>
+        reason switch
+        {
+            "metadata.missing" =>
+                "Run `dnaxi restore`, repair missing references, then retry the implementation search.",
+            "project.compilation_errors" =>
+                "Fix compiler errors in the reported project and framework, then retry.",
+            "project.path_escape" =>
+                "Select a project inside the workspace root.",
+            _ =>
+                "Repair the reported project or framework, then retry the implementation search.",
+        };
+
+    private static bool IsWithin(string root, string path)
+    {
+        var relative = Path.GetRelativePath(root, path);
+        return !Path.IsPathFullyQualified(relative)
+            && relative != ".."
+            && !relative.StartsWith(
+                ".." + Path.DirectorySeparatorChar,
+                StringComparison.Ordinal)
+            && !relative.StartsWith(
+                ".." + Path.AltDirectorySeparatorChar,
+                StringComparison.Ordinal);
+    }
+
+    private static bool IsTestProject(string project) =>
+        project
+            .Split(
+                ['/', '\\', '.', '-', '_'],
+                StringSplitOptions.RemoveEmptyEntries)
+            .Any(static token =>
+                token.Equals("test", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("tests", StringComparison.OrdinalIgnoreCase)
+                || token.EndsWith("Tests", StringComparison.OrdinalIgnoreCase));
+
+    private static StringComparer PathComparer() =>
+        OperatingSystem.IsWindows()
+            ? StringComparer.OrdinalIgnoreCase
+            : StringComparer.Ordinal;
+
+    private sealed record CandidateProjectScope(
+        IReadOnlyList<string> Default,
+        IReadOnlyList<string> Complete);
+
+    private sealed record VariantPlan(
+        ProjectVariantCoverage? Coverage,
+        bool Analyze,
+        ImplementationSearchVariant Variant);
+
+    private sealed record AnalyzedVariant(
+        ImplementationSearchVariant Variant,
+        IReadOnlyList<RoslynImplementationMatch> Matches,
+        string SemanticFingerprint);
+
+    private sealed record TargetDescriptor(
+        string Identity,
+        string AssemblyIdentity);
+
+    private sealed record VariantFingerprint(
+        string Project,
+        string? Configuration,
+        string? Framework,
+        string Value);
+}

@@ -346,12 +346,13 @@ public sealed class AgentSkillGenerationTests
     private static void AssertSymbolContextGuidance(string content)
     {
         foreach (var required in new[]
-                 {
-                     "search symbol",
-                     "show symbol",
-                     "show document",
-                     "--start-line <line> --end-line <line>",
-                     "outline '<path-or-symbol>'",
+                {
+                    "search symbol",
+                    "search implementations",
+                    "show symbol",
+                    "show document",
+                    "--start-line <line> --end-line <line>",
+                    "outline '<path-or-symbol>'",
                      "context symbol",
                      "--fields id,kind,signature,owning_projects,variant_count,variants",
                      "--solution <solution>",
@@ -373,16 +374,12 @@ public sealed class AgentSkillGenerationTests
             Assert.Contains(required, content);
         }
 
-        foreach (var futureGraphCommand in new[]
+                foreach (var futureGraphCommand in new[]
                  {
                      "search references",
-                     "search implementations",
                      "show references",
-                     "show implementations",
                      "context references",
-                     "context implementations",
                      "-- references",
-                     "-- implementations",
                  })
         {
             Assert.DoesNotContain(futureGraphCommand, content);

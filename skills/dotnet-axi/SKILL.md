@@ -1,6 +1,6 @@
 ---
 name: dotnet-axi
-description: Use dnaxi 0.5.0 for deterministic evidence in .NET repositories: file, text, stable C# syntax, declaration, symbol, document, outline, and bounded context discovery. When a .NET task names a symbol, namespace, or owner project but no exact source path, first run Roslyn/MSBuild-backed search symbol with explicit project or solution scope before listing or reading source. When a controlled benchmark supplies the local feed, use dnx dnaxi@0.5.0 --source "$DNAXI_LOCAL_FEED" --verbosity quiet -- <command>. Skip non-.NET work and direct reads of already-known files.
+description: Use dnaxi 0.5.0 for deterministic evidence in .NET repositories: file, text, stable C# syntax, declaration, symbol, document, outline, implementation relationships, and bounded context discovery. When a .NET task names a symbol, namespace, or owner project but no exact source path, first run Roslyn/MSBuild-backed search symbol with explicit project or solution scope before listing or reading source. When a controlled benchmark supplies the local feed, use dnx dnaxi@0.5.0 --source "$DNAXI_LOCAL_FEED" --verbosity quiet -- <command>. Skip non-.NET work and direct reads of already-known files.
 ---
 
 # Use dotnet-axi
@@ -26,6 +26,7 @@ Use a narrow `--path` and bounded `--limit`:
 - Object creation: `search syntax object-creation --type <type> --path <scope> --limit 20`
 - Catch clause: `search syntax catch --type <type> --path <scope> --limit 20`
 - Declaration owner: `search symbol '<name>' --project <csproj> --fields id,kind,signature,owning_projects,variant_count,variants --limit 20`; use `--solution <sln>` instead of `--project` when solution scope is required, never both
+- Concrete implementations: `search implementations '<symbol/v2/...>' --project <csproj> --fields id,owner,project,framework,target_identity --limit 20`; preserve all owner/framework variants.
 
 Increase the limit only when exhaustive output requires it. Follow a reported `retrieval_command` only when omitted rows matter. When coverage is complete, use the returned facts without a redundant help probe or matched-file reread.
 
