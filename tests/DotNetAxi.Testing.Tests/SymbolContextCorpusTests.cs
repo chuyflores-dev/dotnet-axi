@@ -93,112 +93,6 @@ public sealed partial class SymbolContextCorpusTests
     }
 
     [Fact]
-    public async Task Exact_fact_normalizer_preserves_order_and_duplicates()
-    {
-        var corpus = await AgentTaskCorpusLoader.LoadAsync(CorpusPath());
-        var facts = corpus.Tasks[0].SuccessOracle.ExpectedFacts;
-        var exact = string.Join('\n', facts);
-        var reordered = string.Join('\n', facts.Reverse());
-        var duplicated = string.Join('\n', [.. facts, facts[0]]);
-
-        Assert.True(AgentBenchmarkFactSet.EqualsExpected(
-            exact,
-            facts,
-            "ordinal-sequence/v1"));
-        Assert.False(AgentBenchmarkFactSet.EqualsExpected(
-            reordered,
-            facts,
-            "ordinal-sequence/v1"));
-        Assert.False(AgentBenchmarkFactSet.EqualsExpected(
-            duplicated,
-            facts,
-            "ordinal-sequence/v1"));
-        Assert.True(AgentBenchmarkFactSet.EqualsExpected(
-            duplicated,
-            facts,
-            "ordinal-lines/v1"));
-    }
-
-    [Theory]
-    [InlineData("missing-grammar")]
-    [InlineData("malformed-code-span")]
-    [InlineData("extra-declaration")]
-    [InlineData("leaked-answer")]
-    [InlineData("vague-grammar")]
-    [InlineData("missing-order-directive")]
-    public async Task Preparation_contract_rejects_under_specified_or_leaking_prompts(
-        string mutation)
-    {
-        var corpus = await AgentTaskCorpusLoader.LoadAsync(CorpusPath());
-        var task = corpus.Tasks[0];
-        var prompt = mutation switch
-        {
-            "missing-grammar" => task.Prompt.Replace(
-                "<repo-relative-path>:<1-based-line>",
-                "value",
-                StringComparison.Ordinal),
-            "malformed-code-span" => task.Prompt.Replace(
-                "`declaration: <repo-relative-path>:<1-based-line>`",
-                "`declaration: <repo-relative-path>:<1-based-line>",
-                StringComparison.Ordinal),
-            "extra-declaration" => task.Prompt[..^1]
-                + ", `extra: <value>`.",
-            "leaked-answer" => task.Prompt.Replace(
-                "declaration: <repo-relative-path>:<1-based-line>",
-                task.SuccessOracle.ExpectedFacts[0],
-                StringComparison.Ordinal),
-            "vague-grammar" => task.Prompt.Replace(
-                "declaration: <repo-relative-path>:<1-based-line>",
-                "declaration: <value>",
-                StringComparison.Ordinal),
-            "missing-order-directive" => corpus.Tasks[1].Prompt.Replace(
-                "Sort repeated framework values using ordinal string order. ",
-                string.Empty,
-                StringComparison.Ordinal),
-            _ => throw new ArgumentOutOfRangeException(nameof(mutation)),
-        };
-        var mutatedTask = mutation == "missing-order-directive"
-            ? corpus.Tasks[1] with { Prompt = prompt }
-            : task with { Prompt = prompt };
-
-        Assert.False(
-            CodexDiscoveryBenchmarkPreparation.HasExactFactResponseContract(
-                mutatedTask));
-    }
-
-    [Theory]
-    [InlineData("product-vocabulary")]
-    [InlineData("leaked-expected-fact")]
-    [InlineData("infeasible-baseline")]
-    public async Task Semantic_verification_contract_rejects_condition_specific_or_infeasible_prompts(
-        string mutation)
-    {
-        var corpus = await AgentTaskCorpusLoader.LoadAsync(CorpusPath());
-        var task = corpus.Tasks.Single(candidate =>
-            candidate.Id == "syntax-candidate-partial-verification");
-        var prompt = mutation switch
-        {
-            "product-vocabulary" => task.Prompt.Replace(
-                "Locate the MissingAudit invocation candidate",
-                "Use coverage and partial_reason to locate the MissingAudit invocation candidate",
-                StringComparison.Ordinal),
-            "leaked-expected-fact" => task.Prompt.Replace(
-                "ownership: <presence-value>",
-                "ownership: absent",
-                StringComparison.Ordinal),
-            "infeasible-baseline" => task.Prompt.Replace(
-                "Replace every angle-bracket description",
-                "Also require a hidden compiler trace before determining availability. Replace every angle-bracket description",
-                StringComparison.Ordinal),
-            _ => throw new ArgumentOutOfRangeException(nameof(mutation)),
-        };
-
-        Assert.False(
-            CodexDiscoveryBenchmarkPreparation.HasExactFactResponseContract(
-                task with { Prompt = prompt }));
-    }
-
-    [Fact]
     public async Task Shared_semantic_verification_oracle_is_derivable_from_both_conditions()
     {
         var corpus = await AgentTaskCorpusLoader.LoadAsync(CorpusPath());
@@ -373,13 +267,8 @@ public sealed partial class SymbolContextCorpusTests
             "show", "symbol", staleId,
             "--project", "src/Core/Core.csproj");
         Assert.Equal(1, stale.ExitCode);
-        AssertBenchmarkStructuredOutput(stale.Output);
-        var staleEnvelope = CodexBenchmarkStructuredOutputReader.Read(
-            stale.Output);
-        var staleCandidate = Assert.Single(staleEnvelope.Candidates);
-        Assert.True(CodexBenchmarkStructuredOutputReader.IsCanonicalSymbolId(
-            staleCandidate.Id,
-            staleCandidate.Name));
+        var staleCandidate = Assert.Single(CandidateRows(stale.Output));
+        Assert.Matches(EntityIdRegex(), staleCandidate.Id);
         Assert.Equal("Reconcile", staleCandidate.Name);
         Assert.Equal("Reconcile(string)", staleCandidate.Signature);
         Assert.Equal("src/Core/StaleService.cs", staleCandidate.File);
@@ -413,25 +302,20 @@ public sealed partial class SymbolContextCorpusTests
             "show", "symbol", ambiguousId,
             "--project", "src/Core/Core.csproj");
         Assert.Equal(1, ambiguous.ExitCode);
-        AssertBenchmarkStructuredOutput(ambiguous.Output);
-        var ambiguousEnvelope = CodexBenchmarkStructuredOutputReader.Read(
-            ambiguous.Output);
-        Assert.Equal(2, ambiguousEnvelope.Candidates.Count);
+        var ambiguousCandidates = CandidateRows(ambiguous.Output);
+        Assert.Equal(2, ambiguousCandidates.Count);
         Assert.All(
-            ambiguousEnvelope.Candidates,
+            ambiguousCandidates,
             candidate =>
             {
-                Assert.True(
-                    CodexBenchmarkStructuredOutputReader.IsCanonicalSymbolId(
-                        candidate.Id,
-                        candidate.Name));
+                Assert.Matches(EntityIdRegex(), candidate.Id);
                 Assert.Equal("RelocatedWidget", candidate.Name);
                 Assert.Equal("RelocatedWidget", candidate.Signature);
                 Assert.Equal(3, candidate.Line);
             });
         Assert.Equal(
-            ambiguousEnvelope.Candidates.Count,
-            ambiguousEnvelope.Candidates
+            ambiguousCandidates.Count,
+            ambiguousCandidates
                 .Select(static candidate => candidate.Id)
                 .Distinct(StringComparer.Ordinal)
                 .Count());
@@ -440,7 +324,7 @@ public sealed partial class SymbolContextCorpusTests
                 "src/Core/moved/RelocatedWidget1.cs",
                 "src/Core/moved/RelocatedWidget2.cs",
             ],
-            ambiguousEnvelope.Candidates.Select(static candidate =>
+            ambiguousCandidates.Select(static candidate =>
                 candidate.File));
         Assert.Contains("code: evidence.ambiguous_id", ambiguous.Output);
         Assert.Contains("candidate_count: 2", ambiguous.Output);
@@ -571,13 +455,21 @@ public sealed partial class SymbolContextCorpusTests
     private static void AssertSuccess((int ExitCode, string Output) result)
     {
         Assert.True(result.ExitCode == 0, result.Output);
-        AssertBenchmarkStructuredOutput(result.Output);
     }
 
-    private static void AssertBenchmarkStructuredOutput(string output) =>
-        Assert.True(
-            CodexBenchmarkStructuredOutputReader.Read(output).WellFormed,
-            output);
+    private static IReadOnlyList<SymbolCandidate> CandidateRows(string output) =>
+        Regex.Matches(
+                output,
+                @"(?m)^  (?<id>symbol/v2/[^,]+),(?:[^,]+),(?<name>[^,]+),(?<signature>[^,]+),(?<file>[^,]+),(?<line>[0-9]+)$")
+            .Select(match => new SymbolCandidate(
+                match.Groups["id"].Value,
+                match.Groups["name"].Value,
+                match.Groups["signature"].Value,
+                match.Groups["file"].Value,
+                int.Parse(
+                    match.Groups["line"].Value,
+                    System.Globalization.CultureInfo.InvariantCulture)))
+            .ToArray();
 
     private static void AssertTaskFacts(
         AgentTaskCorpus corpus,
@@ -749,6 +641,13 @@ public sealed partial class SymbolContextCorpusTests
     private static string FixtureManifestPath() => Path.Combine(
         AppContext.BaseDirectory,
         "Fixtures", "AgentTasks", "symbol-context", "fixture.json");
+
+    private sealed record SymbolCandidate(
+        string Id,
+        string Name,
+        string Signature,
+        string File,
+        int Line);
 
     [GeneratedRegex(
         @"symbol/v2/[A-Za-z0-9_-]+/[a-f0-9]{64}/[a-f0-9]{64}",

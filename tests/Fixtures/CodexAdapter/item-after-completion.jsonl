@@ -1,4 +1,0 @@
-{"type":"thread.started","thread_id":"thread-item-after-completion"}
-{"type":"turn.started"}
-{"type":"turn.completed","usage":{"input_tokens":3,"output_tokens":2}}
-{"type":"item.completed","item":{"id":"late-message","type":"agent_message","text":"late"}}

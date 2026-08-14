@@ -79,9 +79,8 @@ cannot run.
 
 ## Generated Agent Skill
 
-The repository ships a portable Agent Skill at
-`skills/dotnet-axi/SKILL.md`. Agent Skills tooling can install it for one
-repository or for the user:
+The repository ships a portable Agent Skill under `skills/dotnet-axi/`. Agent
+Skills tooling can install it for one repository or for the user:
 
 ```bash
 npx skills add chuyflores-dev/dotnet-axi --skill dotnet-axi
@@ -108,13 +107,16 @@ invoked tool's help, version, and capability output as authoritative and never
 assumes that a command exists merely because a newer skill mentions it.
 
 The skill is generated from one canonical command-guidance source, with a CI
-check that detects stale generated content. The committed skill carries the
-complete workflow and is the source installed by Agent Skills tooling; it is
-distributed independently from the NuGet tool package. Structured help and the
-home view do not repeat skill procedure. They retain command or workspace facts
-and provide exact version-pinned invocations only when an actionable suggestion
-or recovery path needs one. Generated skills do not contain live workspace
-state.
+check that detects stale generated content. Its compact `SKILL.md` entrypoint
+carries common file, text, and stable-syntax routes. It links one generated
+advanced-evidence reference for declarations, symbol identity, bounded context,
+compiler verification, impact, and validation, so simple discovery does not
+load unrelated procedure. The complete directory is installed by Agent Skills
+tooling and distributed independently from the NuGet tool package. Structured
+help and the home view do not repeat skill procedure. They retain command or
+workspace facts and provide exact version-pinned invocations only when an
+actionable suggestion or recovery path needs one. Generated skills do not
+contain live workspace state.
 
 Guidance SHOULD say when `dnaxi` is useful and when a direct operation is
 smaller. Agents use it for supported .NET workspace discovery, source
@@ -174,8 +176,11 @@ The calling agent's sandbox and approval policy are external authorities.
 `dotnet-axi`, its setup adapters, and generated guidance MUST NOT widen, bypass, or silently rewrite them.
 `dnaxi` and every process it starts inherit the caller's effective filesystem, process, and network boundaries.
 
-The portable skill keeps only agent-neutral command guidance in `SKILL.md`.
-Host-specific operation belongs to the calling agent and is not shipped as a skill reference, so Codex, Claude, Grok, and other hosts apply their own controls without receiving another host's flags as portable requirements.
+The portable skill keeps only agent-neutral command guidance in `SKILL.md` and
+its generated references. Host-specific operation belongs to the calling agent
+and is not shipped as a skill reference, so Codex, Claude, Grok, and other hosts
+apply their own controls without receiving another host's flags as portable
+requirements.
 Repository `AGENTS.md` remains the place for durable repository conventions, not user-specific permission profiles or a duplicate tool workflow.
 This follows Codex's documented separation between [skills](https://learn.chatgpt.com/docs/build-skills), [repository instructions](https://learn.chatgpt.com/docs/agent-configuration/agents-md), and the host's [sandbox and approval controls](https://learn.chatgpt.com/docs/sandboxing).
 
@@ -195,20 +200,9 @@ Codex guidance follows these rules:
 - For automated Codex workers, choose the sandbox explicitly: use `workspace-write` only for implementation and `read-only` for review.
   Prefer ephemeral JSONL execution, capture the final response separately, and bound event-stream silence and total runtime.
   Codex documents these controls in [non-interactive mode](https://learn.chatgpt.com/docs/non-interactive-mode).
-- The benchmark adapter additionally ignores ambient user configuration and
-  ambient user and project execution-policy rules, then supplies its exact
-  model, reasoning, approval, disabled-network, workspace, and condition
-  exposure through argument-list entries. It does not use
-  deprecated full-auto behavior or any approval/sandbox bypass. Ignoring user
-  configuration does not replace authentication: an isolated `CODEX_HOME` or
-  supported API credential is forwarded only when manual dispatch explicitly
-  supplies it to the owned Codex process.
 - Prefer Codex [subagents](https://learn.chatgpt.com/docs/agent-configuration/subagents) for clean-context delegation inside an active Codex turn because they inherit the parent turn's sandbox and live approval overrides.
   Treat standalone `codex exec` as an owning automation boundary, not a sandbox escape: start it only where the host already permits Codex initialization and access to the selected worktree.
   Do not probe a restricted sandbox with a nested launch and then repeat the same worker outside it.
-- A denial before the first `thread.started` event means that no Codex thread identity was observed; it does not prove that the launcher process exited.
-  Preserve the original diagnostic, stop polling a stream that never began, and observe the exact launcher process.
-  Before any replacement, confirm exit or terminate, wait for, and reap that child; event absence or silence never authorizes a duplicate, and retry still requires a confirmed host-boundary change.
 
 ## Agent-facing composition
 

@@ -1,6 +1,0 @@
-{"type":"thread.started","thread_id":"thread-success"}
-{"type":"turn.started"}
-{"type":"item.completed","item":{"id":"command-1","type":"command_execution","command":"rg -n Handler src/Discovery/Handlers/AuditHandler.cs src/Discovery/Discovery.csproj","aggregated_output":"src/Discovery/Handlers/AuditHandler.cs:5:HandleAuditAsync\nsrc/Discovery/Discovery.csproj:1:Handler\n","exit_code":0,"status":"completed"}}
-{"type":"item.completed","item":{"id":"change-1","type":"file_change","changes":[{"path":"src/Discovery/Generated.cs","kind":"add"}],"status":"completed"}}
-{"type":"item.completed","item":{"id":"message-1","type":"agent_message","text":"src/Discovery/Handlers/AuditHandler.cs:5"}}
-{"type":"turn.completed","usage":{"input_tokens":121,"cached_input_tokens":20,"output_tokens":17}}

@@ -1,0 +1,89 @@
+{
+  "schema": "dotnet-axi/agent-repository-task-corpus/v1",
+  "id": "repository-work",
+  "version": "1.0.0",
+  "tasks": [
+    {
+      "id": "refactor-owned-scope-probe",
+      "milestone": "0.5.0",
+      "kind": "refactor",
+      "prompt": "In Workspace.slnx, refactor the production declaration named ScopeProbe that is owned by src/Worker/Worker.csproj. Rename that class to WorkerScopeProbe without changing its namespace or accessibility. Do not modify the same-named declarations owned by the alternate or test projects. Change production source only.",
+      "repository": {
+        "fixtureManifest": "../symbol-context/fixture.json"
+      },
+      "applicability": {
+        "baseline": true,
+        "candidate": true
+      },
+      "allowedChanges": [
+        "src/Worker/ScopeProbe.cs"
+      ],
+      "validation": {
+        "files": [
+          {
+            "template": "validators/Verifier.csproj",
+            "path": ".benchmark-validation/Verifier.csproj"
+          },
+          {
+            "template": "validators/Validate.ps1",
+            "path": ".benchmark-validation/Validate.ps1"
+          },
+          {
+            "template": "validators/RefactorOwnedScopeProbe.cs",
+            "path": ".benchmark-validation/Program.cs"
+          }
+        ],
+        "command": [
+          "pwsh",
+          "-NoLogo",
+          "-NoProfile",
+          "-NonInteractive",
+          "-File",
+          ".benchmark-validation/Validate.ps1"
+        ],
+        "timeoutSeconds": 180
+      }
+    },
+    {
+      "id": "add-ledger-try-format",
+      "milestone": "0.5.0",
+      "kind": "feature",
+      "prompt": "In Workspace.slnx, add a public TryFormat method to the SymbolContext.Product.LedgerService declaration owned by src/Core/Core.csproj. Its signature is bool TryFormat(string? value, out string formatted). For null, empty, or whitespace input it returns false and sets formatted to string.Empty. Otherwise it trims surrounding whitespace, formats through the existing Format behavior, assigns that result, and returns true. Preserve both target-framework variants and existing behavior. Change production source only.",
+      "repository": {
+        "fixtureManifest": "../symbol-context/fixture.json"
+      },
+      "applicability": {
+        "baseline": true,
+        "candidate": true
+      },
+      "allowedChanges": [
+        "src/Core/LedgerService.cs"
+      ],
+      "validation": {
+        "files": [
+          {
+            "template": "validators/Verifier.csproj",
+            "path": ".benchmark-validation/Verifier.csproj"
+          },
+          {
+            "template": "validators/Validate.ps1",
+            "path": ".benchmark-validation/Validate.ps1"
+          },
+          {
+            "template": "validators/AddTryFormat.cs",
+            "path": ".benchmark-validation/Program.cs"
+          }
+        ],
+        "command": [
+          "pwsh",
+          "-NoLogo",
+          "-NoProfile",
+          "-NonInteractive",
+          "-File",
+          ".benchmark-validation/Validate.ps1"
+        ],
+        "timeoutSeconds": 180
+      }
+    }
+  ]
+}

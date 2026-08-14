@@ -1,6 +1,0 @@
-{"type":"thread.started","thread_id":"thread-read-only-shell"}
-{"type":"turn.started"}
-{"type":"item.completed","item":{"id":"search","type":"command_execution","command":"/bin/zsh -lc \"rg -n --glob '*.cs' Record .\"","aggregated_output":"./src/Discovery/Cases/InvocationCases.cs:7:Record();\n","exit_code":0,"status":"completed"}}
-{"type":"item.completed","item":{"id":"fallback","type":"command_execution","command":"/bin/zsh -lc \"cat src/Discovery/Cases/InvocationCases.cs\"","aggregated_output":"./src/Discovery/Cases/InvocationCases.cs\n","exit_code":0,"status":"completed"}}
-{"type":"item.completed","item":{"id":"message","type":"agent_message","text":"src/Discovery/Cases/InvocationCases.cs:7"}}
-{"type":"turn.completed","usage":{"input_tokens":21,"output_tokens":3}}

@@ -1,4 +1,0 @@
-{"type":"thread.started","thread_id":"thread-read-only"}
-{"type":"turn.started"}
-{"type":"item.completed","item":{"id":"command-1","type":"command_execution","command":"printf x > src/New.cs","aggregated_output":"read-only filesystem: permission denied\n","exit_code":1,"status":"failed"}}
-{"type":"turn.failed","error":{"message":"write blocked by read-only sandbox"}}
