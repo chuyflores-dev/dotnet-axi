@@ -53,6 +53,44 @@ projects that cannot reference the target. The default MAY return verified
 partial results for responsiveness. `--complete` analyzes the complete
 relevant static scope.
 
+For `search references`, the default project scope is the target-owning
+project plus its direct reverse dependencies in the selected evaluated graph.
+`--complete` expands that scope to the transitive reverse-dependency closure.
+Within selected projects, default mode analyzes the evaluated default
+framework and reports other supported frameworks as remaining; `--complete`
+analyzes every supported evaluated framework. Projects outside that reverse
+closure are not reference candidates and are not loaded.
+
+`--configuration`, `--framework`, and repeated `--property name=value`
+selectors apply consistently to target resolution, graph evaluation, project
+coverage, and Roslyn workspace loading. Dedicated configuration and framework
+selectors override conflicting generic properties. An explicit framework
+never falls back to a target meaning from another framework.
+
+Reference traversal is an executing inspection because Roslyn workspace
+loading can run repository design-time build targets. Every returned location
+is nevertheless compiler-verified. The result discloses each considered
+project/configuration/framework variant as analyzed, remaining, excluded, or
+failed, including stable reasons and corrections. It also reports aggregate
+considered, analyzed, remaining, excluded, and failed counts. A partial result
+may contain verified locations, but graph failures, unsupported variants,
+failed loads, or unvisited relevant variants keep its coverage partial.
+
+Reference locations retain the target compiler identity, owning project and
+framework, exact UTF-16 source range, implicit-reference state, alias when
+Roslyn supplies one, and a stable `reference/v1` evidence identity. Output is
+bounded by `--limit`; `--full` changes only presentation and never expands the
+semantic scope. Missing, ambiguous, stale, unsupported, or compiler-unresolved
+targets return the shared structured target correction before the project
+graph or reference traversal is evaluated.
+
+Cross-project target mapping requires both the declaration documentation ID
+and the exact target assembly identity in the same framework. The reference
+snapshot includes the evaluated project/import fingerprint and the observed
+compilation inputs for every analyzed variant: source and generated trees,
+additional and analyzer-configuration documents, metadata and project
+references, analyzer identities, parse options, and compilation options.
+
 For member relations, `coverage: complete` means every compatible project and
 target framework that can legally contain the requested static relationship
 was analyzed successfully. Failed or unsupported projects prevent complete

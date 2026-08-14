@@ -220,6 +220,45 @@ public sealed class RoslynSemanticTargetResolverTests
         Assert.Null(variant.Symbol);
     }
 
+    [Fact]
+    public async Task Loads_project_references_from_current_source()
+    {
+        using var workspace = new TestWorkspace();
+        await workspace.WriteProjectAsync(
+            "Dependency/Dependency.csproj",
+            SingleTargetProject());
+        await workspace.WriteAsync(
+            "Dependency/Value.cs",
+            "namespace Dependency; public sealed class Value { }");
+        await workspace.WriteProjectAsync(
+            "App/App.csproj",
+            $"""
+            {SingleTargetProject()}
+            <ItemGroup>
+              <ProjectReference Include="../Dependency/Dependency.csproj" />
+            </ItemGroup>
+            """);
+        await workspace.WriteAsync(
+            "App/Code.cs",
+            "namespace Demo; public sealed class Existing { private Dependency.Value? _value; }");
+        var loadedReferencedProjectsFromMetadata = true;
+
+        using var result = await workspace.ResolveAsync(
+            "Demo.Existing",
+            async (msbuild, projectPath, cancellationToken) =>
+            {
+                loadedReferencedProjectsFromMetadata =
+                    msbuild.LoadMetadataForReferencedProjects;
+                return await RoslynSemanticTargetResolver.LoadProjectAsync(
+                    msbuild,
+                    projectPath,
+                    cancellationToken);
+            });
+
+        Assert.False(loadedReferencedProjectsFromMetadata);
+        Assert.Equal(SemanticTargetResolutionStatus.Resolved, result.Status);
+    }
+
     private static void AssertResolvedType(
         SemanticTargetVariant variant,
         string framework,

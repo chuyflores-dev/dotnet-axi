@@ -249,6 +249,84 @@ internal static class CliApplication
             static () => new SymbolSearchCommandHandler(),
             host.ResponseWriter);
 
+        var referencesCommand = new Command(
+            "references",
+            "Find exact Roslyn references in dependency-aware project and framework scope.");
+        var referencesTarget = new Argument<string>("symbol")
+        {
+            Description = "Canonical symbol/v2 ID, fully qualified name, or declaration query.",
+        };
+        var referencesSolution = new Option<string?>("--solution")
+        {
+            Description = "Select one solution scope.",
+        };
+        var referencesProject = new Option<string?>("--project")
+        {
+            Description = "Select one project and its evaluated dependency scope.",
+        };
+        var referencesIncludeTests = new Option<bool>("--include-tests");
+        var referencesIncludeGenerated = new Option<bool>("--include-generated");
+        var referencesConfiguration = new Option<string?>("--configuration")
+        {
+            Description = "Select one evaluated MSBuild configuration.",
+        };
+        var referencesFramework = new Option<string?>("--framework")
+        {
+            Description = "Select one declared target framework.",
+        };
+        var referencesProperties = new Option<string[]>("--property")
+        {
+            AllowMultipleArgumentsPerToken = false,
+            Description = "Set an MSBuild name=value property; repeat for additional properties.",
+        };
+        var referencesComplete = new Option<bool>("--complete")
+        {
+            Description = "Analyze the transitive reverse project graph and every supported framework variant.",
+        };
+        var referencesLimit = new Option<int>("--limit")
+        {
+            DefaultValueFactory = static _ => 100,
+        };
+        var referencesFull = new Option<bool>("--full");
+        var referencesFields = CreateFieldsOption();
+        referencesCommand.Arguments.Add(referencesTarget);
+        referencesCommand.Options.Add(referencesSolution);
+        referencesCommand.Options.Add(referencesProject);
+        referencesCommand.Options.Add(referencesIncludeTests);
+        referencesCommand.Options.Add(referencesIncludeGenerated);
+        referencesCommand.Options.Add(referencesConfiguration);
+        referencesCommand.Options.Add(referencesFramework);
+        referencesCommand.Options.Add(referencesProperties);
+        referencesCommand.Options.Add(referencesComplete);
+        referencesCommand.Options.Add(referencesLimit);
+        referencesCommand.Options.Add(referencesFull);
+        referencesCommand.Options.Add(referencesFields);
+        host.RegisterCommand(
+            searchCommand,
+            referencesCommand,
+            OperationPolicy.ExecutingInspection,
+            [
+                "dnaxi search references <symbol/v2/...>",
+                "dnaxi search references Demo.Service.Run --complete",
+            ]);
+        referencesCommand.BindHandler(
+            result => ReferenceSearchCommandRequest.Create(
+                result.GetValue(referencesTarget)!,
+                result.GetValue(referencesSolution),
+                result.GetValue(referencesProject),
+                result.GetValue(referencesIncludeTests),
+                result.GetValue(referencesIncludeGenerated),
+                result.GetValue(referencesConfiguration),
+                result.GetValue(referencesFramework),
+                result.GetValue(referencesProperties) ?? [],
+                result.GetValue(referencesComplete),
+                result.GetValue(referencesLimit),
+                result.Tokens.Any(token => token.Value == "--limit"),
+                result.GetValue(referencesFull),
+                result.GetValue(referencesFields) ?? []),
+            static () => new ReferenceSearchCommandHandler(),
+            host.ResponseWriter);
+
         var showCommand = new Command(
             "show",
             "Show bounded detail for one stable evidence identity or document.");
