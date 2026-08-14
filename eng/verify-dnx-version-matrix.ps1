@@ -2,7 +2,7 @@
 param(
     [string] $RepositoryRoot,
 
-    [string[]] $Versions = @("0.4.0", "0.4.0-alpha.1")
+    [string[]] $Versions = @("0.5.0", "0.5.0-alpha.1")
 )
 
 Set-StrictMode -Version Latest
