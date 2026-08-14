@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Globalization;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Text.Json;
 
 if (args.SequenceEqual(["--info"])
     && Path.GetFileNameWithoutExtension(Environment.ProcessPath) == "dotnet")
@@ -10,6 +11,11 @@ if (args.SequenceEqual(["--info"])
         Path.Combine(AppContext.BaseDirectory, "workspace-sdk.executed"),
         "executed");
     return 97;
+}
+
+if (IsOptionalDependencyShim())
+{
+    return OptionalDependencyShim(args);
 }
 
 return args.FirstOrDefault() switch
@@ -23,6 +29,54 @@ return args.FirstOrDefault() switch
     "descendant" => Hang(),
     _ => 64,
 };
+
+static int OptionalDependencyShim(IReadOnlyList<string> values)
+{
+    var command = Path.GetFileNameWithoutExtension(Environment.ProcessPath);
+    if (command is null || command is not ("git" or "rg"))
+    {
+        return 64;
+    }
+
+    var directory = AppContext.BaseDirectory;
+    var markerPathFile = Path.Combine(directory, $"{command}.marker-path");
+    if (File.Exists(markerPathFile))
+    {
+        var marker = File.ReadAllText(markerPathFile);
+        File.AppendAllText(
+            marker,
+            JsonSerializer.Serialize(values) + Environment.NewLine);
+    }
+
+    var versionPath = Path.Combine(directory, $"{command}.version");
+    var version = File.Exists(versionPath)
+        ? File.ReadAllText(versionPath)
+        : null;
+    if (values.Count == 1
+        && values[0] == "--version"
+        && !string.IsNullOrWhiteSpace(version))
+    {
+        Console.WriteLine(version);
+        return 0;
+    }
+
+    return int.TryParse(
+        File.ReadAllText(Path.Combine(directory, $"{command}.exit-code")),
+        NumberStyles.Integer,
+        CultureInfo.InvariantCulture,
+        out var exitCode)
+            ? exitCode
+            : 74;
+}
+
+static bool IsOptionalDependencyShim()
+{
+    var command = Path.GetFileNameWithoutExtension(Environment.ProcessPath);
+    return command is "git" or "rg"
+        && File.Exists(Path.Combine(
+            AppContext.BaseDirectory,
+            $"{command}.exit-code"));
+}
 
 static int Echo(IReadOnlyList<string> values)
 {
