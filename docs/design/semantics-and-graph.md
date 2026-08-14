@@ -23,6 +23,31 @@ Semantic commands MUST resolve one specific symbol first. Ambiguity returns
 candidates and a concrete correction using an entity ID or fully qualified
 name.
 
+The shared target resolver accepts a canonical `symbol/v2` identity, a fully
+qualified declaration name, or any declaration query supported by `search
+symbol`. For a query, only its best structural ranking tier advances to
+semantic resolution, so an exact name is not made ambiguous by weaker prefix
+or substring matches. Multiple declarations collapse into one target only
+when Roslyn symbol equality proves that they are the same compiler symbol in a
+shared evaluated variant. This permits partial declarations without guessing
+between overloads or unrelated declarations that happen to share a name.
+
+A successful resolution retains the exact Roslyn project, compilation, and
+symbol for every evaluated project/configuration/framework meaning. Consumers
+traverse those handles directly and dispose the resolution afterward; they do
+not reopen the project or resolve the target a second time. Unresolved variants
+remain explicit and make coverage partial rather than being replaced by a
+different framework meaning.
+
+Missing, ambiguous, stale, unsupported, and compiler-unresolved targets return
+before relationship traversal. Their structured result includes a stable error
+code and concrete correction. Ambiguity carries bounded candidate IDs,
+signatures, and fully qualified names. At most 20 candidates are included with
+the total, omitted count, and truncation state reported; the correction carries
+the full symbol-search query. Stale `symbol/v2` identities preserve the
+`evidence.stale_id` replacement-candidate and search-query contract under the
+same bound.
+
 Reference and caller searches MUST use the evaluated project graph to exclude
 projects that cannot reference the target. The default MAY return verified
 partial results for responsiveness. `--complete` analyzes the complete
