@@ -161,3 +161,7 @@ Relationship operations may share deterministic planning state within one comman
 The session is in-memory and invocation-scoped. It does not create cross-process state, persistence, an index, a daemon, or a protocol-visible session. `SemanticTargetResolution` continues to own and dispose the Roslyn workspaces and semantic handles it returns. Compiler-context loading and ownership must not move into the planning session without a separate lifetime-focused change.
 
 Relationship implementations retain their own Roslyn relationship semantics, result models, coverage projection, ordering, and structured errors. Shared planning must preserve configuration, framework, explicit MSBuild properties, test inclusion, cancellation, and incomplete-analysis evidence.
+
+The operation session also owns compiler contexts loaded for session-backed relationship analysis. Contexts are isolated by authoritative workspace root and compiler variant, and both successful and failed loads are reused for the operation lifetime. A target context loaded first retains its target metadata-loading behavior when later used by relationship traversal. Cancellation is never converted into cached failure state.
+
+Standalone target resolution remains independent of the operation session. Its returned resolution owns successful Roslyn workspaces exactly as before. A session-backed target resolution does not also own session contexts, preventing premature or duplicate workspace disposal.
