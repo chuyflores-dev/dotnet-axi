@@ -259,6 +259,7 @@ internal sealed class ReferenceSearchCommandHandler :
         var payload = new ReferenceSearchPayload(
             OperationClassification.Executing,
             result.Target,
+            result.TargetId!,
             request.Complete ? "complete" : "default",
             bounded.Count,
             bounded.TotalKnown,
@@ -419,6 +420,7 @@ internal sealed class ReferenceSearchCommandHandler :
     private sealed record ReferenceSearchPayload(
         OperationClassification Classification,
         string Target,
+        string TargetId,
         string ScopeMode,
         int Count,
         bool TotalKnown,

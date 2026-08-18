@@ -121,6 +121,21 @@ internal sealed record ContextSymbolCommandRequest(
     }
 }
 
+internal readonly record struct ContextSymbolSectionRequirements(
+    bool RequiresDetail,
+    bool RequiresOutline)
+{
+    internal static ContextSymbolSectionRequirements From(IReadOnlyList<string> names)
+    {
+        ArgumentNullException.ThrowIfNull(names);
+
+        return new(
+            names.Contains("declaration", StringComparer.Ordinal)
+                || names.Contains("document", StringComparer.Ordinal),
+            names.Contains("outline", StringComparer.Ordinal));
+    }
+}
+
 internal sealed class ContextSymbolCommandHandler :
     ICommandHandler<ContextSymbolCommandRequest>
 {
@@ -166,19 +181,15 @@ internal sealed class ContextSymbolCommandHandler :
         }
 
         var match = resolution.Matches[0];
-        var detail = await new SymbolDeclarationDetailReader()
-            .ReadAsync(match, cancellationToken)
-            .ConfigureAwait(false);
-        var outline = new RoslynSourceOutliner()
-            .OutlineSymbol(match, maxItems: null, cancellationToken);
         var documentId = FileEntityIdentity.Create(
             match.Range.Start.Path,
             match.Range.Start.IsExternal);
-        var sectionValues = CreateSectionValues(
-            match,
-            detail,
-            outline,
-            documentId);
+        var sectionValues = await CreateSectionValuesAsync(
+                match,
+                documentId,
+                request.Sections,
+                cancellationToken)
+            .ConfigureAwait(false);
         var budget = ContextBudget.Resolve(
             DefaultMaximumCharacters,
             explicitMaximumCharacters: request.MaxCharactersSpecified
@@ -265,57 +276,79 @@ internal sealed class ContextSymbolCommandHandler :
         IReadOnlyList<ContextSection<SymbolContextSectionPayload>> Sections,
         long FullTotalCharacters);
 
-    private static IReadOnlyDictionary<string, SymbolContextSectionPayload>
-        CreateSectionValues(
+    private static async ValueTask<
+        IReadOnlyDictionary<string, SymbolContextSectionPayload>>
+        CreateSectionValuesAsync(
             SymbolDeclarationMatch match,
-            SymbolDeclarationDetail detail,
-            SourceOutline outline,
-            string documentId)
+            string documentId,
+            IReadOnlyList<string> names,
+            CancellationToken cancellationToken)
     {
+        var requirements = ContextSymbolSectionRequirements.From(names);
         var location = SymbolEvidencePipeline.Location(match);
-        var declaration = new SymbolContextDeclarationPayload(
-            match.Id,
-            match.Kind,
-            match.Name,
-            match.FullyQualifiedName,
-            match.Signature,
-            match.Accessibility,
-            detail.ContainingType,
-            documentId,
-            match.Id,
-            location,
-            detail.Relationships);
-        var document = new SymbolContextDocumentPayload(
-            documentId,
-            match.Range.Start.Path,
-            match.Range.Start.IsExternal,
-            match.IsGenerated,
-            "utf-8",
-            detail.SourceByteCount,
-            [match.Id],
-            detail.SourceText);
-        var outlineItems = outline.Items
-            .Skip(1)
-            .ToArray();
-        return new Dictionary<string, SymbolContextSectionPayload>(
-            StringComparer.Ordinal)
+        var values = new Dictionary<string, SymbolContextSectionPayload>(
+            names.Count,
+            StringComparer.Ordinal);
+        SymbolDeclarationDetail? detail = null;
+        if (requirements.RequiresDetail)
         {
-            ["declaration"] = new(
+            detail = await new SymbolDeclarationDetailReader()
+                .ReadAsync(match, cancellationToken)
+                .ConfigureAwait(false);
+        }
+
+        if (names.Contains("declaration", StringComparer.Ordinal))
+        {
+            values.Add("declaration", new(
                 "symbol-entity-resolution",
                 EvidenceResolution.Syntax,
                 EvidenceConfidence.Candidate,
-                declaration),
-            ["owner"] = new(
+                new SymbolContextDeclarationPayload(
+                    match.Id,
+                    match.Kind,
+                    match.Name,
+                    match.FullyQualifiedName,
+                    match.Signature,
+                    match.Accessibility,
+                    detail!.ContainingType,
+                    documentId,
+                    match.Id,
+                    location,
+                    detail.Relationships)));
+        }
+
+        if (names.Contains("owner", StringComparer.Ordinal))
+        {
+            values.Add("owner", new(
                 "workspace-project-ownership",
                 EvidenceResolution.Syntax,
                 EvidenceConfidence.Candidate,
-                SymbolEvidencePipeline.Owner(match)),
-            ["document"] = new(
+                SymbolEvidencePipeline.Owner(match)));
+        }
+
+        if (names.Contains("document", StringComparer.Ordinal))
+        {
+            values.Add("document", new(
                 "resolved-declaration-source",
                 EvidenceResolution.Text,
                 EvidenceConfidence.Verified,
-                document),
-            ["outline"] = new(
+                new SymbolContextDocumentPayload(
+                    documentId,
+                    match.Range.Start.Path,
+                    match.Range.Start.IsExternal,
+                    match.IsGenerated,
+                    "utf-8",
+                    detail!.SourceByteCount,
+                    [match.Id],
+                    detail.SourceText)));
+        }
+
+        if (requirements.RequiresOutline)
+        {
+            var outline = new RoslynSourceOutliner()
+                .OutlineSymbol(match, maxItems: null, cancellationToken);
+            var outlineItems = outline.Items.Skip(1).ToArray();
+            values.Add("outline", new(
                 "roslyn-syntax-outline",
                 EvidenceResolution.Syntax,
                 EvidenceConfidence.Candidate,
@@ -325,8 +358,10 @@ internal sealed class ContextSymbolCommandHandler :
                     outline.DiagnosticCount,
                     outline.TotalCount,
                     outlineItems.Length,
-                    outlineItems)),
-        };
+                    outlineItems)));
+        }
+
+        return values;
     }
 
     private static CommandResult<ContextSymbolResolutionPayload> Failure(

@@ -145,6 +145,13 @@ public sealed class SemanticTargetResolution : IDisposable
 
     public bool Resolved => Status is SemanticTargetResolutionStatus.Resolved;
 
+    public string? CanonicalId => Resolved
+        ? Declarations
+            .Select(static declaration => declaration.Id)
+            .Order(StringComparer.Ordinal)
+            .FirstOrDefault()
+        : null;
+
     public bool HasPartialCoverage => PartialReasons.Count > 0;
 
     public void Dispose()
@@ -276,7 +283,7 @@ public sealed class RoslynSemanticTargetResolver
         var candidates = selection.Candidates!;
         var compilerVariants = _variantResolver.Resolve(
             root,
-            EffectiveProjects(scope),
+            EffectiveCandidateProjects(scope, candidates),
             evaluationOptions,
             cancellationToken);
         var contexts = new Dictionary<CompilerContextKey, CompilerContext>();
@@ -700,6 +707,10 @@ public sealed class RoslynSemanticTargetResolver
         {
             return CompilerContext.Failed("project.load_failed");
         }
+        catch (UnauthorizedAccessException)
+        {
+            return CompilerContext.Failed("project.load_failed");
+        }
         catch (TimeoutException)
         {
             return CompilerContext.Failed("project.load_failed");
@@ -718,6 +729,30 @@ public sealed class RoslynSemanticTargetResolver
                     project,
                     StringComparer.Ordinal))
                 .ToArray());
+
+    private IReadOnlyList<string> EffectiveCandidateProjects(
+        SymbolDeclarationScope scope,
+        IEnumerable<SymbolDeclarationMatch> candidates)
+    {
+        return SelectCandidateProjects(
+            EffectiveProjects(scope),
+            candidates.SelectMany(static candidate => candidate.OwningProjects));
+    }
+
+    internal static IReadOnlyList<string> SelectCandidateProjects(
+        IEnumerable<string> effectiveProjects,
+        IEnumerable<string> candidateProjects)
+    {
+        ArgumentNullException.ThrowIfNull(effectiveProjects);
+        ArgumentNullException.ThrowIfNull(candidateProjects);
+
+        var effective = effectiveProjects.ToHashSet(StringComparer.Ordinal);
+        return Array.AsReadOnly(candidateProjects
+            .Where(effective.Contains)
+            .Distinct(StringComparer.Ordinal)
+            .Order(StringComparer.Ordinal)
+            .ToArray());
+    }
 
     private static bool InScope(
         SymbolDeclarationMatch match,

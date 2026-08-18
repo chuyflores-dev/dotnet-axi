@@ -119,11 +119,11 @@ Create and verify a disposable local package without publishing it:
 
 ```bash
 pwsh ./eng/pack-local-candidate.ps1 \
-  -Version 0.5.0-alpha.1 \
+  -Version 0.6.0-alpha.1 \
   -PackageRoot artifacts/packages/local
 
 pwsh ./eng/verify-tool-package.ps1 \
-  -PackageDirectory artifacts/packages/local/0.5.0-alpha.1
+  -PackageDirectory artifacts/packages/local/0.6.0-alpha.1
 
 # Pack and run exact stable and prerelease versions through dnx only.
 pwsh ./eng/verify-dnx-version-matrix.ps1
@@ -133,8 +133,8 @@ With .NET 10 or later, the local package can be invoked once without a
 persistent installation:
 
 ```bash
-dnx dnaxi@0.5.0-alpha.1 \
-  --source ./artifacts/packages/local/0.5.0-alpha.1 \
+dnx dnaxi@0.6.0-alpha.1 \
+  --source ./artifacts/packages/local/0.6.0-alpha.1 \
   --verbosity quiet \
   -- --version
 ```

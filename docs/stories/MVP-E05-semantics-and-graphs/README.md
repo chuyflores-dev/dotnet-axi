@@ -43,6 +43,7 @@ semantic or graph database.
 - [MVP-E05-S11 — Find graph paths](MVP-E05-S11-graph-paths.md)
 - [MVP-E05-S12 — Analyze impact](MVP-E05-S12-impact-analysis.md)
 - [MVP-E05-S13 — Compose relationship context](MVP-E05-S13-relationship-context.md)
+- [MVP-E05-S14 - Harden semantic relationship foundations](MVP-E05-S14-harden-semantic-relationship-foundations.md)
 
 ## Complete when
 

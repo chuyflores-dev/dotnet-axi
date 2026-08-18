@@ -6,6 +6,24 @@ namespace DotNetAxi.Cli.Tests;
 
 public sealed class ContextSymbolCommandTests
 {
+    [Theory]
+    [InlineData("owner", false, false)]
+    [InlineData("declaration", true, false)]
+    [InlineData("document", true, false)]
+    [InlineData("outline", false, true)]
+    [InlineData("owner,outline", false, true)]
+    public void Section_requirements_select_only_needed_semantic_work(
+        string sections,
+        bool requiresDetail,
+        bool requiresOutline)
+    {
+        var requirements = ContextSymbolSectionRequirements.From(
+            sections.Split(',', StringSplitOptions.RemoveEmptyEntries));
+
+        Assert.Equal(requiresDetail, requirements.RequiresDetail);
+        Assert.Equal(requiresOutline, requirements.RequiresOutline);
+    }
+
     [Fact]
     public async Task Composes_four_sections_once_with_shared_identity_and_snapshot()
     {

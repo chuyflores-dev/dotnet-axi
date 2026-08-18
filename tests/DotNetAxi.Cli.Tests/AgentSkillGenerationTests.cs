@@ -55,6 +55,10 @@ public sealed class AgentSkillGenerationTests
             "-- validate",
             skill + advanced,
             StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "search implementations",
+            skill + advanced,
+            StringComparison.Ordinal);
         Assert.Contains("references/advanced-evidence.md", skill);
         Assert.DoesNotContain("Codex", skill);
         Assert.Contains("## Invoke safely", skill);
@@ -348,7 +352,6 @@ public sealed class AgentSkillGenerationTests
         foreach (var required in new[]
                 {
                     "search symbol",
-                    "search implementations",
                     "show symbol",
                     "show document",
                     "--start-line <line> --end-line <line>",
@@ -376,6 +379,7 @@ public sealed class AgentSkillGenerationTests
 
                 foreach (var futureGraphCommand in new[]
                  {
+                     "search implementations",
                      "search references",
                      "show references",
                      "context references",

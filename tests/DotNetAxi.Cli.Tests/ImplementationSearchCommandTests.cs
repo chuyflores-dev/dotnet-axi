@@ -21,6 +21,7 @@ public sealed class ImplementationSearchCommandTests
         Assert.Contains("classification: executing", result.Output);
         Assert.Contains("resolution: semantic", result.Output);
         Assert.Contains("coverage: complete", result.Output);
+        Assert.Contains("target_id: symbol/v2/", result.Output);
         Assert.Contains("count: 2", result.Output);
         Assert.Contains("matches[2]{file,line,project,framework}:", result.Output);
         Assert.Contains("Service.cs", result.Output);
