@@ -153,3 +153,11 @@ important relationship paths, and confidence.
 
 The graph API MUST NOT require Neo4j, SQLite, or another persistent graph store
 in the MVP.
+
+## Operation-scoped semantic query planning
+
+Relationship operations may share deterministic planning state within one command invocation. The operation-scoped semantic query session owns lazy project-graph evaluation and incremental compiler-variant resolution so target-owner projects are not evaluated again when a relationship expands into a dependency-aware project closure.
+
+The session is in-memory and invocation-scoped. It does not create cross-process state, persistence, an index, a daemon, or a protocol-visible session. `SemanticTargetResolution` continues to own and dispose the Roslyn workspaces and semantic handles it returns. Compiler-context loading and ownership must not move into the planning session without a separate lifetime-focused change.
+
+Relationship implementations retain their own Roslyn relationship semantics, result models, coverage projection, ordering, and structured errors. Shared planning must preserve configuration, framework, explicit MSBuild properties, test inclusion, cancellation, and incomplete-analysis evidence.

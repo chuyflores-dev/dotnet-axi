@@ -266,11 +266,16 @@ public sealed class RoslynImplementationSearcher
             includeTests: false,
             includeGenerated: traversal.IncludeGenerated == true);
 
+        var session = new SemanticQuerySession(
+            evaluationOptions,
+            _graphEvaluator,
+            _variantResolver);
         using var resolution = await _targetResolver.ResolveAsync(
                 target,
                 traversal,
                 declarationScope,
                 evaluationOptions,
+                session,
                 cancellationToken)
             .ConfigureAwait(false);
         if (!resolution.Resolved)
@@ -283,11 +288,10 @@ public sealed class RoslynImplementationSearcher
             .Traverse(traversal, cancellationToken)
             .Select(static path => path.RelativePath)
             .ToHashSet(PathComparer());
-        var graph = _graphEvaluator.Evaluate(
+        var graph = session.GetProjectGraph(
             discovery,
             selection,
-            evaluationOptions,
-            cancellationToken: cancellationToken);
+            cancellationToken);
         var candidateProjects = SemanticRelationshipProjectScope.Resolve(
             graph,
             resolution.Variants
@@ -308,10 +312,9 @@ public sealed class RoslynImplementationSearcher
             candidateProjects.Complete,
             projectScope,
             graph);
-        var compilerVariants = _variantResolver.Resolve(
+        var compilerVariants = session.ResolveCompilerVariants(
             discovery.RootPath,
             candidateProjects.Complete,
-            evaluationOptions,
             cancellationToken);
 
         var matches = new List<RoslynImplementationMatch>();
