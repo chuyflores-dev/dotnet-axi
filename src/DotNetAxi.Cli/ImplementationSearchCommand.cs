@@ -257,6 +257,7 @@ internal sealed class ImplementationSearchCommandHandler :
         var payload = new ImplementationSearchPayload(
             OperationClassification.Executing,
             result.Target,
+            result.TargetId!,
             request.Complete ? "complete" : "default",
             bounded.Count,
             bounded.TotalKnown,
@@ -415,6 +416,7 @@ internal sealed class ImplementationSearchCommandHandler :
     private sealed record ImplementationSearchPayload(
         OperationClassification Classification,
         string Target,
+        string TargetId,
         string ScopeMode,
         int Count,
         bool TotalKnown,

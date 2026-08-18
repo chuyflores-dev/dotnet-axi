@@ -100,6 +100,7 @@ public sealed class RoslynImplementationSearchResult
 {
     internal RoslynImplementationSearchResult(
         string target,
+        string? targetId,
         SemanticTargetResolutionStatus targetStatus,
         string? snapshot,
         ImplementationSearchScopeMode scopeMode,
@@ -113,6 +114,7 @@ public sealed class RoslynImplementationSearchResult
         IEnumerable<string>? partialReasons)
     {
         Target = target;
+        TargetId = targetId;
         TargetStatus = targetStatus;
         Snapshot = snapshot;
         ScopeMode = scopeMode;
@@ -132,6 +134,8 @@ public sealed class RoslynImplementationSearchResult
     }
 
     public string Target { get; }
+
+    public string? TargetId { get; }
 
     public SemanticTargetResolutionStatus TargetStatus { get; }
 
@@ -284,7 +288,7 @@ public sealed class RoslynImplementationSearcher
             selection,
             evaluationOptions,
             cancellationToken: cancellationToken);
-        var candidateProjects = CandidateProjects(
+        var candidateProjects = SemanticRelationshipProjectScope.Resolve(
             graph,
             resolution.Variants
                 .Where(static variant =>
@@ -365,6 +369,7 @@ public sealed class RoslynImplementationSearcher
             orderedVariants);
         return new RoslynImplementationSearchResult(
             target,
+            resolution.CanonicalId,
             SemanticTargetResolutionStatus.Resolved,
             Snapshot(
                 resolution.Snapshot!,
@@ -389,6 +394,7 @@ public sealed class RoslynImplementationSearcher
         SemanticTargetResolution resolution) =>
         new(
             target,
+            targetId: null,
             resolution.Status,
             resolution.Snapshot,
             scopeMode,
@@ -407,48 +413,6 @@ public sealed class RoslynImplementationSearcher
             resolution.ErrorCode,
             resolution.Correction,
             resolution.PartialReasons);
-
-    private static CandidateProjectScope CandidateProjects(
-        EvaluatedProjectGraph graph,
-        IEnumerable<string> targetProjects,
-        bool includeTests)
-    {
-        var comparer = PathComparer();
-        var seeds = targetProjects
-            .ToHashSet(comparer);
-        var complete = new HashSet<string>(seeds, comparer);
-        var queue = new Queue<string>(seeds);
-        while (queue.TryDequeue(out var dependency))
-        {
-            foreach (var project in graph.Dependencies
-                         .Where(edge => comparer.Equals(
-                             edge.Dependency,
-                             dependency))
-                         .Select(static edge => edge.Project)
-                         .Where(project => includeTests
-                             || !IsTestProject(project)))
-            {
-                if (complete.Add(project))
-                {
-                    queue.Enqueue(project);
-                }
-            }
-        }
-
-        var direct = new HashSet<string>(seeds, comparer);
-        foreach (var project in graph.Dependencies
-                     .Where(edge => seeds.Contains(edge.Dependency))
-                     .Select(static edge => edge.Project)
-                     .Where(project => includeTests
-                         || !IsTestProject(project)))
-        {
-            direct.Add(project);
-        }
-
-        return new CandidateProjectScope(
-            direct.Order(StringComparer.Ordinal).ToArray(),
-            complete.Order(StringComparer.Ordinal).ToArray());
-    }
 
     private static IReadOnlyList<VariantPlan> BuildPlans(
         ProjectCoverageReport report,
@@ -1313,28 +1277,10 @@ public sealed class RoslynImplementationSearcher
             ? document.Name
             : FingerprintPath(workspaceRoot, document.FilePath);
 
-    private static async ValueTask<string> FileFingerprintAsync(
+    private static ValueTask<string> FileFingerprintAsync(
         string path,
-        CancellationToken cancellationToken)
-    {
-        if (!File.Exists(path))
-        {
-            return "missing";
-        }
-
-        try
-        {
-            return Convert.ToHexStringLower(await File.ReadAllBytesAsync(
-                    path,
-                    cancellationToken)
-                .ConfigureAwait(false));
-        }
-        catch (Exception exception) when (exception is IOException
-            or UnauthorizedAccessException)
-        {
-            return "unreadable";
-        }
-    }
+        CancellationToken cancellationToken) =>
+        SemanticRelationshipFileFingerprint.CreateAsync(path, cancellationToken);
 
     private static string FingerprintPath(string workspaceRoot, string path) =>
         Path.IsPathFullyQualified(path) && IsWithin(workspaceRoot, path)
@@ -1468,24 +1414,10 @@ public sealed class RoslynImplementationSearcher
                 StringComparison.Ordinal);
     }
 
-    private static bool IsTestProject(string project) =>
-        project
-            .Split(
-                ['/', '\\', '.', '-', '_'],
-                StringSplitOptions.RemoveEmptyEntries)
-            .Any(static token =>
-                token.Equals("test", StringComparison.OrdinalIgnoreCase)
-                || token.Equals("tests", StringComparison.OrdinalIgnoreCase)
-                || token.EndsWith("Tests", StringComparison.OrdinalIgnoreCase));
-
     private static StringComparer PathComparer() =>
         OperatingSystem.IsWindows()
             ? StringComparer.OrdinalIgnoreCase
             : StringComparer.Ordinal;
-
-    private sealed record CandidateProjectScope(
-        IReadOnlyList<string> Default,
-        IReadOnlyList<string> Complete);
 
     private sealed record VariantPlan(
         ProjectVariantCoverage? Coverage,

@@ -21,6 +21,7 @@ public sealed class ReferenceSearchCommandTests
         Assert.Contains("coverage: complete", result.Output);
         Assert.Contains("confidence: verified", result.Output);
         Assert.Contains("count: 1", result.Output);
+        Assert.Contains("target_id: symbol/v2/", result.Output);
         Assert.Contains("matches[1]{file,line,project,framework}:", result.Output);
         Assert.Contains("Code.cs,11,App.csproj,net10.0", result.Output);
     }

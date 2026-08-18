@@ -10,6 +10,16 @@ namespace DotNetAxi.Roslyn.Tests;
 public sealed class RoslynSemanticTargetResolverTests
 {
     [Fact]
+    public void Select_candidate_projects_keeps_only_effective_candidate_owners()
+    {
+        var selected = RoslynSemanticTargetResolver.SelectCandidateProjects(
+            ["B/B.csproj", "A/A.csproj", "Unrelated/Unrelated.csproj"],
+            ["B/B.csproj", "A/A.csproj", "B/B.csproj", "Outside/Outside.csproj"]);
+
+        Assert.Equal(["A/A.csproj", "B/B.csproj"], selected);
+    }
+
+    [Fact]
     public async Task Resolves_partial_type_once_across_framework_variants()
     {
         using var workspace = new TestWorkspace();
@@ -218,6 +228,28 @@ public sealed class RoslynSemanticTargetResolverTests
         Assert.Equal(SemanticTargetVariantStatus.Unresolved, variant.Status);
         Assert.Equal("candidate.stale", variant.Reason);
         Assert.Null(variant.Symbol);
+    }
+
+    [Fact]
+    public async Task Reports_unauthorized_project_loading_as_unresolved_coverage()
+    {
+        using var workspace = new TestWorkspace();
+        await workspace.WriteProjectAsync(
+            "App/App.csproj",
+            SingleTargetProject());
+        await workspace.WriteAsync(
+            "App/Code.cs",
+            "namespace Demo; public sealed class Existing { }");
+
+        using var result = await workspace.ResolveAsync(
+            "Demo.Existing",
+            static (_, _, _) => Task.FromException<Project>(
+                new UnauthorizedAccessException()));
+
+        Assert.Equal(SemanticTargetResolutionStatus.Unresolved, result.Status);
+        var variant = Assert.Single(result.Variants);
+        Assert.Equal(SemanticTargetVariantStatus.Unresolved, variant.Status);
+        Assert.Equal("project.load_failed", variant.Reason);
     }
 
     [Fact]
