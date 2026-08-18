@@ -249,6 +249,41 @@ public sealed class RoslynSemanticTargetResolver
         WorkspaceTraversalRequest traversal,
         SymbolDeclarationScope? scope,
         ProjectGraphEvaluationOptions evaluationOptions,
+        CancellationToken cancellationToken = default) =>
+        await ResolveCoreAsync(
+                target,
+                traversal,
+                scope,
+                evaluationOptions,
+                session: null,
+                cancellationToken)
+            .ConfigureAwait(false);
+
+    internal async ValueTask<SemanticTargetResolution> ResolveAsync(
+        string target,
+        WorkspaceTraversalRequest traversal,
+        SymbolDeclarationScope? scope,
+        ProjectGraphEvaluationOptions evaluationOptions,
+        SemanticQuerySession session,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+        return await ResolveCoreAsync(
+                target,
+                traversal,
+                scope,
+                evaluationOptions,
+                session,
+                cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    private async ValueTask<SemanticTargetResolution> ResolveCoreAsync(
+        string target,
+        WorkspaceTraversalRequest traversal,
+        SymbolDeclarationScope? scope,
+        ProjectGraphEvaluationOptions evaluationOptions,
+        SemanticQuerySession? session,
         CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(target);
@@ -281,11 +316,17 @@ public sealed class RoslynSemanticTargetResolver
         }
 
         var candidates = selection.Candidates!;
-        var compilerVariants = _variantResolver.Resolve(
-            root,
-            EffectiveCandidateProjects(scope, candidates),
-            evaluationOptions,
-            cancellationToken);
+        var effectiveProjects = EffectiveCandidateProjects(scope, candidates);
+        var compilerVariants = session is null
+            ? _variantResolver.Resolve(
+                root,
+                effectiveProjects,
+                evaluationOptions,
+                cancellationToken)
+            : session.ResolveCompilerVariants(
+                root,
+                effectiveProjects,
+                cancellationToken);
         var contexts = new Dictionary<CompilerContextKey, CompilerContext>();
         try
         {
