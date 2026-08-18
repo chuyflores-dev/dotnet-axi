@@ -45,6 +45,7 @@ semantic or graph database.
 - [MVP-E05-S13 — Compose relationship context](MVP-E05-S13-relationship-context.md)
 - [MVP-E05-S14 - Harden semantic relationship foundations](MVP-E05-S14-harden-semantic-relationship-foundations.md)
 - [MVP-E05-S15 - Share semantic query state within an operation](MVP-E05-S15-share-semantic-query-state-within-an-operation.md)
+- [MVP-E05-S16 - Reuse compiler contexts within a semantic operation](MVP-E05-S16-reuse-compiler-contexts-within-a-semantic-operation.md)
 
 ## Complete when
 

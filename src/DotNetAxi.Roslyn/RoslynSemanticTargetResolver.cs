@@ -182,11 +182,7 @@ public sealed class RoslynSemanticTargetResolver
     private readonly SymbolDeclarationSearcher _searcher;
     private readonly SymbolEntityResolver _entityResolver;
     private readonly MsBuildCompilerVariantResolver _variantResolver;
-    private readonly Func<
-        MSBuildWorkspace,
-        string,
-        CancellationToken,
-        Task<Project>> _projectLoader;
+    private readonly RoslynCompilerContextLoader _compilerContextLoader;
 
     public RoslynSemanticTargetResolver(
         IWorkspacePathTraverser traverser,
@@ -218,17 +214,18 @@ public sealed class RoslynSemanticTargetResolver
         _entityResolver = new SymbolEntityResolver(traverser, ownership);
         _variantResolver = new MsBuildCompilerVariantResolver(
             new DotNetHostResolver());
-        _projectLoader = projectLoader
-            ?? throw new ArgumentNullException(nameof(projectLoader));
+        _compilerContextLoader = new RoslynCompilerContextLoader(
+            projectLoader
+                ?? throw new ArgumentNullException(nameof(projectLoader)));
     }
 
     internal static Task<Project> LoadProjectAsync(
         MSBuildWorkspace workspace,
         string projectPath,
         CancellationToken cancellationToken) =>
-        workspace.OpenProjectAsync(
+        RoslynCompilerContextLoader.LoadProjectAsync(
+            workspace,
             projectPath,
-            progress: null,
             cancellationToken);
 
     public async ValueTask<SemanticTargetResolution> ResolveAsync(
@@ -327,7 +324,8 @@ public sealed class RoslynSemanticTargetResolver
                 root,
                 effectiveProjects,
                 cancellationToken);
-        var contexts = new Dictionary<CompilerContextKey, CompilerContext>();
+        Dictionary<RoslynCompilerContextKey, RoslynCompilerContext>?
+            standaloneContexts = session is null ? [] : null;
         try
         {
             var states = new List<CandidateState>(candidates.Count);
@@ -338,7 +336,8 @@ public sealed class RoslynSemanticTargetResolver
                         root,
                         candidate,
                         compilerVariants,
-                        contexts,
+                        session,
+                        standaloneContexts,
                         evaluationOptions,
                         cancellationToken)
                     .ConfigureAwait(false));
@@ -374,13 +373,17 @@ public sealed class RoslynSemanticTargetResolver
                     variants: variants);
             }
 
-            var workspaces = contexts.Values
-                .Select(static context => context.Workspace)
-                .OfType<MSBuildWorkspace>()
-                .ToArray();
-            foreach (var context in contexts.Values)
+            IEnumerable<MSBuildWorkspace>? workspaces = null;
+            if (standaloneContexts is not null)
             {
-                context.TransferOwnership();
+                workspaces = standaloneContexts.Values
+                    .Select(static context => context.Workspace)
+                    .OfType<MSBuildWorkspace>()
+                    .ToArray();
+                foreach (var context in standaloneContexts.Values)
+                {
+                    context.TransferOwnership();
+                }
             }
 
             return new SemanticTargetResolution(
@@ -397,9 +400,12 @@ public sealed class RoslynSemanticTargetResolver
         }
         finally
         {
-            foreach (var context in contexts.Values)
+            if (standaloneContexts is not null)
             {
-                context.Dispose();
+                foreach (var context in standaloneContexts.Values)
+                {
+                    context.Dispose();
+                }
             }
         }
     }
@@ -484,7 +490,9 @@ public sealed class RoslynSemanticTargetResolver
         string workspaceRoot,
         SymbolDeclarationMatch candidate,
         CompilerVariantResolution resolution,
-        IDictionary<CompilerContextKey, CompilerContext> contexts,
+        SemanticQuerySession? session,
+        IDictionary<RoslynCompilerContextKey, RoslynCompilerContext>?
+            standaloneContexts,
         ProjectGraphEvaluationOptions evaluationOptions,
         CancellationToken cancellationToken)
     {
@@ -529,16 +537,30 @@ public sealed class RoslynSemanticTargetResolver
                 continue;
             }
 
-            var key = CompilerContextKey.From(variant);
-            if (!contexts.TryGetValue(key, out var context))
+            RoslynCompilerContext context;
+            if (session is not null)
             {
-                context = await LoadContextAsync(
+                context = await session.GetCompilerContextAsync(
                         workspaceRoot,
                         variant,
-                        evaluationOptions,
+                        RoslynCompilerContextPurpose.Target,
                         cancellationToken)
                     .ConfigureAwait(false);
-                contexts.Add(key, context);
+            }
+            else
+            {
+                var key = RoslynCompilerContextKey.From(variant);
+                if (!standaloneContexts!.TryGetValue(key, out context!))
+                {
+                    context = await _compilerContextLoader.LoadAsync(
+                            workspaceRoot,
+                            variant,
+                            evaluationOptions,
+                            RoslynCompilerContextPurpose.Target,
+                            cancellationToken)
+                        .ConfigureAwait(false);
+                    standaloneContexts.Add(key, context);
+                }
             }
 
             variants.Add(ResolveInContext(
@@ -554,7 +576,7 @@ public sealed class RoslynSemanticTargetResolver
     private static SemanticTargetVariant ResolveInContext(
         SymbolDeclarationMatch candidate,
         FileCompilerVariant variant,
-        CompilerContext context,
+        RoslynCompilerContext context,
         CancellationToken cancellationToken)
     {
         if (context.FailureReason is not null)
@@ -583,9 +605,11 @@ public sealed class RoslynSemanticTargetResolver
             return Unresolved(variant, "semantic.declaration_not_found");
         }
 
-        if (context.DiagnosticReason is not null)
+        var diagnosticReason = context.DiagnosticReason(
+            RoslynCompilerContextPurpose.Target);
+        if (diagnosticReason is not null)
         {
-            return Unresolved(variant, context.DiagnosticReason);
+            return Unresolved(variant, diagnosticReason);
         }
 
         var model = context.Compilation!.GetSemanticModel(
@@ -644,122 +668,6 @@ public sealed class RoslynSemanticTargetResolver
         }
 
         return current;
-    }
-
-    private async ValueTask<CompilerContext> LoadContextAsync(
-        string workspaceRoot,
-        FileCompilerVariant variant,
-        ProjectGraphEvaluationOptions evaluationOptions,
-        CancellationToken cancellationToken)
-    {
-        var projectPath = Path.GetFullPath(
-            variant.Project.Replace('/', Path.DirectorySeparatorChar),
-            workspaceRoot);
-        if (!IsWithin(workspaceRoot, projectPath))
-        {
-            return CompilerContext.Failed("project.path_escape");
-        }
-
-        var properties = new Dictionary<string, string>(
-            StringComparer.OrdinalIgnoreCase);
-        foreach (var property in evaluationOptions.Properties)
-        {
-            properties[property.Name] = property.Value;
-        }
-        properties["Configuration"] = variant.Configuration ?? "Debug";
-        properties["DesignTimeBuild"] = "true";
-        properties["BuildingInsideVisualStudio"] = "true";
-        properties["BuildProjectReferences"] = "false";
-        properties["SkipCompilerExecution"] = "true";
-        properties["ProvideCommandLineArgs"] = "true";
-        if (variant.Framework is not null)
-        {
-            properties["TargetFramework"] = variant.Framework;
-        }
-
-        MSBuildWorkspace? workspace = null;
-        try
-        {
-            var workspaceDiagnostics = new List<WorkspaceDiagnostic>();
-            workspace = MSBuildWorkspace.Create(properties);
-            workspace.RegisterWorkspaceFailedHandler(args =>
-                workspaceDiagnostics.Add(args.Diagnostic));
-            workspace.LoadMetadataForReferencedProjects = false;
-            var project = await _projectLoader(
-                    workspace,
-                    projectPath,
-                    cancellationToken)
-                .ConfigureAwait(false);
-            var compilation = await project.GetCompilationAsync(cancellationToken)
-                .ConfigureAwait(false) as CSharpCompilation;
-            if (compilation is null)
-            {
-                return CompilerContext.Failed("project.compilation_unavailable");
-            }
-
-            var pathResolver = new WorkspacePathResolver(
-                workspaceRoot,
-                workspaceRoot);
-            var trees = new Dictionary<string, SyntaxTree>(StringComparer.Ordinal);
-            var contentHashes = new Dictionary<string, string>(StringComparer.Ordinal);
-            foreach (var document in project.Documents)
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                if (document.FilePath is null)
-                {
-                    continue;
-                }
-
-                var tree = await document.GetSyntaxTreeAsync(cancellationToken)
-                    .ConfigureAwait(false);
-                if (tree is not null)
-                {
-                    var relativePath = pathResolver
-                        .NormalizeOutput(document.FilePath)
-                        .Path;
-                    trees[relativePath] = tree;
-                    contentHashes[relativePath] = Convert.ToHexStringLower(
-                        SHA256.HashData(await File.ReadAllBytesAsync(
-                                document.FilePath,
-                                cancellationToken)
-                            .ConfigureAwait(false)));
-                }
-            }
-
-            var compilationErrors = compilation.GetDiagnostics(cancellationToken)
-                .Where(static diagnostic =>
-                    diagnostic.Severity is DiagnosticSeverity.Error)
-                .ToArray();
-            var completedWorkspace = workspace;
-            workspace = null;
-            return CompilerContext.Succeeded(
-                completedWorkspace,
-                project,
-                compilation,
-                trees,
-                contentHashes,
-                DiagnosticReason(workspaceDiagnostics, compilationErrors));
-        }
-        catch (InvalidOperationException)
-        {
-            return CompilerContext.Failed("project.load_failed");
-        }
-        catch (IOException)
-        {
-            return CompilerContext.Failed("project.load_failed");
-        }
-        catch (UnauthorizedAccessException)
-        {
-            return CompilerContext.Failed("project.load_failed");
-        }
-        catch (TimeoutException)
-        {
-            return CompilerContext.Failed("project.load_failed");
-        }
-        finally
-        {
-            workspace?.Dispose();
-        }
     }
 
     private IReadOnlyList<string> EffectiveProjects(SymbolDeclarationScope scope) =>
@@ -836,8 +744,8 @@ public sealed class RoslynSemanticTargetResolver
             leftVariant.Status is SemanticTargetVariantStatus.Resolved
             && right.Variants.Any(rightVariant =>
                 rightVariant.Status is SemanticTargetVariantStatus.Resolved
-                && CompilerContextKey.From(leftVariant.Variant)
-                    .Equals(CompilerContextKey.From(rightVariant.Variant))
+                && RoslynCompilerContextKey.From(leftVariant.Variant)
+                    .Equals(RoslynCompilerContextKey.From(rightVariant.Variant))
                 && SymbolEqualityComparer.Default.Equals(
                     leftVariant.Symbol,
                     rightVariant.Symbol)));
@@ -846,7 +754,8 @@ public sealed class RoslynSemanticTargetResolver
         IEnumerable<CandidateState> states) =>
         Array.AsReadOnly(states
             .SelectMany(static state => state.Variants)
-            .GroupBy(static variant => CompilerContextKey.From(variant.Variant))
+            .GroupBy(static variant =>
+                RoslynCompilerContextKey.From(variant.Variant))
             .Select(static group => group.FirstOrDefault(variant =>
                     variant.Status is SemanticTargetVariantStatus.Resolved)
                 ?? group.First())
@@ -1048,92 +957,4 @@ public sealed class RoslynSemanticTargetResolver
         }
     }
 
-    private sealed record CompilerContextKey(
-        string Project,
-        string? Configuration,
-        string? Framework,
-        string ContextFingerprint)
-    {
-        public static CompilerContextKey From(FileCompilerVariant variant) =>
-            new(
-                variant.Project,
-                variant.Configuration,
-                variant.Framework,
-                variant.ContextFingerprint);
-    }
-
-    private sealed class CompilerContext : IDisposable
-    {
-        private bool _ownsWorkspace;
-
-        private CompilerContext(
-            MSBuildWorkspace? workspace,
-            Project? project,
-            CSharpCompilation? compilation,
-            IReadOnlyDictionary<string, SyntaxTree> trees,
-            IReadOnlyDictionary<string, string> contentHashes,
-            string? failureReason,
-            string? diagnosticReason)
-        {
-            Workspace = workspace;
-            Project = project;
-            Compilation = compilation;
-            Trees = trees;
-            ContentHashes = contentHashes;
-            FailureReason = failureReason;
-            DiagnosticReason = diagnosticReason;
-            _ownsWorkspace = workspace is not null;
-        }
-
-        public MSBuildWorkspace? Workspace { get; }
-
-        public Project? Project { get; }
-
-        public CSharpCompilation? Compilation { get; }
-
-        public IReadOnlyDictionary<string, SyntaxTree> Trees { get; }
-
-        public IReadOnlyDictionary<string, string> ContentHashes { get; }
-
-        public string? FailureReason { get; }
-
-        public string? DiagnosticReason { get; }
-
-        public static CompilerContext Failed(string reason) =>
-            new(
-                workspace: null,
-                project: null,
-                compilation: null,
-                new Dictionary<string, SyntaxTree>(StringComparer.Ordinal),
-                new Dictionary<string, string>(StringComparer.Ordinal),
-                reason,
-                diagnosticReason: null);
-
-        public static CompilerContext Succeeded(
-            MSBuildWorkspace workspace,
-            Project project,
-            CSharpCompilation compilation,
-            IReadOnlyDictionary<string, SyntaxTree> trees,
-            IReadOnlyDictionary<string, string> contentHashes,
-            string? diagnosticReason) =>
-            new(
-                workspace,
-                project,
-                compilation,
-                trees,
-                contentHashes,
-                failureReason: null,
-                diagnosticReason);
-
-        public void TransferOwnership() => _ownsWorkspace = false;
-
-        public void Dispose()
-        {
-            if (_ownsWorkspace)
-            {
-                Workspace!.Dispose();
-                _ownsWorkspace = false;
-            }
-        }
-    }
 }

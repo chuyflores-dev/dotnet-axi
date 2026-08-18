@@ -266,7 +266,7 @@ public sealed class RoslynImplementationSearcher
             includeTests: false,
             includeGenerated: traversal.IncludeGenerated == true);
 
-        var session = new SemanticQuerySession(
+        using var session = new SemanticQuerySession(
             evaluationOptions,
             _graphEvaluator,
             _variantResolver);
@@ -334,14 +334,14 @@ public sealed class RoslynImplementationSearcher
                 continue;
             }
 
-            var analyzed = await AnalyzeVariantAsync(
-                    discovery.RootPath,
-                    plan.Coverage!,
-                    resolution.Variants,
-                    CompilerVariant(compilerVariants, plan.Coverage!),
-                    evaluationOptions.Properties,
-                    eligiblePaths,
-                    cancellationToken)
+        var analyzed = await AnalyzeVariantAsync(
+                discovery.RootPath,
+                session,
+                plan.Coverage!,
+                resolution.Variants,
+                CompilerVariant(compilerVariants, plan.Coverage!),
+                eligiblePaths,
+                cancellationToken)
                 .ConfigureAwait(false);
             variants.Add(analyzed.Variant);
             matches.AddRange(analyzed.Matches);
@@ -546,10 +546,10 @@ public sealed class RoslynImplementationSearcher
 
     private static async ValueTask<AnalyzedVariant> AnalyzeVariantAsync(
         string workspaceRoot,
+        SemanticQuerySession session,
         ProjectVariantCoverage coverage,
         IReadOnlyList<SemanticTargetVariant> targetVariants,
         EvaluatedCompilerVariant? compilerVariant,
-        IReadOnlyList<MsBuildProperty> explicitProperties,
         IReadOnlySet<string> eligiblePaths,
         CancellationToken cancellationToken)
     {
@@ -600,62 +600,34 @@ public sealed class RoslynImplementationSearcher
                     .ConfigureAwait(false));
         }
 
-        var projectPath = Path.GetFullPath(
-            coverage.Project.Replace('/', Path.DirectorySeparatorChar),
-            workspaceRoot);
-        if (!IsWithin(workspaceRoot, projectPath))
-        {
-            return Failed(coverage, "project.path_escape");
-        }
-
-        var properties = new Dictionary<string, string>(
-            StringComparer.OrdinalIgnoreCase);
-        foreach (var property in explicitProperties)
-        {
-            properties[property.Name] = property.Value;
-        }
-
-        properties["Configuration"] = coverage.Configuration ?? "Debug";
-        properties["DesignTimeBuild"] = "true";
-        properties["BuildingInsideVisualStudio"] = "true";
-        properties["BuildProjectReferences"] = "false";
-        properties["SkipCompilerExecution"] = "true";
-        properties["ProvideCommandLineArgs"] = "true";
-        if (coverage.Framework is not null)
-        {
-            properties["TargetFramework"] = coverage.Framework;
-        }
-
         try
         {
-            using var workspace = MSBuildWorkspace.Create(properties);
-            var workspaceDiagnostics = new List<WorkspaceDiagnostic>();
-            workspace.RegisterWorkspaceFailedHandler(args =>
-                workspaceDiagnostics.Add(args.Diagnostic));
-            workspace.LoadMetadataForReferencedProjects = true;
-            var project = await workspace.OpenProjectAsync(
-                    projectPath,
-                    progress: null,
+            var contextVariant = compilerVariant?.Variant
+                ?? new FileCompilerVariant(
+                    coverage.Project,
+                    coverage.Configuration,
+                    coverage.Framework,
+                    contextFingerprint: coverage.Project);
+            var context = await session.GetCompilerContextAsync(
+                    workspaceRoot,
+                    contextVariant,
+                    RoslynCompilerContextPurpose.Relationship,
                     cancellationToken)
                 .ConfigureAwait(false);
-            var compilation = await project.GetCompilationAsync(cancellationToken)
-                .ConfigureAwait(false) as CSharpCompilation;
-            if (compilation is null)
+            if (context.FailureReason is not null)
             {
-                return Failed(coverage, "project.compilation_unavailable");
+                return Failed(coverage, context.FailureReason);
             }
 
-            var diagnosticReason = DiagnosticReason(
-                workspaceDiagnostics,
-                compilation.GetDiagnostics(cancellationToken)
-                    .Where(static diagnostic =>
-                        diagnostic.Severity is DiagnosticSeverity.Error)
-                    .ToArray());
+            var diagnosticReason = context.DiagnosticReason(
+                RoslynCompilerContextPurpose.Relationship);
             if (diagnosticReason is not null)
             {
                 return Failed(coverage, diagnosticReason);
             }
 
+            var project = context.Project!;
+            var compilation = context.Compilation!;
             var symbols = targets
                 .SelectMany(target => DocumentationCommentId
                     .GetSymbolsForDeclarationId(target.Identity, compilation)

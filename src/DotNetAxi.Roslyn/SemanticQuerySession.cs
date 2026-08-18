@@ -3,7 +3,7 @@ using DotNetAxi.Workspaces;
 
 namespace DotNetAxi.Roslyn;
 
-internal sealed class SemanticQuerySession
+internal sealed class SemanticQuerySession : IDisposable
 {
     private static StringComparer PathComparer { get; } =
         OperatingSystem.IsWindows()
@@ -23,11 +23,17 @@ internal sealed class SemanticQuerySession
         ProjectGraphEvaluationOptions,
         CancellationToken,
         CompilerVariantResolution> _resolveVariants;
+    private readonly RoslynCompilerContextLoader _compilerContextLoader;
+    private readonly Dictionary<
+        string,
+        Dictionary<RoslynCompilerContextKey, RoslynCompilerContext>>
+        _compilerContextsByRoot = new(PathComparer);
     private readonly Dictionary<string, VariantResolutionState>
         _variantStatesByRoot = new(PathComparer);
 
     private EvaluatedProjectGraph? _graph;
     private bool _graphEvaluated;
+    private bool _disposed;
 
     internal SemanticQuerySession(
         ProjectGraphEvaluationOptions options,
@@ -36,7 +42,9 @@ internal sealed class SemanticQuerySession
         : this(
             options,
             graphEvaluator.Evaluate,
-            variantResolver.Resolve)
+            variantResolver.Resolve,
+            new RoslynCompilerContextLoader(
+                RoslynCompilerContextLoader.LoadProjectAsync))
     {
     }
 
@@ -54,14 +62,67 @@ internal sealed class SemanticQuerySession
             ProjectGraphEvaluationOptions,
             CancellationToken,
             CompilerVariantResolution> resolveVariants)
+        : this(
+            options,
+            evaluateGraph,
+            resolveVariants,
+            new RoslynCompilerContextLoader(
+                RoslynCompilerContextLoader.LoadProjectAsync))
+    {
+    }
+
+    internal SemanticQuerySession(
+        ProjectGraphEvaluationOptions options,
+        Func<
+            WorkspaceDiscoveryResult,
+            WorkspaceSelection,
+            ProjectGraphEvaluationOptions,
+            CancellationToken,
+            EvaluatedProjectGraph> evaluateGraph,
+        Func<
+            string,
+            IEnumerable<string>,
+            ProjectGraphEvaluationOptions,
+            CancellationToken,
+            CompilerVariantResolution> resolveVariants,
+        Func<
+            Microsoft.CodeAnalysis.MSBuild.MSBuildWorkspace,
+            string,
+            CancellationToken,
+            Task<Microsoft.CodeAnalysis.Project>> projectLoader)
+        : this(
+            options,
+            evaluateGraph,
+            resolveVariants,
+            new RoslynCompilerContextLoader(projectLoader))
+    {
+    }
+
+    private SemanticQuerySession(
+        ProjectGraphEvaluationOptions options,
+        Func<
+            WorkspaceDiscoveryResult,
+            WorkspaceSelection,
+            ProjectGraphEvaluationOptions,
+            CancellationToken,
+            EvaluatedProjectGraph> evaluateGraph,
+        Func<
+            string,
+            IEnumerable<string>,
+            ProjectGraphEvaluationOptions,
+            CancellationToken,
+            CompilerVariantResolution> resolveVariants,
+        RoslynCompilerContextLoader compilerContextLoader)
     {
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(evaluateGraph);
         ArgumentNullException.ThrowIfNull(resolveVariants);
+        ArgumentNullException.ThrowIfNull(compilerContextLoader);
 
         _options = options;
         _evaluateGraph = evaluateGraph;
         _resolveVariants = resolveVariants;
+        _compilerContextLoader = compilerContextLoader;
     }
 
     internal EvaluatedProjectGraph GetProjectGraph(
@@ -69,6 +130,7 @@ internal sealed class SemanticQuerySession
         WorkspaceSelection selection,
         CancellationToken cancellationToken)
     {
+        ThrowIfDisposed();
         if (_graphEvaluated)
         {
             return _graph!;
@@ -88,6 +150,7 @@ internal sealed class SemanticQuerySession
         IEnumerable<string> projects,
         CancellationToken cancellationToken)
     {
+        ThrowIfDisposed();
         ArgumentException.ThrowIfNullOrWhiteSpace(workspaceRoot);
         ArgumentNullException.ThrowIfNull(projects);
 
@@ -158,6 +221,74 @@ internal sealed class SemanticQuerySession
                     static variant => variant.Variant.Framework,
                     StringComparer.Ordinal)
                 .ToArray()));
+    }
+
+    internal async ValueTask<RoslynCompilerContext> GetCompilerContextAsync(
+        string workspaceRoot,
+        FileCompilerVariant variant,
+        RoslynCompilerContextPurpose purpose,
+        CancellationToken cancellationToken)
+    {
+        ThrowIfDisposed();
+        ArgumentException.ThrowIfNullOrWhiteSpace(workspaceRoot);
+        ArgumentNullException.ThrowIfNull(variant);
+
+        var root = Path.GetFullPath(workspaceRoot);
+        if (!_compilerContextsByRoot.TryGetValue(root, out var contexts))
+        {
+            contexts = [];
+            _compilerContextsByRoot.Add(root, contexts);
+        }
+
+        var key = RoslynCompilerContextKey.From(variant);
+        if (contexts.TryGetValue(key, out var cached))
+        {
+            return cached;
+        }
+
+        var loaded = await _compilerContextLoader.LoadAsync(
+                root,
+                variant,
+                _options,
+                purpose,
+                cancellationToken)
+            .ConfigureAwait(false);
+
+        try
+        {
+            contexts.Add(key, loaded);
+            return loaded;
+        }
+        catch
+        {
+            loaded.Dispose();
+            throw;
+        }
+    }
+
+    public void Dispose()
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        _disposed = true;
+        foreach (var context in _compilerContextsByRoot.Values
+                     .SelectMany(static contexts => contexts.Values))
+        {
+            context.Dispose();
+        }
+
+        _compilerContextsByRoot.Clear();
+    }
+
+    private void ThrowIfDisposed()
+    {
+        if (_disposed)
+        {
+            throw new ObjectDisposedException(nameof(SemanticQuerySession));
+        }
     }
 
     private sealed class VariantResolutionState
