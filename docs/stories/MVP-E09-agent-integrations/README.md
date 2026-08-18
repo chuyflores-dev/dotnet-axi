@@ -49,6 +49,7 @@ do not read or retain agent transcripts.
 - [MVP-E09-S15 — Teach semantic relationships and graphs in the Agent Skill](MVP-E09-S15-semantic-relationships-skill.md)
 - [MVP-E09-S16 — Teach analysis and SDK execution in the Agent Skill](MVP-E09-S16-analysis-and-sdk-skill.md)
 - [MVP-E09-S17 — Teach configuration and validation in the Agent Skill](MVP-E09-S17-configuration-and-validation-skill.md)
+- [MVP-E09-S18 — Generate source-matched semantic candidate guidance](MVP-E09-S18-generate-source-matched-semantic-candidate-guidance.md)
 
 ## Complete when
 

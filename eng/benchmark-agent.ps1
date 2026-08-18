@@ -25,7 +25,7 @@ param(
 
     [string]$PackageFeed,
 
-    [string]$ProductVersion = '0.5.0',
+    [string]$ProductVersion = '0.6.0',
 
     [string]$Model = 'gpt-5.6-luna',
 
@@ -159,29 +159,21 @@ try {
     if ($Condition -eq 'candidate') {
         $skillDestination = Join-Path $workspace '.agents/skills/dotnet-axi'
         New-Item -ItemType Directory -Path $skillDestination | Out-Null
-        Copy-Item -Recurse -Path (Join-Path $repoRoot 'skills/dotnet-axi/*') `
-            -Destination $skillDestination
-        $genericPrefix =
-            "dnx dnaxi@$ProductVersion --verbosity quiet --"
-        $sourcePinnedPrefix =
-            "dnx dnaxi@$ProductVersion --source `"`$DNAXI_LOCAL_FEED`" " +
-            '--verbosity quiet --'
-        foreach ($skillDocument in Get-ChildItem `
-            -LiteralPath $skillDestination `
-            -Recurse `
-            -File `
-            -Filter '*.md') {
-            $candidateSkill = [IO.File]::ReadAllText(
-                $skillDocument.FullName).Replace(
-                    'dnaxi@0.5.0',
-                    "dnaxi@$ProductVersion").Replace(
-                        $genericPrefix,
-                        $sourcePinnedPrefix)
-            [IO.File]::WriteAllText(
-                $skillDocument.FullName,
-                $candidateSkill,
-                $utf8)
+        $candidateSkillRoot = Join-Path $benchmarkDirectory 'candidate-skill'
+        $generatorProject = Join-Path $repoRoot `
+            'eng/DotNetAxi.AgentSkillGenerator/DotNetAxi.AgentSkillGenerator.csproj'
+        & dotnet run --project $generatorProject `
+            --configuration Release `
+            --no-restore `
+            -- `
+            --write-semantic-relationships $ProductVersion `
+            --output-root $candidateSkillRoot | Out-Null
+        if ($LASTEXITCODE -ne 0) {
+            throw 'Could not generate source-matched candidate guidance.'
         }
+        $generatedSkill = Join-Path $candidateSkillRoot 'skills/dotnet-axi'
+        Copy-Item -Recurse -Path (Join-Path $generatedSkill '*') `
+            -Destination $skillDestination
         $feedDestination = Join-Path $benchmarkDirectory 'feed'
         New-Item -ItemType Directory -Path $feedDestination | Out-Null
         Copy-Item -LiteralPath $package -Destination $feedDestination

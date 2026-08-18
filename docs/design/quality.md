@@ -266,6 +266,11 @@ a retained candidate. Package build and acquisition are setup rather than
 agent-task work, matching the preinstalled interfaces used by comparative
 benchmarks.
 
+The candidate skill is generated into isolated setup state from the same
+canonical guidance source and exact package version. The harness does not
+rewrite the committed released skill or expose commands absent from the
+source-built package.
+
 The script pins the exact model, reasoning setting, task timeout, product
 version, corpus, and package feed supplied by the operator. Web search is
 disabled. Its normal mode retains Codex's workspace sandbox. `-OuterIsolated`

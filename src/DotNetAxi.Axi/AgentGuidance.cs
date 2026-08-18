@@ -3,6 +3,8 @@ namespace DotNetAxi.Axi;
 public sealed class AgentCommandGuidance
 {
     internal AgentCommandGuidance(
+        string packageVersion,
+        string skillDescription,
         string invocation,
         string homeInvocation,
         string helpInvocation,
@@ -17,10 +19,15 @@ public sealed class AgentCommandGuidance
         IEnumerable<string> capabilityFlow,
         IEnumerable<string> sourceDiscoveryFlow,
         IEnumerable<string> symbolContextFlow,
+        IEnumerable<string> semanticRelationshipFlow,
         IEnumerable<string> safetyFlow,
         string completion,
         string evidenceReport)
     {
+        PackageVersion = RequiredText(packageVersion, nameof(packageVersion));
+        SkillDescription = RequiredText(
+            skillDescription,
+            nameof(skillDescription));
         Invocation = RequiredText(invocation, nameof(invocation));
         HomeInvocation = RequiredText(homeInvocation, nameof(homeInvocation));
         HelpInvocation = RequiredText(helpInvocation, nameof(helpInvocation));
@@ -41,10 +48,17 @@ public sealed class AgentCommandGuidance
         SymbolContextFlow = Copy(
             symbolContextFlow,
             nameof(symbolContextFlow));
+        SemanticRelationshipFlow = CopyOptional(
+            semanticRelationshipFlow,
+            nameof(semanticRelationshipFlow));
         SafetyFlow = Copy(safetyFlow, nameof(safetyFlow));
         Completion = RequiredText(completion, nameof(completion));
         EvidenceReport = RequiredText(evidenceReport, nameof(evidenceReport));
     }
+
+    public string PackageVersion { get; }
+
+    public string SkillDescription { get; }
 
     public string Invocation { get; }
 
@@ -73,6 +87,8 @@ public sealed class AgentCommandGuidance
     public IReadOnlyList<string> SourceDiscoveryFlow { get; }
 
     public IReadOnlyList<string> SymbolContextFlow { get; }
+
+    public IReadOnlyList<string> SemanticRelationshipFlow { get; }
 
     public IReadOnlyList<string> SafetyFlow { get; }
 
@@ -106,6 +122,25 @@ public sealed class AgentCommandGuidance
         return Array.AsReadOnly(copy);
     }
 
+    private static IReadOnlyList<string> CopyOptional(
+        IEnumerable<string> values,
+        string parameterName)
+    {
+        ArgumentNullException.ThrowIfNull(values);
+
+        var copy = values
+            .Select(value => RequiredText(value, parameterName))
+            .ToArray();
+        if (copy.Distinct(StringComparer.Ordinal).Count() != copy.Length)
+        {
+            throw new ArgumentException(
+                "Guidance items must be distinct.",
+                parameterName);
+        }
+
+        return Array.AsReadOnly(copy);
+    }
+
     private static string RequiredText(string value, string parameterName)
     {
         if (string.IsNullOrWhiteSpace(value))
@@ -126,38 +161,84 @@ public static class AgentGuidanceCatalog
     public const string SkillName = "dotnet-axi";
 
     public static string SkillDescription { get; } =
-        $"Use dnaxi {SkillPackageVersion} for deterministic evidence in .NET repositories: file, text, stable C# syntax, declaration, symbol, document, outline, and bounded context discovery. When a .NET task names a symbol, namespace, or owner project but no exact source path, first run Roslyn/MSBuild-backed search symbol with explicit project or solution scope before listing or reading source. When a controlled benchmark supplies the local feed, use dnx dnaxi@{SkillPackageVersion} --source \"$DNAXI_LOCAL_FEED\" --verbosity quiet -- <command>. Skip non-.NET work and direct reads of already-known files.";
+        CreateSkillDescription(
+            SkillPackageVersion,
+            includeSemanticRelationships: false);
 
     public static AgentCommandGuidance Command { get; } =
-        CreateCommand(SkillPackageVersion);
+        CreateCommand(
+            SkillPackageVersion,
+            includeSemanticRelationships: false);
 
     public static AgentCommandGuidance ForVersion(string exactVersion)
     {
-        if (string.IsNullOrWhiteSpace(exactVersion) ||
-            exactVersion.Any(static character =>
-                !(char.IsAsciiLetterOrDigit(character) ||
-                  character is '.' or '-' or '+')))
-        {
-            throw new ArgumentException(
-                "A package-safe exact version is required.",
-                nameof(exactVersion));
-        }
+        ValidateVersion(exactVersion);
 
-        return CreateCommand(exactVersion);
+        return CreateCommand(
+            exactVersion,
+            includeSemanticRelationships: false);
     }
 
-    private static AgentCommandGuidance CreateCommand(string exactVersion)
+    public static AgentCommandGuidance ForSemanticRelationships(
+        string exactVersion)
     {
-        var commandPrefix =
-            $"dnx dnaxi@{exactVersion} --verbosity quiet --";
+        ValidateVersion(exactVersion);
+
+        return CreateCommand(
+            exactVersion,
+            includeSemanticRelationships: true);
+    }
+
+    private static AgentCommandGuidance CreateCommand(
+        string exactVersion,
+        bool includeSemanticRelationships)
+    {
+        var commandPrefix = includeSemanticRelationships
+            ? $"dnx dnaxi@{exactVersion} --source \"$DNAXI_LOCAL_FEED\" --verbosity quiet --"
+            : $"dnx dnaxi@{exactVersion} --verbosity quiet --";
         var invocation = $"{commandPrefix} <command>";
         var homeInvocation = commandPrefix;
         var helpInvocation = $"{commandPrefix} --help";
         var versionInvocation = $"{commandPrefix} --version";
         const string authority =
             "Treat the invoked version's structured help, version, and reported capabilities as authoritative. Never use a command or option that it does not expose.";
+        var relationshipBoundary = includeSemanticRelationships
+            ? $"In {exactVersion}, `context symbol` still supports only `declaration`, `owner`, `document`, and `outline`. Use only `search references` and `search implementations` for shipped relationship traversal. Treat overrides, derived types, callers, callees, project graphs, impact, and relationship-context sections as unavailable capability corrections."
+            : $"In {exactVersion}, `context symbol` supports only `declaration`, `owner`, `document`, and `outline`. Treat `references`, `callers`, `callees`, `tests`, and other relationship or graph requests as unavailable capability corrections; do not invent commands, sections, or conclusions.";
+        IReadOnlyList<string> relationshipFlow = includeSemanticRelationships
+            ?
+            [
+                $"Select one exact target with `{commandPrefix} search symbol '<name>' --solution <solution> --fields id,kind,signature,owning_projects,variant_count,variants --limit 20`, then pass its complete canonical `symbol/v2` ID to relationship queries. Preserve the selected owner, configuration, framework, test, generated-source, and MSBuild-property scope. If target resolution is ambiguous or stale, follow its structured correction and choose a replacement explicitly before traversal.",
+                $"Find exact Roslyn references with `{commandPrefix} search references '<symbol/v2/...>' --solution <solution> --limit 100`. Use `--project <csproj>` instead of `--solution` only for an intentionally project-bounded query, never both.",
+                $"Find exact interface or abstract-type/member implementations with `{commandPrefix} search implementations '<symbol/v2/...>' --solution <solution> --limit 100`. Do not generalize compiler implementations into reflection, dynamic loading, or runtime-generated behavior.",
+                "References and implementations are executing inspections that may run repository design-time build targets. Run them only when repository-code execution is allowed; they do not require network access by themselves.",
+                "Keep target resolution, traversal coverage, and confidence distinct. An exactly resolved target does not make partial project or framework coverage complete, and an incomplete empty result is not evidence that no relationship exists.",
+                "Use `--complete` only when the task requires the transitive reverse project graph and every supported framework variant. `--full` changes bounded presentation only; it does not expand semantic scope or repair failed variants.",
+                "When a successful result reports complete coverage and zero matches, treat it as a verified empty result within the declared scope. Preserve every failed or remaining project/framework reason, and follow a reported retrieval command only when truncated rows are required.",
+            ]
+            : [];
+        IReadOnlyList<string> capabilityFlow = includeSemanticRelationships
+            ?
+            [
+                "Use text search for literals.",
+                "Use stable syntax queries for syntax shape.",
+                "Use declaration search and resolved symbol operations for exact source identity.",
+                "Resolve one exact semantic target before traversing references or implementations.",
+                "Request bounded context.",
+            ]
+            :
+            [
+                "Use text search for literals.",
+                "Use stable syntax queries for syntax shape.",
+                "Use declaration search and resolved symbol operations for exact source identity.",
+                "Request bounded context.",
+            ];
 
         return new AgentCommandGuidance(
+        packageVersion: exactVersion,
+        skillDescription: CreateSkillDescription(
+            exactVersion,
+            includeSemanticRelationships),
         invocation: invocation,
         homeInvocation: homeInvocation,
         helpInvocation: helpInvocation,
@@ -200,13 +281,7 @@ public static class AgentGuidanceCatalog
         ],
         capabilityCondition:
             "Apply this flow only when the invoked version reports the relevant capability.",
-        capabilityFlow:
-        [
-            "Use text search for literals.",
-            "Use stable syntax queries for syntax shape.",
-            "Use declaration search and resolved symbol operations for exact source identity.",
-            "Request bounded context.",
-        ],
+        capabilityFlow: capabilityFlow,
         sourceDiscoveryFlow:
         [
             $"When the task does not provide the exact target file or declaration, establish it with one narrow `{commandPrefix}` discovery query before opening source.",
@@ -231,8 +306,9 @@ public static class AgentGuidanceCatalog
             "For a code edit, once declaration search establishes the exact small file and owner, read that file directly. Do not guess a document end line or repeat semantic discovery after the edit when build or test validation is the required evidence.",
             $"Inspect source structure with `{commandPrefix} outline '<path-or-symbol>' --limit 100`. Keep symbol scope consistent, and use the reported full retrieval command only when omitted outline items matter.",
             $"Compose bounded symbol evidence with `{commandPrefix} context symbol '<symbol/v2/...>' --include declaration,owner,document,outline --max-chars 12000`. Reuse the selected symbol scope. Increase the budget or use `--full` only when the omitted whole sections are required.",
-            $"In {exactVersion}, `context symbol` supports only `declaration`, `owner`, `document`, and `outline`. Treat `references`, `callers`, `callees`, `tests`, and other relationship or graph requests as unavailable capability corrections; do not invent commands, sections, or conclusions.",
+            relationshipBoundary,
         ],
+        semanticRelationshipFlow: relationshipFlow,
         safetyFlow:
         [
             "Start with passive discovery and inspect command classification before allowing repository-code execution, network access, or writes.",
@@ -244,5 +320,28 @@ public static class AgentGuidanceCatalog
             $"Do not claim completion solely because files changed. The pinned {exactVersion} command set does not include a `validate` route; run the repository's own applicable `dotnet` build or test validation and report the evidence and any gaps.",
         evidenceReport:
             "Report the command, requested scope, result status, resolution, coverage, confidence when applicable, and any remaining blocker or validation gap.");
+    }
+
+    private static string CreateSkillDescription(
+        string exactVersion,
+        bool includeSemanticRelationships)
+    {
+        var capabilities = includeSemanticRelationships
+            ? "file, text, stable C# syntax, declaration, symbol, document, outline, bounded context, exact reference, and implementation discovery"
+            : "file, text, stable C# syntax, declaration, symbol, document, outline, and bounded context discovery";
+        return $"Use dnaxi {exactVersion} for deterministic evidence in .NET repositories: {capabilities}. When a .NET task names a symbol, namespace, or owner project but no exact source path, first run Roslyn/MSBuild-backed search symbol with explicit project or solution scope before listing or reading source. When a controlled benchmark supplies the local feed, use dnx dnaxi@{exactVersion} --source \"$DNAXI_LOCAL_FEED\" --verbosity quiet -- <command>. Skip non-.NET work and direct reads of already-known files.";
+    }
+
+    private static void ValidateVersion(string exactVersion)
+    {
+        if (string.IsNullOrWhiteSpace(exactVersion) ||
+            exactVersion.Any(static character =>
+                !(char.IsAsciiLetterOrDigit(character) ||
+                  character is '.' or '-' or '+')))
+        {
+            throw new ArgumentException(
+                "A package-safe exact version is required.",
+                nameof(exactVersion));
+        }
     }
 }

@@ -118,6 +118,13 @@ workspace facts and provide exact version-pinned invocations only when an
 actionable suggestion or recovery path needs one. Generated skills do not
 contain live workspace state.
 
+The committed `skills/dotnet-axi/` directory represents the latest published
+skill and remains pinned to that released package. A controlled benchmark of
+an unreleased source-built package generates an isolated, exact-versioned
+candidate skill from the same canonical source instead of rewriting the
+released Markdown. Candidate guidance includes only capabilities implemented
+by that source revision and is never treated as released documentation.
+
 Guidance SHOULD say when `dnaxi` is useful and when a direct operation is
 smaller. Agents use it for supported .NET workspace discovery, source
 discovery, semantic evidence, impact, analysis, and validation. They skip it
@@ -157,6 +164,13 @@ teach agents to:
   requesting a larger character budget or complete output. Compose declaration,
   owner, document, and outline sections through bounded symbol context when
   those sections are needed together.
+- For a source-matched 0.6.0 candidate, select one exact semantic target and
+  reuse its complete `symbol/v2` identity for `search references` or
+  `search implementations`. Preserve the original owner, configuration,
+  framework, test, generated-source, and MSBuild-property scope; distinguish
+  target resolution from traversal coverage; and do not treat `--full` output
+  as `--complete` semantic scope. These commands are executing inspections
+  because Roslyn/MSBuild loading may run repository design-time targets.
 - Treat references, callers, callees, tests, and other graph or relationship
   sections as unavailable until the invoked version reports them. The skill names
   the `0.5.0` context sections without inventing later commands or conclusions.

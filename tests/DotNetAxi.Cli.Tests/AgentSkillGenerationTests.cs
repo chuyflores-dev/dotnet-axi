@@ -120,6 +120,66 @@ public sealed class AgentSkillGenerationTests
     }
 
     [Fact]
+    public void Semantic_relationship_candidate_is_exact_versioned_and_bounded()
+    {
+        const string version = "0.6.0-bench.20260818";
+
+        var first = AgentSkillDocuments
+            .RenderSemanticRelationships(version)
+            .ToArray();
+        var second = AgentSkillDocuments
+            .RenderSemanticRelationships(version)
+            .ToArray();
+
+        Assert.Equal(first, second);
+        var skill = first.Single(document =>
+            document.RelativePath == AgentSkillDocuments.SkillRelativePath)
+            .Content;
+        var advanced = first.Single(document =>
+            document.RelativePath ==
+            AgentSkillDocuments.AdvancedEvidenceRelativePath).Content;
+        var combined = skill + advanced;
+
+        Assert.Contains($"Use dnaxi {version}", skill);
+        Assert.Contains($"dnx dnaxi@{version} --source", skill);
+        Assert.DoesNotContain("dnaxi@0.5.0", combined);
+        Assert.Contains(
+            $"dnx dnaxi@{version} --source \"$DNAXI_LOCAL_FEED\" --verbosity quiet -- search references '<symbol/v2/...>'",
+            advanced);
+        Assert.Contains(
+            $"dnx dnaxi@{version} --source \"$DNAXI_LOCAL_FEED\" --verbosity quiet -- search implementations '<symbol/v2/...>'",
+            advanced);
+        Assert.Contains("executing inspections", advanced);
+        Assert.Contains("repository-code execution is allowed", advanced);
+        Assert.Contains("target resolution", advanced);
+        Assert.Contains("partial project or framework coverage", advanced);
+        Assert.Contains("`--complete`", advanced);
+        Assert.Contains("`--full`", advanced);
+        Assert.Contains("verified empty result", advanced);
+        Assert.DoesNotContain("search overrides", combined);
+        Assert.DoesNotContain("search callers", combined);
+        Assert.DoesNotContain("search callees", combined);
+        Assert.DoesNotContain("context references", combined);
+        Assert.DoesNotContain("dnaxi validate", combined);
+        AssertBounded(skill, maximumLines: 60, maximumUtf8Bytes: 5_000);
+        AssertBounded(advanced, maximumLines: 80, maximumUtf8Bytes: 12_000);
+    }
+
+    [Fact]
+    public void Semantic_relationship_candidate_cannot_overwrite_released_skill()
+    {
+        var exception = Assert.Throws<InvalidOperationException>(() =>
+            AgentSkillDocuments.WriteSemanticRelationships(
+                RepositoryRoot(),
+                "0.6.0-bench.guard"));
+
+        Assert.Contains(
+            "cannot target a repository root",
+            exception.Message,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Committed_generated_documents_are_current()
     {
         var stale = AgentSkillDocuments.FindStale(RepositoryRoot());

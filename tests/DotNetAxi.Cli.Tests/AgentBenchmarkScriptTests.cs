@@ -101,6 +101,26 @@ public sealed class AgentBenchmarkScriptTests
             "[IO.Path]::PathSeparator",
             script,
             StringComparison.Ordinal);
+        Assert.Contains(
+            "[string]$ProductVersion = '0.6.0'",
+            script,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "--write-semantic-relationships $ProductVersion",
+            script,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "--output-root $candidateSkillRoot",
+            script,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "candidate-skill",
+            script,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "'dnaxi@0.5.0',",
+            script,
+            StringComparison.Ordinal);
     }
 
     private static async Task<ScriptResult> RunAsync(params string[] arguments)

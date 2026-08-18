@@ -10,6 +10,22 @@ static int Run(
     try
     {
         var options = Parse(arguments);
+
+        if (options.SemanticRelationshipVersion is not null)
+        {
+            AgentSkillDocuments.WriteSemanticRelationships(
+                options.OutputRoot!,
+                options.SemanticRelationshipVersion);
+            foreach (var document in
+                     AgentSkillDocuments.RenderSemanticRelationships(
+                         options.SemanticRelationshipVersion))
+            {
+                output.WriteLine($"generated: {document.RelativePath}");
+            }
+
+            return 0;
+        }
+
         var repositoryRoot = options.RepositoryRoot
             ?? FindRepositoryRoot(Directory.GetCurrentDirectory());
 
@@ -45,7 +61,7 @@ static int Run(
     {
         error.WriteLine(exception.Message);
         error.WriteLine(
-            "Usage: dotnet run --project eng/DotNetAxi.AgentSkillGenerator -- (--check|--write) [--repository-root <path>]");
+            "Usage: dotnet run --project eng/DotNetAxi.AgentSkillGenerator -- ((--check|--write) [--repository-root <path>]|--write-semantic-relationships <version> --output-root <path>)");
         return 2;
     }
     catch (Exception exception)
@@ -59,7 +75,9 @@ static GeneratorOptions Parse(IReadOnlyList<string> arguments)
 {
     var check = false;
     var write = false;
+    string? semanticRelationshipVersion = null;
     string? repositoryRoot = null;
+    string? outputRoot = null;
 
     for (var index = 0; index < arguments.Count; index++)
     {
@@ -71,6 +89,16 @@ static GeneratorOptions Parse(IReadOnlyList<string> arguments)
             case "--write":
                 write = true;
                 break;
+            case "--write-semantic-relationships":
+                if (++index >= arguments.Count
+                    || string.IsNullOrWhiteSpace(arguments[index]))
+                {
+                    throw new GeneratorUsageException(
+                        "--write-semantic-relationships requires an exact version.");
+                }
+
+                semanticRelationshipVersion = arguments[index];
+                break;
             case "--repository-root":
                 if (++index >= arguments.Count
                     || string.IsNullOrWhiteSpace(arguments[index]))
@@ -81,19 +109,56 @@ static GeneratorOptions Parse(IReadOnlyList<string> arguments)
 
                 repositoryRoot = arguments[index];
                 break;
+            case "--output-root":
+                if (++index >= arguments.Count
+                    || string.IsNullOrWhiteSpace(arguments[index]))
+                {
+                    throw new GeneratorUsageException(
+                        "--output-root requires a path.");
+                }
+
+                outputRoot = arguments[index];
+                break;
             default:
                 throw new GeneratorUsageException(
                     $"Unknown argument '{arguments[index]}'.");
         }
     }
 
-    if (check == write)
+    var modeCount = (check ? 1 : 0)
+        + (write ? 1 : 0)
+        + (semanticRelationshipVersion is null ? 0 : 1);
+    if (modeCount != 1)
     {
         throw new GeneratorUsageException(
-            "Specify exactly one of --check or --write.");
+            "Specify exactly one generation mode.");
     }
 
-    return new GeneratorOptions(write, repositoryRoot);
+    if (semanticRelationshipVersion is not null)
+    {
+        if (outputRoot is null)
+        {
+            throw new GeneratorUsageException(
+                "--write-semantic-relationships requires --output-root.");
+        }
+
+        if (repositoryRoot is not null)
+        {
+            throw new GeneratorUsageException(
+                "--repository-root is not valid for semantic candidate output.");
+        }
+    }
+    else if (outputRoot is not null)
+    {
+        throw new GeneratorUsageException(
+            "--output-root is valid only for semantic candidate output.");
+    }
+
+    return new GeneratorOptions(
+        write,
+        semanticRelationshipVersion,
+        repositoryRoot,
+        outputRoot);
 }
 
 static string FindRepositoryRoot(string startPath)
@@ -125,7 +190,9 @@ static string StateText(GeneratedDocumentState state) =>
 
 internal sealed record GeneratorOptions(
     bool Write,
-    string? RepositoryRoot);
+    string? SemanticRelationshipVersion,
+    string? RepositoryRoot,
+    string? OutputRoot);
 
 internal sealed class GeneratorUsageException : Exception
 {
