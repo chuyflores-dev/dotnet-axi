@@ -28,7 +28,19 @@ public static class AgentSkillDocuments
 
     public static IReadOnlyList<GeneratedAgentSkillDocument> Render()
     {
-        var guidance = AgentGuidanceCatalog.Command;
+        return Render(AgentGuidanceCatalog.Command);
+    }
+
+    public static IReadOnlyList<GeneratedAgentSkillDocument>
+        RenderSemanticRelationships(string exactVersion)
+    {
+        return Render(
+            AgentGuidanceCatalog.ForSemanticRelationships(exactVersion));
+    }
+
+    private static IReadOnlyList<GeneratedAgentSkillDocument> Render(
+        AgentCommandGuidance guidance)
+    {
 
         return Array.AsReadOnly(
         [
@@ -73,8 +85,29 @@ public static class AgentSkillDocuments
 
     public static void Write(string repositoryRoot)
     {
+        Write(repositoryRoot, Render());
+    }
+
+    public static void WriteSemanticRelationships(
+        string outputRoot,
+        string exactVersion)
+    {
+        var root = ResolveRoot(outputRoot);
+        if (File.Exists(Path.Combine(root, "dotnet-axi.slnx")))
+        {
+            throw new InvalidOperationException(
+                "Semantic candidate guidance cannot target a repository root.");
+        }
+
+        Write(root, RenderSemanticRelationships(exactVersion));
+    }
+
+    private static void Write(
+        string repositoryRoot,
+        IReadOnlyList<GeneratedAgentSkillDocument> documents)
+    {
         var root = ResolveRoot(repositoryRoot);
-        foreach (var document in Render())
+        foreach (var document in documents)
         {
             var path = ResolveDocumentPath(root, document.RelativePath);
             Directory.CreateDirectory(
@@ -88,14 +121,14 @@ public static class AgentSkillDocuments
     private static string RenderSkill(AgentCommandGuidance guidance)
     {
         var commandPrefix =
-            $"dnx dnaxi@{AgentGuidanceCatalog.SkillPackageVersion} --verbosity quiet --";
+            $"dnx dnaxi@{guidance.PackageVersion} --verbosity quiet --";
         var sourcePinnedPrefix =
-            $"dnx dnaxi@{AgentGuidanceCatalog.SkillPackageVersion} --source \"$DNAXI_LOCAL_FEED\" --verbosity quiet --";
+            $"dnx dnaxi@{guidance.PackageVersion} --source \"$DNAXI_LOCAL_FEED\" --verbosity quiet --";
         var lines = new List<string>
         {
             "---",
             $"name: {AgentGuidanceCatalog.SkillName}",
-            $"description: {AgentGuidanceCatalog.SkillDescription}",
+            $"description: {guidance.SkillDescription}",
             "---",
             string.Empty,
             "# Use dotnet-axi",
@@ -145,11 +178,14 @@ public static class AgentSkillDocuments
     private static string RenderAdvancedEvidence(
         AgentCommandGuidance guidance)
     {
+        var scope = guidance.SemanticRelationshipFlow.Count > 0
+            ? "declarations, symbol identity, bounded source context, compiler verification, exact references, or implementations"
+            : "declarations, symbol identity, bounded source context, or compiler verification";
         var lines = new List<string>
         {
             "# Advanced dnaxi evidence",
             string.Empty,
-            "Read this reference only for declarations, symbol identity, bounded source context, or compiler verification.",
+            $"Read this reference only for {scope}.",
             string.Empty,
             "## Follow reported capabilities",
             string.Empty,
@@ -167,6 +203,17 @@ public static class AgentSkillDocuments
             string.Empty,
         ]);
         AddNumbered(lines, guidance.SymbolContextFlow);
+
+        if (guidance.SemanticRelationshipFlow.Count > 0)
+        {
+            lines.AddRange(
+            [
+                string.Empty,
+                "## Traverse shipped semantic relationships",
+                string.Empty,
+            ]);
+            AddNumbered(lines, guidance.SemanticRelationshipFlow);
+        }
 
         lines.AddRange(
         [
