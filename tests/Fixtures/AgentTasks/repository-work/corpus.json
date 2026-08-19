@@ -84,6 +84,51 @@
         ],
         "timeoutSeconds": 180
       }
+    },
+    {
+      "id": "rename-ledger-format-contract",
+      "milestone": "0.6.0",
+      "kind": "refactor",
+      "prompt": "In Workspace.slnx, rename the Format(string) member declared by SemanticRelationships.Contracts.ILedgerFormatter to Render and update every production implementation and call site in the solution so the existing ledger and worker formatted outputs stay unchanged. Preserve the interface and all existing types, namespaces, accessibility, target frameworks, and project relationships. Change production C# source only.",
+      "repository": {
+        "fixtureManifest": "../semantic-relationships/fixture.json"
+      },
+      "applicability": {
+        "baseline": true,
+        "candidate": true
+      },
+      "allowedChanges": [
+        "src/Consumers/LedgerReport.cs",
+        "src/Consumers/WorkerJob.cs",
+        "src/Contracts/ILedgerFormatter.cs",
+        "src/Implementations/LedgerFormatter.cs",
+        "src/Implementations/WorkerLedgerFormatter.cs"
+      ],
+      "validation": {
+        "files": [
+          {
+            "template": "validators/SemanticRelationshipVerifier.csproj",
+            "path": ".benchmark-validation/Verifier.csproj"
+          },
+          {
+            "template": "validators/Validate.ps1",
+            "path": ".benchmark-validation/Validate.ps1"
+          },
+          {
+            "template": "validators/RenameLedgerFormatContract.cs",
+            "path": ".benchmark-validation/Program.cs"
+          }
+        ],
+        "command": [
+          "pwsh",
+          "-NoLogo",
+          "-NoProfile",
+          "-NonInteractive",
+          "-File",
+          ".benchmark-validation/Validate.ps1"
+        ],
+        "timeoutSeconds": 180
+      }
     }
   ]
 }

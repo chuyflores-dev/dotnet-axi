@@ -154,6 +154,20 @@ try {
         Copy-Item -LiteralPath $source -Destination $destination
     }
 
+    $fixtureEntries = [Collections.Generic.List[string]]::new()
+    foreach ($file in $manifest.files) {
+        $relativePath = ([string]$file.path).Replace('\', '/')
+        $materializedPath = Join-Path $workspace $file.path
+        $contentHash = [Convert]::ToHexString(
+            [Security.Cryptography.SHA256]::HashData(
+                [IO.File]::ReadAllBytes($materializedPath))).ToLowerInvariant()
+        $fixtureEntries.Add("$relativePath`t$contentHash")
+    }
+    $fixtureEntries.Sort([StringComparer]::Ordinal)
+$fixtureHash = ([Convert]::ToHexString(
+    [Security.Cryptography.SHA256]::HashData(
+        $utf8.GetBytes(($fixtureEntries -join "`n") + "`n")))).ToLowerInvariant()
+
     $benchmarkDirectory = Join-Path $workspace '.benchmark'
     New-Item -ItemType Directory -Path $benchmarkDirectory | Out-Null
     if ($Condition -eq 'candidate') {
@@ -301,19 +315,9 @@ try {
     [IO.File]::WriteAllText($eventsPath, $events, $utf8)
     [IO.File]::WriteAllText($stderrPath, $standardError, $utf8)
 
-    $metrics = & jq -s --arg version $ProductVersion '
-      def tools: ["command_execution","file_change","mcp_tool_call","web_search"];
-      {
-        inputTokens: ([.[] | select(.type=="turn.completed") | .usage.input_tokens // 0] | add // 0),
-        cachedInputTokens: ([.[] | select(.type=="turn.completed") | .usage.cached_input_tokens // 0] | add // 0),
-        cacheWriteInputTokens: ([.[] | select(.type=="turn.completed") | .usage.cache_write_input_tokens // 0] | add // 0),
-        outputTokens: ([.[] | select(.type=="turn.completed") | .usage.output_tokens // 0] | add // 0),
-        reasoningOutputTokens: ([.[] | select(.type=="turn.completed") | .usage.reasoning_output_tokens // 0] | add // 0),
-        turns: ([.[] | select(.type=="turn.started")] | length),
-        toolCalls: ([.[] | select((.type=="item.started" or .type=="item.completed") and (.item.type as $t | tools | index($t))) | .item.id] | unique | length),
-        dnaxiInvocations: ([.[] | select((.type=="item.started" or .type=="item.completed") and .item.type=="command_execution" and (.item.command | contains("dnx dnaxi@" + $version))) | .item.id] | unique | length),
-        dnaxiNonzeroExits: ([.[] | select(.type=="item.completed" and .item.type=="command_execution" and (.item.command | contains("dnx dnaxi@" + $version)) and (.item.exit_code != 0)) | .item.id] | unique | length)
-      }' $eventsPath | ConvertFrom-Json
+    $metricsFilter = Join-Path $PSScriptRoot 'benchmark-agent-events.jq'
+    $metrics = & jq -s --arg version $ProductVersion `
+        -f $metricsFilter $eventsPath | ConvertFrom-Json
     if ($LASTEXITCODE -ne 0) {
         throw 'Codex JSONL could not be summarized.'
     }
@@ -323,16 +327,28 @@ try {
             -Destination (Join-Path $artifactDirectory 'final.txt')
     }
 
-    $changedFiles = @(
-        @(
-            & git -C $workspace diff $fixtureCommit --name-only --no-renames --
-            & git -C $workspace ls-files --others --exclude-standard
-        ) | ForEach-Object { ([string]$_).Trim().Replace('\', '/') } |
-            Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
-            Sort-Object -Unique
-    )
+    $changedFileSet =
+        [Collections.Generic.SortedSet[string]]::new(
+            [StringComparer]::Ordinal)
+    foreach ($changedFile in @(
+        & git -C $workspace diff $fixtureCommit --name-only --no-renames --
+        & git -C $workspace ls-files --others --exclude-standard
+    )) {
+        $normalizedPath = ([string]$changedFile).Trim().Replace('\', '/')
+        if (-not [string]::IsNullOrWhiteSpace($normalizedPath)) {
+            [void]$changedFileSet.Add($normalizedPath)
+        }
+    }
+    $changedFiles = @($changedFileSet)
+    $allowedChangeSet =
+        [Collections.Generic.HashSet[string]]::new(
+            [StringComparer]::Ordinal)
+    foreach ($allowedChange in $allowedChanges) {
+        [void]$allowedChangeSet.Add(
+            ([string]$allowedChange).Replace('\', '/'))
+    }
     $unexpectedChanges = @($changedFiles |
-        Where-Object { $_ -notin $allowedChanges })
+        Where-Object { -not $allowedChangeSet.Contains([string]$_) })
     $changesAllowed = $changedFiles.Count -gt 0 -and
         $unexpectedChanges.Count -eq 0
 
@@ -354,6 +370,7 @@ try {
     $validationPassed = $false
     $validationExitCode = $null
     $validationDurationSeconds = 0
+    $validationOutput = ''
     if ($completed -and $changesAllowed) {
         $validationRoot = Join-Path $workspace '.benchmark-validation'
         if (Test-Path -LiteralPath $validationRoot) {
@@ -414,11 +431,26 @@ try {
             $validationExitCode -eq 0
     }
 
-    $successfulDnaxiInvocations = [Math]::Max(
-        0,
-        $metrics.dnaxiInvocations - $metrics.dnaxiNonzeroExits)
     $activated = $metrics.dnaxiInvocations -gt 0
     $passed = $completed -and $changesAllowed -and $validationPassed
+    $semanticOracleOutcome = if ($validationOutput -match
+        '(?m)^semantic-oracle: verified\r?$') {
+        'verified'
+    }
+    elseif ($validationOutput -match
+        '(?m)^semantic-oracle: rejected\r?$') {
+        'rejected'
+    }
+    else {
+        'not_evaluated'
+    }
+    $recoveredDnaxiFailure = if (
+        $Condition -eq 'candidate' -and $passed) {
+        $metrics.dnaxiNonzeroExits -gt 0
+    }
+    else {
+        $null
+    }
     $failureKind = if ($passed) {
         'none'
     }
@@ -452,6 +484,7 @@ try {
         } else {
             $null
         }
+        fixtureHash = $fixtureHash
         passed = $passed
         completed = $completed
         timedOut = $timedOut
@@ -462,11 +495,13 @@ try {
         validationPassed = $validationPassed
         validationExitCode = $validationExitCode
         validationDurationSeconds = $validationDurationSeconds
+        semanticOracleOutcome = $semanticOracleOutcome
         failureKind = $failureKind
         dnaxiActivated = $activated
         dnaxiInvocationCount = $metrics.dnaxiInvocations
-        dnaxiSuccessfulInvocationCount = $successfulDnaxiInvocations
+        dnaxiSuccessfulInvocationCount = $metrics.dnaxiSuccessfulInvocations
         dnaxiNonzeroExitCount = $metrics.dnaxiNonzeroExits
+        recoveredDnaxiFailure = $recoveredDnaxiFailure
         inputTokens = $metrics.inputTokens
         cachedInputTokens = $metrics.cachedInputTokens
         cacheWriteInputTokens = $metrics.cacheWriteInputTokens
@@ -478,6 +513,8 @@ try {
         totalTokens = $metrics.inputTokens + $metrics.outputTokens
         turns = $metrics.turns
         toolCalls = $metrics.toolCalls
+        rawRepositoryReadCommandCount =
+            $metrics.rawRepositoryReadCommandCount
         durationSeconds = [Math]::Round($stopwatch.Elapsed.TotalSeconds, 3)
         exitCode = if ($timedOut) { $null } else { $process.ExitCode }
     }

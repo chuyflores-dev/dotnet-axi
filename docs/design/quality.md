@@ -304,6 +304,21 @@ The script emits `dotnet-axi/agent-benchmark-run/v2`. Each run records:
 - Wall-clock duration, turns, and tool-call count.
 - Whether `dnaxi` was invoked and whether an observed invocation exited
   nonzero.
+- A deterministic hash of the materialized fixture inputs so paired runs from
+  different source states cannot be treated as equivalent.
+- A diagnostic count of unique raw repository-read command executions matched
+  at executable position by the fixed Unix/PowerShell classifier. It covers
+  common native file readers and search/list commands, PowerShell
+  `Get-ChildItem`/`Select-String` forms, and `git show`/`git grep`, including
+  absolute `.exe` paths. This is not a file count or intent inference and is
+  comparable only within the same recorded host and provider environment.
+  String commands split only on unquoted shell separators. Argument-vector
+  commands classify the executable token directly; shell payloads are
+  classified only for canonical wrapper arrays with the switch at `argv[1]`
+  and payload at `argv[2]`.
+- `verified`, `rejected`, or `not_evaluated` semantic-oracle state derived only
+  from explicit hidden-validator markers, plus nullable recovered-`dnaxi`
+  failure evidence for passing candidate tasks.
 - Condition, exact model, reasoning setting, and product version.
 
 The gate uses only process completion, an allowed nonempty diff, and
@@ -312,6 +327,8 @@ recovered command diagnostic as task failure. A process failure before any
 model turn is a `harness` failure rather than an agent or product failure.
 Provider JSONL, stderr, validation output, and the final response are retained
 as diagnostic artifacts. Final prose is never parsed as product evidence.
+The added diagnostic fields do not change the process, scope, or validation
+gates.
 
 A release candidate passes when every applicable candidate task changes only
 its allowed production paths, passes its independent validator, and neither
