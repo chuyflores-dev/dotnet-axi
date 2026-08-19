@@ -74,6 +74,7 @@ testing until the end.
 - [MVP-E13-S35 — Remove cross-agent skill activation noise](MVP-E13-S35-cross-agent-skill-activation.md)
 - [MVP-E13-S36 — Repair the 0.5.0 Codex symbol-context release gate](MVP-E13-S36-repair-0.5.0-codex-release-gate.md)
 - [MVP-E13-S40 — Simplify the agent outcome benchmark](MVP-E13-S40-simplify-agent-outcome-benchmark.md)
+- [MVP-E13-S41 — Add shipped semantic-relationship benchmark task](MVP-E13-S41-add-shipped-semantic-relationship-benchmark-task.md)
 
 ## Complete when
 

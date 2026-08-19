@@ -38,6 +38,7 @@ or mutation tasks before their corresponding capabilities ship.
 
 ## Dependencies
 
+- `MVP-E13-S41`
 - `MVP-E13-S04`
 - `MVP-E13-S10`
 - `MVP-E05-S01`

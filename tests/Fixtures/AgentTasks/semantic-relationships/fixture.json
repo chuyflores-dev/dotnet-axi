@@ -1,0 +1,26 @@
+{
+  "schema": "dotnet-axi/fixture/v1",
+  "name": "agent-semantic-relationships",
+  "seed": 13041,
+  "sdk": {
+    "version": "10.0.302",
+    "rollForward": "latestPatch",
+    "allowPrerelease": false
+  },
+  "capabilities": [
+    "language:csharp",
+    "project:sdk-style",
+    "workspace:multi-project"
+  ],
+  "files": [
+    { "path": "Workspace.slnx", "template": "templates/Workspace.slnx", "expandTokens": false },
+    { "path": "src/Consumers/Consumers.csproj", "template": "templates/Consumers.csproj", "expandTokens": false },
+    { "path": "src/Consumers/LedgerReport.cs", "template": "templates/LedgerReport.cs", "expandTokens": false },
+    { "path": "src/Consumers/WorkerJob.cs", "template": "templates/WorkerJob.cs", "expandTokens": false },
+    { "path": "src/Contracts/Contracts.csproj", "template": "templates/Contracts.csproj", "expandTokens": false },
+    { "path": "src/Contracts/ILedgerFormatter.cs", "template": "templates/ILedgerFormatter.cs", "expandTokens": false },
+    { "path": "src/Implementations/Implementations.csproj", "template": "templates/Implementations.csproj", "expandTokens": false },
+    { "path": "src/Implementations/LedgerFormatter.cs", "template": "templates/LedgerFormatter.cs", "expandTokens": false },
+    { "path": "src/Implementations/WorkerLedgerFormatter.cs", "template": "templates/WorkerLedgerFormatter.cs", "expandTokens": false }
+  ]
+}
