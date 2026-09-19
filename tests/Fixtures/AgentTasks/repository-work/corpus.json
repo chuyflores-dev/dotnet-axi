@@ -129,6 +129,51 @@
         ],
         "timeoutSeconds": 180
       }
+    },
+    {
+      "id": "rename-report-format-string-overload",
+      "milestone": "0.6.0",
+      "kind": "refactor",
+      "prompt": "In Workspace.slnx, rename only the Format(string) member declared by SemanticOverloadRelationships.Contracts.IReportFormatter to Render and update every production implementation and string call site in the solution. Preserve the existing Format(int) overload and all report and worker observable outputs, types, namespaces, accessibility, target frameworks, and project relationships. Change production C# source only.",
+      "repository": {
+        "fixtureManifest": "../semantic-overload-relationships/fixture.json"
+      },
+      "applicability": {
+        "baseline": true,
+        "candidate": true
+      },
+      "allowedChanges": [
+        "src/Consumers/ReportView.cs",
+        "src/Consumers/WorkerReportView.cs",
+        "src/Contracts/IReportFormatter.cs",
+        "src/Implementations/ReportFormatter.cs",
+        "src/Implementations/WorkerReportFormatter.cs"
+      ],
+      "validation": {
+        "files": [
+          {
+            "template": "validators/SemanticRelationshipVerifier.csproj",
+            "path": ".benchmark-validation/Verifier.csproj"
+          },
+          {
+            "template": "validators/Validate.ps1",
+            "path": ".benchmark-validation/Validate.ps1"
+          },
+          {
+            "template": "validators/RenameReportFormatStringOverload.cs",
+            "path": ".benchmark-validation/Program.cs"
+          }
+        ],
+        "command": [
+          "pwsh",
+          "-NoLogo",
+          "-NoProfile",
+          "-NonInteractive",
+          "-File",
+          ".benchmark-validation/Validate.ps1"
+        ],
+        "timeoutSeconds": 180
+      }
     }
   ]
 }
