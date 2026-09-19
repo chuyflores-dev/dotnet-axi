@@ -1,0 +1,20 @@
+{
+  "schema": "dotnet-axi/fixture/v1",
+  "name": "agent-semantic-unrelated-names",
+  "seed": 13043,
+  "sdk": { "version": "10.0.302", "rollForward": "latestPatch", "allowPrerelease": false },
+  "capabilities": ["language:csharp", "project:sdk-style", "workspace:multi-project"],
+  "files": [
+    { "path": "Workspace.slnx", "template": "templates/Workspace.slnx", "expandTokens": false },
+    { "path": "src/Canonical.Contracts/Canonical.Contracts.csproj", "template": "templates/Canonical.Contracts.csproj", "expandTokens": false },
+    { "path": "src/Canonical.Contracts/IStatusFormatter.cs", "template": "templates/CanonicalIStatusFormatter.cs", "expandTokens": false },
+    { "path": "src/Canonical.Implementations/Canonical.Implementations.csproj", "template": "templates/Canonical.Implementations.csproj", "expandTokens": false },
+    { "path": "src/Canonical.Implementations/StatusFormatter.cs", "template": "templates/CanonicalStatusFormatter.cs", "expandTokens": false },
+    { "path": "src/Canonical.Consumers/Canonical.Consumers.csproj", "template": "templates/Canonical.Consumers.csproj", "expandTokens": false },
+    { "path": "src/Canonical.Consumers/StatusView.cs", "template": "templates/CanonicalStatusView.cs", "expandTokens": false },
+    { "path": "src/Archive/Archive.csproj", "template": "templates/Archive.csproj", "expandTokens": false },
+    { "path": "src/Archive/IStatusFormatter.cs", "template": "templates/ArchiveIStatusFormatter.cs", "expandTokens": false },
+    { "path": "src/Archive/StatusFormatter.cs", "template": "templates/ArchiveStatusFormatter.cs", "expandTokens": false },
+    { "path": "src/Archive/StatusView.cs", "template": "templates/ArchiveStatusView.cs", "expandTokens": false }
+  ]
+}

@@ -34,6 +34,8 @@ public sealed class AgentBenchmarkScriptTests
             "rename-report-format-string-overload",
             result.Output,
             StringComparison.Ordinal);
+        Assert.Contains("rename-canonical-status-format", result.Output,
+            StringComparison.Ordinal);
     }
 
     [Fact]
@@ -71,9 +73,9 @@ public sealed class AgentBenchmarkScriptTests
             .EnumerateArray()
             .ToArray();
 
-        Assert.Equal(4, tasks.Length);
+        Assert.Equal(5, tasks.Length);
         Assert.Equal(
-            ["refactor", "feature", "refactor", "refactor"],
+            ["refactor", "feature", "refactor", "refactor", "refactor"],
             tasks.Select(static task =>
                 task.GetProperty("kind").GetString()!).ToArray());
         var expectedChanges = new Dictionary<string, string[]>(
@@ -96,6 +98,12 @@ public sealed class AgentBenchmarkScriptTests
                 "src/Contracts/IReportFormatter.cs",
                 "src/Implementations/ReportFormatter.cs",
                 "src/Implementations/WorkerReportFormatter.cs",
+            ],
+            ["rename-canonical-status-format"] =
+            [
+                "src/Canonical.Contracts/IStatusFormatter.cs",
+                "src/Canonical.Implementations/StatusFormatter.cs",
+                "src/Canonical.Consumers/StatusView.cs",
             ],
         };
         Assert.All(
@@ -167,6 +175,7 @@ public sealed class AgentBenchmarkScriptTests
         {
             var original = await RunValidatorAsync(root);
             Assert.NotEqual(0, original.ExitCode);
+
             Assert.Contains("semantic-oracle: rejected", original.Output);
 
             var productionFiles = new[]
@@ -446,6 +455,95 @@ public sealed class AgentBenchmarkScriptTests
     }
 
     [Fact]
+    public async Task Unrelated_name_oracle_rejects_wrong_scope_and_accepts_exact_change()
+    {
+        var root = await MaterializeSemanticTaskAsync(
+            "semantic-unrelated-names",
+            "RenameCanonicalStatusFormat.cs",
+            "UnrelatedNameVerifier.csproj");
+        try
+        {
+            var original = await RunValidatorAsync(root);
+            Assert.NotEqual(0, original.ExitCode);
+
+            var archiveFiles = new[]
+            {
+                "src/Archive/IStatusFormatter.cs",
+                "src/Archive/StatusFormatter.cs",
+                "src/Archive/StatusView.cs",
+            };
+            var archiveContents = archiveFiles.ToDictionary(
+                relativePath => relativePath,
+                relativePath => File.ReadAllText(Path.Combine(root, relativePath)),
+                StringComparer.Ordinal);
+            foreach (var relativePath in archiveFiles)
+            {
+                var path = Path.Combine(root, relativePath);
+                await File.WriteAllTextAsync(path, (await File.ReadAllTextAsync(path))
+                    .Replace("Format(string", "Render(string", StringComparison.Ordinal)
+                    .Replace(".Format(value)", ".Render(value)", StringComparison.Ordinal));
+            }
+            var wrongTarget = await RunValidatorAsync(root);
+            Assert.NotEqual(0, wrongTarget.ExitCode);
+            Assert.Contains("semantic-oracle: rejected", wrongTarget.Output);
+            foreach (var (relativePath, content) in archiveContents)
+            {
+                await File.WriteAllTextAsync(Path.Combine(root, relativePath), content);
+            }
+
+            var canonicalFiles = new[]
+            {
+                "src/Canonical.Contracts/IStatusFormatter.cs",
+                "src/Canonical.Implementations/StatusFormatter.cs",
+                "src/Canonical.Consumers/StatusView.cs",
+            };
+            foreach (var relativePath in canonicalFiles)
+            {
+                var path = Path.Combine(root, relativePath);
+                await File.WriteAllTextAsync(path, (await File.ReadAllTextAsync(path))
+                    .Replace("Format(string", "Render(string", StringComparison.Ordinal)
+                    .Replace(".Format(value)", ".Render(value)", StringComparison.Ordinal));
+            }
+
+            var correct = await RunValidatorAsync(root);
+            Assert.True(correct.ExitCode == 0, correct.Output);
+            Assert.Contains("semantic-oracle: verified", correct.Output);
+
+            AddForwarder(
+                Path.Combine(root, "src/Canonical.Contracts/IStatusFormatter.cs"),
+                "string Format(string value) => Render(value);");
+            AddForwarder(
+                Path.Combine(root, "src/Canonical.Implementations/StatusFormatter.cs"),
+                "public string Format(string value) => Render(value);");
+            var retainedMember = await RunValidatorAsync(root);
+            Assert.NotEqual(0, retainedMember.ExitCode);
+            Assert.Contains("semantic-oracle: rejected", retainedMember.Output);
+
+            foreach (var relativePath in canonicalFiles)
+            {
+                var path = Path.Combine(root, relativePath);
+                await File.WriteAllTextAsync(path, (await File.ReadAllTextAsync(path))
+                    .Replace("public string Format(string value) => Render(value);", string.Empty,
+                        StringComparison.Ordinal)
+                    .Replace("string Format(string value) => Render(value);", string.Empty,
+                        StringComparison.Ordinal));
+            }
+            var canonicalFormatterPath = Path.Combine(root,
+                "src/Canonical.Implementations/StatusFormatter.cs");
+            await File.WriteAllTextAsync(canonicalFormatterPath,
+                (await File.ReadAllTextAsync(canonicalFormatterPath)).Replace(
+                    "canonical:{value}", "changed:{value}", StringComparison.Ordinal));
+            var changedBehavior = await RunValidatorAsync(root);
+            Assert.NotEqual(0, changedBehavior.ExitCode);
+            Assert.Contains("semantic-oracle: rejected", changedBehavior.Output);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
     public async Task Event_metrics_count_completed_dnaxi_and_raw_read_commands_deterministically()
     {
         var root = Path.Combine(
@@ -596,7 +694,8 @@ public sealed class AgentBenchmarkScriptTests
 
     private static async Task<string> MaterializeSemanticTaskAsync(
         string fixtureName,
-        string validatorName)
+        string validatorName,
+        string verifierName = "SemanticRelationshipVerifier.csproj")
     {
         var root = Path.Combine(
             Path.GetTempPath(),
@@ -634,7 +733,7 @@ public sealed class AgentBenchmarkScriptTests
             "repository-work",
             "validators");
         File.Copy(
-            Path.Combine(validators, "SemanticRelationshipVerifier.csproj"),
+            Path.Combine(validators, verifierName),
             Path.Combine(validationDirectory, "Verifier.csproj"));
         File.Copy(
             Path.Combine(validators, "Validate.ps1"),

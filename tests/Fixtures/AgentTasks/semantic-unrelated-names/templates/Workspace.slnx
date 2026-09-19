@@ -1,0 +1,6 @@
+<Solution>
+  <Project Path="src/Canonical.Contracts/Canonical.Contracts.csproj" />
+  <Project Path="src/Canonical.Implementations/Canonical.Implementations.csproj" />
+  <Project Path="src/Canonical.Consumers/Canonical.Consumers.csproj" />
+  <Project Path="src/Archive/Archive.csproj" />
+</Solution>
