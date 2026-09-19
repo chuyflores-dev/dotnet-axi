@@ -2,8 +2,11 @@
 
 ## Outcome
 
-Graph services use typed nodes and edges that preserve identity, relationship
-kind, scope, coverage, confidence, and provenance.
+The 0.6 project graph uses typed project-variant nodes, observed package nodes,
+and project/package-reference relationships. Rows preserve identity,
+relationship kind and direction, selected configuration/framework, scope,
+coverage, confidence, provenance, and incomplete evaluation without exposing
+MSBuild or Roslyn backend types.
 
 ## Design
 
@@ -12,18 +15,25 @@ kind, scope, coverage, confidence, and provenance.
 
 ## Boundary
 
-The graph is built on demand in memory and requires no persistent graph store.
+The graph is built on demand in memory from evaluated MSBuild state and requires
+no persistent graph store or Roslyn compilation. This story does not introduce
+a universal node/edge framework or ship future code-entity node kinds.
 
 ## Acceptance
 
-- Every MVP node and edge kind can be represented without raw backend types.
+- Project variants and observed package references have deterministic,
+  backend-independent identities.
+- Project-reference and package-reference rows retain direction, selected
+  configuration/framework, and typed per-row provenance and evidence.
+- Unsupported, incomplete, and failed evaluation remain representable rather
+  than being omitted or represented as a successful node.
 - Mixed-evidence graphs retain row-level confidence where response-level
-  resolution is insufficient.
+  evidence is insufficient.
 
 ## Verification
 
-- Contract tests cover graph composition, deterministic identity, mixed
-  provenance, partial coverage, and serialization.
+- Contract tests cover composition, deterministic identity, mixed provenance,
+  partial coverage, incomplete evaluation, and serialization.
 
 ## Dependencies
 

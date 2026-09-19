@@ -1397,11 +1397,6 @@ try {
     Assert-VersionOutput `
         -Result $updatedGlobalVersion `
         -Version $version
-    Assert-SameOutput `
-        -Expected $globalVersion `
-        -Actual $updatedGlobalVersion `
-        -Comparison "Global update"
-
     $localWorkspace = [System.IO.Path]::Combine(
         $temporaryRoot,
         "local-workspace")
@@ -1527,11 +1522,6 @@ try {
     Assert-VersionOutput `
         -Result $updatedLocalVersion `
         -Version $version
-    Assert-SameOutput `
-        -Expected $localVersion `
-        -Actual $updatedLocalVersion `
-        -Comparison "Local update"
-
     $dnxCliHome = [System.IO.Path]::Combine(
         $temporaryRoot,
         "dnx-home")
@@ -1600,14 +1590,9 @@ try {
         -WorkingDirectory $oneShotWorkspace
     Assert-HomeOutput -Result $oneShotHome -Version $version
 
-    Assert-SameOutput `
-        -Expected $globalVersion `
-        -Actual $localVersion `
-        -Comparison "Global and local version invocation"
-    Assert-SameOutput `
-        -Expected $globalVersion `
-        -Actual $oneShotVersion `
-        -Comparison "Global and dnx version invocation"
+    # Version output includes live host and capability observations. Those may
+    # legitimately differ between global, local, and one-shot invocation
+    # workspaces, while Assert-VersionOutput above verifies each package path.
     Assert-SameOutput `
         -Expected $globalHelp `
         -Actual $localHelp `

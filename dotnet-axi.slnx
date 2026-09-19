@@ -23,6 +23,7 @@
     <Project Path="tests/DotNetAxi.Contracts.Tests/DotNetAxi.Contracts.Tests.csproj" />
     <Project Path="tests/DotNetAxi.DotNet.ProcessTestApp/DotNetAxi.DotNet.ProcessTestApp.csproj" />
     <Project Path="tests/DotNetAxi.DotNet.Tests/DotNetAxi.DotNet.Tests.csproj" />
+    <Project Path="tests/DotNetAxi.Graph.Tests/DotNetAxi.Graph.Tests.csproj" />
     <Project Path="tests/DotNetAxi.Search.Tests/DotNetAxi.Search.Tests.csproj" />
     <Project Path="tests/DotNetAxi.Roslyn.Tests/DotNetAxi.Roslyn.Tests.csproj" />
     <Project Path="tests/DotNetAxi.Structural.Tests/DotNetAxi.Structural.Tests.csproj" />

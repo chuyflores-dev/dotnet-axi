@@ -121,35 +121,36 @@ dnaxi graph path --from <entity> --to <entity>
 dnaxi graph impact <entity>
 ```
 
-The internal graph model SHOULD support nodes for solution, project, document,
-namespace, type, member, test, diagnostic, and package.
+The first 0.6 graph contract is deliberately project-level. It materializes
+typed project-variant nodes and observed package nodes, plus
+`project-reference` and `package-reference` relationships. A solution is
+selection scope rather than a graph node. Each relationship records source and
+target direction, the configuration and framework that supplied it, and typed
+MSBuild provenance. Node and relationship evidence independently carries scope,
+coverage, and confidence, so a response can retain evaluated rows alongside
+unsupported, incomplete, or failed evaluation.
 
-It SHOULD support these edges:
+Project identities are deterministic for a project path plus its selected
+configuration and framework. Package identities are deterministic for package
+ID and observed version when present. A relationship identity includes its
+kind, endpoints, direction, and selected configuration/framework. The contract
+uses only tool-owned types; it does not expose MSBuild project instances,
+ProjectGraph nodes, or Roslyn objects.
 
-- `contains`
-- `declares`
-- `references`
-- `calls`
-- `constructs`
-- `inherits`
-- `implements`
-- `overrides`
-- `reads`
-- `writes`
-- `project-reference`
-- `package-reference`
-- `tests`
+Project dependency edges come from evaluated MSBuild ProjectGraph state and do
+not require Roslyn compilation. Package rows are included only when evaluation
+supplies them; their absence is not evidence that no package dependency exists.
+Rows are ordered deterministically by stable identity. A failed evaluator or
+an omitted/unsupported project keeps response coverage partial and cannot be
+reported as a verified empty graph.
 
-The MVP builds code edges on demand rather than precomputing a complete graph.
-Project dependency edges come from evaluated MSBuild ProjectGraph state.
-
-Path and impact queries SHOULD be supported. Member traversal preserves the
-resolution, coverage, confidence, scope, and provenance of the underlying
-semantic commands.
-
-Mixed-evidence graphs label confidence per node or edge. Impact output SHOULD
-summarize affected projects, documents, candidate tests, public-surface impact,
-important relationship paths, and confidence.
+This is not a universal graph engine. Document, namespace, type, member, test,
+diagnostic, and code-relationship materialization remains on-demand and is
+introduced only by the operation that has its authority and bounded evidence.
+Path and impact commands begin with the project-level contract; later semantic
+composition preserves the resolution, coverage, confidence, scope, and
+provenance of its underlying relationships rather than extending this contract
+with backend objects.
 
 The graph API MUST NOT require Neo4j, SQLite, or another persistent graph store
 in the MVP.
