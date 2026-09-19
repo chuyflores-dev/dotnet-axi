@@ -40,6 +40,8 @@ public sealed class AgentBenchmarkScriptTests
             StringComparison.Ordinal);
         Assert.Contains("rename-generic-envelope-base", result.Output,
             StringComparison.Ordinal);
+        Assert.Contains("rename-virtual-format-overrides", result.Output,
+            StringComparison.Ordinal);
     }
 
     [Fact]
@@ -77,9 +79,9 @@ public sealed class AgentBenchmarkScriptTests
             .EnumerateArray()
             .ToArray();
 
-        Assert.Equal(7, tasks.Length);
+        Assert.Equal(8, tasks.Length);
         Assert.Equal(
-            ["refactor", "feature", "refactor", "refactor", "refactor", "refactor", "refactor"],
+            ["refactor", "feature", "refactor", "refactor", "refactor", "refactor", "refactor", "refactor"],
             tasks.Select(static task =>
                 task.GetProperty("kind").GetString()!).ToArray());
         var expectedChanges = new Dictionary<string, string[]>(
@@ -122,6 +124,8 @@ public sealed class AgentBenchmarkScriptTests
                 "src/Models/EnvelopeModels.cs",
                 "src/Consumers/EnvelopePresenter.cs",
             ],
+            ["rename-virtual-format-overrides"] =
+            ["src/Models/Formatters.cs", "src/Consumers/FormatterPresenter.cs"],
         };
         Assert.All(
             tasks,
@@ -714,6 +718,55 @@ public sealed class AgentBenchmarkScriptTests
         {
             Directory.Delete(root, recursive: true);
         }
+    }
+
+    [Fact]
+    public async Task Virtual_override_oracle_rejects_decoys_and_accepts_exact_change()
+    {
+        var root = await MaterializeSemanticTaskAsync("semantic-virtual-overrides", "RenameVirtualFormat.cs", "VirtualOverrideVerifier.csproj");
+        try
+        {
+            var original = await RunValidatorAsync(root);
+            Assert.NotEqual(0, original.ExitCode);
+            Assert.Contains("semantic-oracle: rejected", original.Output);
+            var modelPath = Path.Combine(root, "src/Models/Formatters.cs");
+            var consumerPath = Path.Combine(root, "src/Consumers/FormatterPresenter.cs");
+            var model = await File.ReadAllTextAsync(modelPath);
+            await File.WriteAllTextAsync(modelPath, model.Replace("virtual string Format", "virtual string Render", StringComparison.Ordinal).Replace("override string Format", "override string Render", StringComparison.Ordinal));
+            var consumer = await File.ReadAllTextAsync(consumerPath);
+            await File.WriteAllTextAsync(consumerPath, consumer.Replace("baseFormatter.Format(value)", "baseFormatter.Render(value)", StringComparison.Ordinal).Replace("auditFormatter.Format(value)", "auditFormatter.Render(value)", StringComparison.Ordinal).Replace("workerFormatter.Format(value)", "workerFormatter.Render(value)", StringComparison.Ordinal));
+            var correctModels = await File.ReadAllTextAsync(modelPath);
+            var correctConsumers = await File.ReadAllTextAsync(consumerPath);
+            var correct = await RunValidatorAsync(root);
+            Assert.True(correct.ExitCode == 0, correct.Output);
+            await File.WriteAllTextAsync(modelPath, correctModels.Replace("public override string Render", "public new string Format", StringComparison.Ordinal));
+            var incompleteOverride = await RunValidatorAsync(root);
+            Assert.NotEqual(0, incompleteOverride.ExitCode);
+            Assert.Contains("semantic-oracle: rejected", incompleteOverride.Output);
+            await File.WriteAllTextAsync(modelPath, correctModels);
+            await File.WriteAllTextAsync(consumerPath, correctConsumers.Replace("auditFormatter.Render(value)", "$\"audit:{value}\"", StringComparison.Ordinal));
+            var incompleteDispatch = await RunValidatorAsync(root);
+            Assert.NotEqual(0, incompleteDispatch.ExitCode);
+            Assert.Contains("semantic-oracle: rejected", incompleteDispatch.Output);
+            await File.WriteAllTextAsync(consumerPath, correctConsumers);
+            await File.WriteAllTextAsync(modelPath, correctModels.Replace(
+                "return $\"audit:{value}\"; } }",
+                "return $\"audit:{value}\"; } private string Format(string value) => Render(value); }",
+                StringComparison.Ordinal));
+            var retainedMember = await RunValidatorAsync(root);
+            Assert.NotEqual(0, retainedMember.ExitCode);
+            Assert.Contains("semantic-oracle: rejected", retainedMember.Output);
+            await File.WriteAllTextAsync(modelPath, correctModels);
+            await File.WriteAllTextAsync(modelPath, correctModels.Replace("shadow:{value}", "changed:{value}", StringComparison.Ordinal));
+            var hiddenBehavior = await RunValidatorAsync(root);
+            Assert.NotEqual(0, hiddenBehavior.ExitCode);
+            Assert.Contains("semantic-oracle: rejected", hiddenBehavior.Output);
+            await File.WriteAllTextAsync(modelPath, correctModels.Replace("base:{value}", "changed:{value}", StringComparison.Ordinal));
+            var changedBehavior = await RunValidatorAsync(root);
+            Assert.NotEqual(0, changedBehavior.ExitCode);
+            Assert.Contains("semantic-oracle: rejected", changedBehavior.Output);
+        }
+        finally { Directory.Delete(root, recursive: true); }
     }
 
     [Fact]
