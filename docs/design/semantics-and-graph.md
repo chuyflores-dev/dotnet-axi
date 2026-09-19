@@ -77,6 +77,17 @@ member, with its owner project and framework variant. Hidden `new` members and
 same-name members are excluded. It uses the same default/`--complete` scope
 and coverage reporting as the other compiler relationship commands.
 
+`search callers` returns compiler-verified call sites for one selected member.
+Each row preserves the exact call location, containing compiler symbol, target
+identity, project and framework variant, relationship, semantic resolution,
+and confidence. Ordinary and constructor invocations are `direct_call` with
+verified confidence. Calls through a virtual or interface target are
+`possible_dispatch` with possible confidence; delegate method-group references
+are `delegate` with possible confidence. Dynamic, reflection, and other
+runtime-only dispatch are outside static coverage. It uses the same
+reverse-dependency scope, default/`--complete` expansion, and explicit
+project/framework coverage as `search references`.
+
 `--configuration`, `--framework`, and repeated `--property name=value`
 selectors apply consistently to target resolution, graph evaluation, project
 coverage, and Roslyn workspace loading. Dedicated configuration and framework

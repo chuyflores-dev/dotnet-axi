@@ -171,6 +171,13 @@ public sealed class CommandHostTests
             },
             operation =>
             {
+                Assert.Equal("search callers", operation.Name);
+                Assert.Same(
+                    OperationPolicy.ExecutingInspection,
+                    operation.Policy);
+            },
+            operation =>
+            {
                 Assert.Equal("search implementations", operation.Name);
                 Assert.Same(
                     OperationPolicy.ExecutingInspection,
@@ -204,6 +211,7 @@ public sealed class CommandHostTests
         Assert.All(host.Operations, operation =>
         {
             if (operation.Name is not "search references"
+                && operation.Name is not "search callers"
                 && operation.Name is not "search implementations"
                 && operation.Name is not "search derived"
                 && operation.Name is not "search overrides")
