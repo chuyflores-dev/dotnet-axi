@@ -19,6 +19,33 @@ public sealed class ImplementationSearchCommandTests
     }
 
     [Fact]
+    public async Task Override_search_discloses_variants_and_preserves_scope_in_retrieval()
+    {
+        using var workspace = await TestWorkspace.CreateAsync();
+
+        var result = await workspace.RunAsync(
+            "search", "overrides", "Demo.Base.Run",
+            "--project", "App.csproj",
+            "--complete",
+            "--configuration", "Release",
+            "--framework", "net10.0",
+            "--property", "Flavor=cli",
+            "--limit", "1");
+
+        Assert.True(result.ExitCode == 0, result.Output);
+        Assert.Contains("variants[", result.Output);
+        Assert.Contains("analyzed", result.Output);
+        Assert.Contains("retrieval_command:", result.Output);
+        Assert.Contains("search overrides 'Demo.Base.Run'", result.Output);
+        Assert.Contains("--project 'App.csproj'", result.Output);
+        Assert.Contains("--complete", result.Output);
+        Assert.Contains("--configuration 'Release'", result.Output);
+        Assert.Contains("--framework 'net10.0'", result.Output);
+        Assert.Contains("--property 'Flavor=cli' --full", result.Output);
+        Assert.DoesNotContain("--limit 1", result.Output);
+    }
+
+    [Fact]
     public async Task Derived_search_returns_compiler_identity_and_inheritance_path()
     {
         using var workspace = await TestWorkspace.CreateAsync();

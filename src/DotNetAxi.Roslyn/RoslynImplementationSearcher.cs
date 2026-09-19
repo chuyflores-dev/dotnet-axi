@@ -728,6 +728,7 @@ public sealed class RoslynImplementationSearcher
                         workspaceRoot,
                         coverage,
                         identity,
+                        symbol,
                         implementationIdentity,
                         implementation,
                         location);
@@ -772,6 +773,24 @@ public sealed class RoslynImplementationSearcher
                                          targetMethod))))
                 {
                     yield return method;
+                }
+            }
+
+            if (target is IPropertySymbol targetProperty)
+            {
+                foreach (var property in type.GetMembers().OfType<IPropertySymbol>()
+                             .Where(property => Overrides(property, targetProperty)))
+                {
+                    yield return property;
+                }
+            }
+
+            if (target is IEventSymbol targetEvent)
+            {
+                foreach (var @event in type.GetMembers().OfType<IEventSymbol>()
+                             .Where(@event => Overrides(@event, targetEvent)))
+                {
+                    yield return @event;
                 }
             }
         }
@@ -855,6 +874,20 @@ public sealed class RoslynImplementationSearcher
         return false;
     }
 
+    private static bool Overrides(IPropertySymbol property, IPropertySymbol target)
+    {
+        for (var current = property.OverriddenProperty; current is not null; current = current.OverriddenProperty)
+            if (SameSymbol(current, target)) return true;
+        return false;
+    }
+
+    private static bool Overrides(IEventSymbol @event, IEventSymbol target)
+    {
+        for (var current = @event.OverriddenEvent; current is not null; current = current.OverriddenEvent)
+            if (SameSymbol(current, target)) return true;
+        return false;
+    }
+
     private static AnalyzedVariant Analyzed(
         ProjectVariantCoverage coverage,
         IReadOnlyList<RoslynImplementationMatch> matches,
@@ -926,6 +959,7 @@ public sealed class RoslynImplementationSearcher
         string workspaceRoot,
         ProjectVariantCoverage coverage,
         string targetIdentity,
+        ISymbol target,
         string identity,
         ISymbol implementation,
         Location location)
@@ -962,7 +996,7 @@ public sealed class RoslynImplementationSearcher
             targetIdentity,
             identity,
             InheritancePath(implementation, targetIdentity),
-            OverridePath(implementation, targetIdentity),
+            OverridePath(implementation, target, targetIdentity),
             owner,
             coverage.Project,
             coverage.Configuration,
@@ -990,24 +1024,37 @@ public sealed class RoslynImplementationSearcher
 
     private static IReadOnlyList<string> OverridePath(
         ISymbol implementation,
+        ISymbol target,
+        string targetIdentity) =>
+        (implementation, target) switch
+        {
+            (IMethodSymbol method, IMethodSymbol targetMethod) => OverridePath(method, targetMethod, static symbol => symbol.OverriddenMethod, targetIdentity),
+            (IPropertySymbol property, IPropertySymbol targetProperty) => OverridePath(property, targetProperty, static symbol => symbol.OverriddenProperty, targetIdentity),
+            (IEventSymbol @event, IEventSymbol targetEvent) => OverridePath(@event, targetEvent, static symbol => symbol.OverriddenEvent, targetIdentity),
+            _ => [],
+        };
+
+    private static IReadOnlyList<string> OverridePath<TSymbol>(
+        TSymbol implementation,
+        TSymbol target,
+        Func<TSymbol, TSymbol?> overridden,
         string targetIdentity)
+        where TSymbol : class, ISymbol
     {
-        if (implementation is not IMethodSymbol method)
+        var path = new List<(TSymbol Symbol, string Identity)>();
+        for (var current = implementation; current is not null; current = overridden(current))
+            path.Add((current, current.GetDocumentationCommentId() ?? current.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)));
+        path.Reverse();
+        var targetIndex = path.FindIndex(entry => SameSymbol(entry.Symbol, target));
+        if (targetIndex < 0)
         {
             return [];
         }
 
-        var path = new List<string>();
-        for (var current = method; current is not null; current = current.OverriddenMethod)
-        {
-            path.Add(current.GetDocumentationCommentId()
-                ?? current.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat));
-        }
-
-        path.Reverse();
-        return path.Count > 0 && string.Equals(path[0], targetIdentity, StringComparison.Ordinal)
-            ? Array.AsReadOnly(path.ToArray())
-            : [];
+        return Array.AsReadOnly(path
+            .Skip(targetIndex)
+            .Select((entry, index) => index == 0 ? targetIdentity : entry.Identity)
+            .ToArray());
     }
 
     private static IReadOnlyList<string>? FindInheritancePath(
