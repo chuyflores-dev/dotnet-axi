@@ -110,6 +110,51 @@ public sealed class RoslynImplementationSearcherTests
                 && variant.Status is ImplementationSearchVariantStatus.Failed);
     }
 
+    [Fact]
+    public async Task Finds_transitive_generic_nested_and_interface_derived_types_with_paths()
+    {
+        using var workspace = await ImplementationWorkspace.CreateAsync();
+
+        var classes = await workspace.FindDerivedAsync("Demo.Root", DerivedTypeSearchScopeMode.Complete);
+        Assert.Contains(classes.Matches, match =>
+            match.DerivedIdentity == "T:Demo.Middle`1"
+            && match.InheritancePath.SequenceEqual(["T:Demo.Root", "T:Demo.Middle`1"]));
+        Assert.Contains(classes.Matches, match =>
+            match.DerivedIdentity == "T:Demo.Leaf.Nested"
+            && match.InheritancePath.Count >= 3
+            && match.InheritancePath[0] == "T:Demo.Root"
+            && match.InheritancePath[^1] == "T:Demo.Leaf.Nested");
+
+        var interfaces = await workspace.FindDerivedAsync("Demo.IMarker", DerivedTypeSearchScopeMode.Complete);
+        Assert.Contains(interfaces.Matches, match =>
+            match.DerivedIdentity == "T:Demo.IChildMarker"
+            && match.InheritancePath.SequenceEqual(["T:Demo.IMarker", "T:Demo.IChildMarker"]));
+        Assert.Contains(interfaces.Matches, match =>
+            match.DerivedIdentity == "T:Demo.InterfaceLeaf"
+            && match.InheritancePath.SequenceEqual(
+                ["T:Demo.IMarker", "T:Demo.IChildMarker", "T:Demo.InterfaceLeaf"]));
+    }
+
+    [Fact]
+    public async Task Derived_search_discloses_remaining_and_broken_descendant_scope()
+    {
+        using var completeWorkspace = await ImplementationWorkspace.CreateAsync();
+        var partial = await completeWorkspace.FindDerivedAsync("Demo.Root", DerivedTypeSearchScopeMode.Default);
+        var complete = await completeWorkspace.FindDerivedAsync("Demo.Root", DerivedTypeSearchScopeMode.Complete);
+        Assert.Contains(partial.Variants, variant =>
+            variant.Project == "Consumer/Consumer.csproj"
+            && variant.Status is ImplementationSearchVariantStatus.Remaining);
+        Assert.DoesNotContain(complete.Variants, variant =>
+            variant.Status is ImplementationSearchVariantStatus.Remaining);
+
+        using var brokenWorkspace = await ImplementationWorkspace.CreateAsync(includeBroken: true);
+        var broken = await brokenWorkspace.FindDerivedAsync("Demo.Root", DerivedTypeSearchScopeMode.Complete);
+        Assert.Equal(CoverageLevel.Partial, broken.Coverage.Level);
+        Assert.Contains(broken.Variants, variant =>
+            variant.Project == "Broken/Broken.csproj"
+            && variant.Status is ImplementationSearchVariantStatus.Failed);
+    }
+
     private static bool IsServiceOwner(string? owner) =>
         owner is "ServiceA" or "Demo.ServiceA" or "ServiceB" or "Demo.ServiceB";
 
@@ -139,6 +184,12 @@ public sealed class RoslynImplementationSearcherTests
                     namespace Demo;
                     public interface IService { void Execute(int value); }
                     public abstract class WorkerBase { public abstract string Execute(string value); }
+                    public class Root { }
+                    public class Middle<T> : Root { }
+                    public class Leaf : Middle<int> { public class Nested : Leaf { } }
+                    public interface IMarker { }
+                    public interface IChildMarker : IMarker { }
+                    public class InterfaceLeaf : IChildMarker { }
                     """);
                 await workspace.WriteProjectAsync(
                     "Consumer/Consumer.csproj",
@@ -179,7 +230,7 @@ public sealed class RoslynImplementationSearcherTests
                         "Broken/Broken.cs",
                         """
                         namespace Broken;
-                        public sealed class Broken : Demo.IService
+                        public sealed class Broken : Demo.Root, Demo.IService
                         {
                             public void Execute(int value) { }
                             public Missing.Dependency.Widget? BrokenWidget { get; set; }
@@ -213,6 +264,17 @@ public sealed class RoslynImplementationSearcherTests
                     context.Scope,
                     scopeMode,
                     new ProjectGraphEvaluationOptions());
+        }
+
+        public async Task<RoslynDerivedTypeSearchResult> FindDerivedAsync(
+            string target,
+            DerivedTypeSearchScopeMode scopeMode)
+        {
+            var context = Context();
+            return await new RoslynDerivedTypeSearcher(
+                    new WorkspacePathTraverser(), context.Ownership, context.Projects)
+                .FindAsync(target, context.Discovery, context.Selection, context.Traversal,
+                    context.Scope, scopeMode, new ProjectGraphEvaluationOptions());
         }
 
         private TestContext Context()

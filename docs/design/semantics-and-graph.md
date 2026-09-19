@@ -61,6 +61,15 @@ framework and reports other supported frameworks as remaining; `--complete`
 analyzes every supported evaluated framework. Projects outside that reverse
 closure are not reference candidates and are not loaded.
 
+`search derived` accepts one class or interface target and uses the same
+evaluated reverse-dependency scope and default/`--complete` framework rules.
+Each result identifies the exact derived compiler type, its owner project and
+framework variant, and an ordered inheritance path from the selected target to
+that type. The path preserves generic and nested-type identities. Interface
+results include derived interfaces and source classes that implement the
+selected interface through an interface chain. Runtime-generated, dynamically
+loaded, and reflection-only types are outside this static coverage.
+
 `--configuration`, `--framework`, and repeated `--property name=value`
 selectors apply consistently to target resolution, graph evaluation, project
 coverage, and Roslyn workspace loading. Dedicated configuration and framework
