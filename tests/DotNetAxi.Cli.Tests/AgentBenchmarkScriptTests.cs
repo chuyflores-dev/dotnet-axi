@@ -38,6 +38,8 @@ public sealed class AgentBenchmarkScriptTests
             StringComparison.Ordinal);
         Assert.Contains("rename-interface-dispatch-format", result.Output,
             StringComparison.Ordinal);
+        Assert.Contains("rename-generic-envelope-base", result.Output,
+            StringComparison.Ordinal);
     }
 
     [Fact]
@@ -75,9 +77,9 @@ public sealed class AgentBenchmarkScriptTests
             .EnumerateArray()
             .ToArray();
 
-        Assert.Equal(6, tasks.Length);
+        Assert.Equal(7, tasks.Length);
         Assert.Equal(
-            ["refactor", "feature", "refactor", "refactor", "refactor", "refactor"],
+            ["refactor", "feature", "refactor", "refactor", "refactor", "refactor", "refactor"],
             tasks.Select(static task =>
                 task.GetProperty("kind").GetString()!).ToArray());
         var expectedChanges = new Dictionary<string, string[]>(
@@ -114,6 +116,11 @@ public sealed class AgentBenchmarkScriptTests
                 "src/Implementations/SmsMessageFormatter.cs",
                 "src/Implementations/PushMessageFormatter.cs",
                 "src/Consumers/MessageDispatcher.cs",
+            ],
+            ["rename-generic-envelope-base"] =
+            [
+                "src/Models/EnvelopeModels.cs",
+                "src/Consumers/EnvelopePresenter.cs",
             ],
         };
         Assert.All(
@@ -630,6 +637,75 @@ public sealed class AgentBenchmarkScriptTests
             await File.WriteAllTextAsync(emailFormatterPath,
                 (await File.ReadAllTextAsync(emailFormatterPath)).Replace(
                     "email:{value}", "changed:{value}", StringComparison.Ordinal));
+            var changedBehavior = await RunValidatorAsync(root);
+            Assert.NotEqual(0, changedBehavior.ExitCode);
+            Assert.Contains("semantic-oracle: rejected", changedBehavior.Output);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task Generic_inheritance_oracle_rejects_decoys_and_accepts_exact_change()
+    {
+        var root = await MaterializeSemanticTaskAsync(
+            "semantic-generic-inheritance",
+            "RenameGenericEnvelope.cs",
+            "GenericInheritanceVerifier.csproj");
+        try
+        {
+            var original = await RunValidatorAsync(root);
+            Assert.NotEqual(0, original.ExitCode);
+            Assert.Contains("semantic-oracle: rejected", original.Output);
+
+            var productionFiles = new[]
+            {
+                "src/Models/EnvelopeModels.cs",
+                "src/Consumers/EnvelopePresenter.cs",
+            };
+            foreach (var relativePath in productionFiles)
+            {
+                var path = Path.Combine(root, relativePath);
+                await File.WriteAllTextAsync(path, (await File.ReadAllTextAsync(path)).Replace(
+                    "GenericEnvelope", "MessageEnvelope", StringComparison.Ordinal));
+            }
+            var correctContents = productionFiles.ToDictionary(
+                relativePath => relativePath,
+                relativePath => File.ReadAllText(Path.Combine(root, relativePath)),
+                StringComparer.Ordinal);
+            var correct = await RunValidatorAsync(root);
+            Assert.True(correct.ExitCode == 0, correct.Output);
+            Assert.Contains("semantic-oracle: verified", correct.Output);
+
+            var modelsPath = Path.Combine(root, "src/Models/EnvelopeModels.cs");
+            await File.WriteAllTextAsync(modelsPath,
+                (await File.ReadAllTextAsync(modelsPath)) + "\npublic class GenericEnvelope<T> { }\n");
+            var retainedType = await RunValidatorAsync(root);
+            Assert.NotEqual(0, retainedType.ExitCode);
+            Assert.Contains("semantic-oracle: rejected", retainedType.Output);
+            await File.WriteAllTextAsync(modelsPath, correctContents["src/Models/EnvelopeModels.cs"]);
+
+            await File.WriteAllTextAsync(modelsPath,
+                (await File.ReadAllTextAsync(modelsPath)).Replace(
+                    "new string Label(string", "new string Describe(string", StringComparison.Ordinal));
+            var changedHiddenMember = await RunValidatorAsync(root);
+            Assert.NotEqual(0, changedHiddenMember.ExitCode);
+            Assert.Contains("semantic-oracle: rejected", changedHiddenMember.Output);
+            await File.WriteAllTextAsync(modelsPath, correctContents["src/Models/EnvelopeModels.cs"]);
+
+            await File.WriteAllTextAsync(modelsPath,
+                (await File.ReadAllTextAsync(modelsPath)).Replace(
+                    "shadow:{value}", "altered:{value}", StringComparison.Ordinal));
+            var changedHiddenBehavior = await RunValidatorAsync(root);
+            Assert.NotEqual(0, changedHiddenBehavior.ExitCode);
+            Assert.Contains("semantic-oracle: rejected", changedHiddenBehavior.Output);
+            await File.WriteAllTextAsync(modelsPath, correctContents["src/Models/EnvelopeModels.cs"]);
+
+            await File.WriteAllTextAsync(modelsPath,
+                (await File.ReadAllTextAsync(modelsPath)).Replace(
+                    "base:{typeof(T).Name}:{value}", "changed:{value}", StringComparison.Ordinal));
             var changedBehavior = await RunValidatorAsync(root);
             Assert.NotEqual(0, changedBehavior.ExitCode);
             Assert.Contains("semantic-oracle: rejected", changedBehavior.Output);

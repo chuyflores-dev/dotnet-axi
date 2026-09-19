@@ -241,6 +241,27 @@
         ],
         "timeoutSeconds": 180
       }
+    },
+    {
+      "id": "rename-generic-envelope-base",
+      "milestone": "0.6.0",
+      "kind": "refactor",
+      "prompt": "In Workspace.slnx, rename the generic type SemanticGenericInheritance.Models.GenericEnvelope<T> to MessageEnvelope<T> and update every production inheritance declaration and consumer type reference that resolves to that type. Preserve ShadowEnvelope.Label(string), the distinct audit, customer, and shadow outputs, and all types, namespaces, accessibility, target frameworks, and project relationships. Change production C# source only.",
+      "repository": { "fixtureManifest": "../semantic-generic-inheritance/fixture.json" },
+      "applicability": { "baseline": true, "candidate": true },
+      "allowedChanges": [
+        "src/Models/EnvelopeModels.cs",
+        "src/Consumers/EnvelopePresenter.cs"
+      ],
+      "validation": {
+        "files": [
+          { "template": "validators/GenericInheritanceVerifier.csproj", "path": ".benchmark-validation/Verifier.csproj" },
+          { "template": "validators/Validate.ps1", "path": ".benchmark-validation/Validate.ps1" },
+          { "template": "validators/RenameGenericEnvelope.cs", "path": ".benchmark-validation/Program.cs" }
+        ],
+        "command": ["pwsh", "-NoLogo", "-NoProfile", "-NonInteractive", "-File", ".benchmark-validation/Validate.ps1"],
+        "timeoutSeconds": 180
+      }
     }
   ]
 }
