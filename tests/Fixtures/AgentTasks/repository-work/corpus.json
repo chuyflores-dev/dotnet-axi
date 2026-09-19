@@ -196,6 +196,51 @@
         "command": ["pwsh", "-NoLogo", "-NoProfile", "-NonInteractive", "-File", ".benchmark-validation/Validate.ps1"],
         "timeoutSeconds": 180
       }
+    },
+    {
+      "id": "rename-interface-dispatch-format",
+      "milestone": "0.6.0",
+      "kind": "refactor",
+      "prompt": "In Workspace.slnx, rename the Format(string) member declared by SemanticInterfaceDispatch.Contracts.IMessageFormatter to Render and update every production implementation and interface-typed dispatch site in the solution. Preserve the distinct email, SMS, and push outputs, along with all types, namespaces, accessibility, target frameworks, and project relationships. Change production C# source only.",
+      "repository": {
+        "fixtureManifest": "../semantic-interface-dispatch/fixture.json"
+      },
+      "applicability": {
+        "baseline": true,
+        "candidate": true
+      },
+      "allowedChanges": [
+        "src/Contracts/IMessageFormatter.cs",
+        "src/Implementations/EmailMessageFormatter.cs",
+        "src/Implementations/SmsMessageFormatter.cs",
+        "src/Implementations/PushMessageFormatter.cs",
+        "src/Consumers/MessageDispatcher.cs"
+      ],
+      "validation": {
+        "files": [
+          {
+            "template": "validators/InterfaceDispatchVerifier.csproj",
+            "path": ".benchmark-validation/Verifier.csproj"
+          },
+          {
+            "template": "validators/Validate.ps1",
+            "path": ".benchmark-validation/Validate.ps1"
+          },
+          {
+            "template": "validators/RenameInterfaceDispatchFormat.cs",
+            "path": ".benchmark-validation/Program.cs"
+          }
+        ],
+        "command": [
+          "pwsh",
+          "-NoLogo",
+          "-NoProfile",
+          "-NonInteractive",
+          "-File",
+          ".benchmark-validation/Validate.ps1"
+        ],
+        "timeoutSeconds": 180
+      }
     }
   ]
 }

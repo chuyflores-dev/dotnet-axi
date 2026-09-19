@@ -36,6 +36,8 @@ public sealed class AgentBenchmarkScriptTests
             StringComparison.Ordinal);
         Assert.Contains("rename-canonical-status-format", result.Output,
             StringComparison.Ordinal);
+        Assert.Contains("rename-interface-dispatch-format", result.Output,
+            StringComparison.Ordinal);
     }
 
     [Fact]
@@ -73,9 +75,9 @@ public sealed class AgentBenchmarkScriptTests
             .EnumerateArray()
             .ToArray();
 
-        Assert.Equal(5, tasks.Length);
+        Assert.Equal(6, tasks.Length);
         Assert.Equal(
-            ["refactor", "feature", "refactor", "refactor", "refactor"],
+            ["refactor", "feature", "refactor", "refactor", "refactor", "refactor"],
             tasks.Select(static task =>
                 task.GetProperty("kind").GetString()!).ToArray());
         var expectedChanges = new Dictionary<string, string[]>(
@@ -104,6 +106,14 @@ public sealed class AgentBenchmarkScriptTests
                 "src/Canonical.Contracts/IStatusFormatter.cs",
                 "src/Canonical.Implementations/StatusFormatter.cs",
                 "src/Canonical.Consumers/StatusView.cs",
+            ],
+            ["rename-interface-dispatch-format"] =
+            [
+                "src/Contracts/IMessageFormatter.cs",
+                "src/Implementations/EmailMessageFormatter.cs",
+                "src/Implementations/SmsMessageFormatter.cs",
+                "src/Implementations/PushMessageFormatter.cs",
+                "src/Consumers/MessageDispatcher.cs",
             ],
         };
         Assert.All(
@@ -533,6 +543,93 @@ public sealed class AgentBenchmarkScriptTests
             await File.WriteAllTextAsync(canonicalFormatterPath,
                 (await File.ReadAllTextAsync(canonicalFormatterPath)).Replace(
                     "canonical:{value}", "changed:{value}", StringComparison.Ordinal));
+            var changedBehavior = await RunValidatorAsync(root);
+            Assert.NotEqual(0, changedBehavior.ExitCode);
+            Assert.Contains("semantic-oracle: rejected", changedBehavior.Output);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task Interface_dispatch_oracle_rejects_incomplete_updates_and_accepts_exact_change()
+    {
+        var root = await MaterializeSemanticTaskAsync(
+            "semantic-interface-dispatch",
+            "RenameInterfaceDispatchFormat.cs",
+            "InterfaceDispatchVerifier.csproj");
+        try
+        {
+            var original = await RunValidatorAsync(root);
+            Assert.NotEqual(0, original.ExitCode);
+            Assert.Contains("semantic-oracle: rejected", original.Output);
+
+            var productionFiles = new[]
+            {
+                "src/Contracts/IMessageFormatter.cs",
+                "src/Implementations/EmailMessageFormatter.cs",
+                "src/Implementations/SmsMessageFormatter.cs",
+                "src/Implementations/PushMessageFormatter.cs",
+                "src/Consumers/MessageDispatcher.cs",
+            };
+            foreach (var relativePath in productionFiles)
+            {
+                var path = Path.Combine(root, relativePath);
+                await File.WriteAllTextAsync(path, (await File.ReadAllTextAsync(path))
+                    .Replace("Format(string", "Render(string", StringComparison.Ordinal)
+                    .Replace(".Format(value)", ".Render(value)", StringComparison.Ordinal));
+            }
+
+            var correctContents = productionFiles.ToDictionary(
+                relativePath => relativePath,
+                relativePath => File.ReadAllText(Path.Combine(root, relativePath)),
+                StringComparer.Ordinal);
+            var correct = await RunValidatorAsync(root);
+            Assert.True(correct.ExitCode == 0, correct.Output);
+            Assert.Contains("semantic-oracle: verified", correct.Output);
+
+            var smsFormatterPath = Path.Combine(root,
+                "src/Implementations/SmsMessageFormatter.cs");
+            await File.WriteAllTextAsync(smsFormatterPath,
+                (await File.ReadAllTextAsync(smsFormatterPath)).Replace(
+                    "public string Render(string",
+                    "string SemanticInterfaceDispatch.Contracts.IMessageFormatter.Render(string",
+                    StringComparison.Ordinal));
+            var incompleteImplementation = await RunValidatorAsync(root);
+            Assert.NotEqual(0, incompleteImplementation.ExitCode);
+            Assert.Contains("semantic-oracle: rejected", incompleteImplementation.Output);
+            await File.WriteAllTextAsync(smsFormatterPath,
+                correctContents["src/Implementations/SmsMessageFormatter.cs"]);
+
+            var dispatcherPath = Path.Combine(root,
+                "src/Consumers/MessageDispatcher.cs");
+            await File.WriteAllTextAsync(dispatcherPath,
+                (await File.ReadAllTextAsync(dispatcherPath)).Replace(
+                    "sms.Render(value)", "$\"sms:{value}\"", StringComparison.Ordinal));
+            var incompleteDispatch = await RunValidatorAsync(root);
+            Assert.NotEqual(0, incompleteDispatch.ExitCode);
+            Assert.Contains("semantic-oracle: rejected", incompleteDispatch.Output);
+            await File.WriteAllTextAsync(dispatcherPath,
+                correctContents["src/Consumers/MessageDispatcher.cs"]);
+
+            AddForwarder(
+                Path.Combine(root, "src/Implementations/EmailMessageFormatter.cs"),
+                "private string Format(string value) => Render(value);");
+            var retainedMember = await RunValidatorAsync(root);
+            Assert.NotEqual(0, retainedMember.ExitCode);
+            Assert.Contains("semantic-oracle: rejected", retainedMember.Output);
+            foreach (var (relativePath, content) in correctContents)
+            {
+                await File.WriteAllTextAsync(Path.Combine(root, relativePath), content);
+            }
+
+            var emailFormatterPath = Path.Combine(root,
+                "src/Implementations/EmailMessageFormatter.cs");
+            await File.WriteAllTextAsync(emailFormatterPath,
+                (await File.ReadAllTextAsync(emailFormatterPath)).Replace(
+                    "email:{value}", "changed:{value}", StringComparison.Ordinal));
             var changedBehavior = await RunValidatorAsync(root);
             Assert.NotEqual(0, changedBehavior.ExitCode);
             Assert.Contains("semantic-oracle: rejected", changedBehavior.Output);

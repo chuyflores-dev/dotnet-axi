@@ -77,6 +77,7 @@ testing until the end.
 - [MVP-E13-S41 — Add shipped semantic-relationship benchmark task](MVP-E13-S41-add-shipped-semantic-relationship-benchmark-task.md)
 - [MVP-E13-S42 — Add exact-overload semantic benchmark task](MVP-E13-S42-add-exact-overload-semantic-task.md)
 - [MVP-E13-S43 — Add unrelated-name semantic benchmark task](MVP-E13-S43-add-unrelated-name-semantic-task.md)
+- [MVP-E13-S44 — Add interface-dispatch semantic benchmark task](MVP-E13-S44-add-interface-dispatch-semantic-benchmark-task.md)
 
 ## Complete when
 
