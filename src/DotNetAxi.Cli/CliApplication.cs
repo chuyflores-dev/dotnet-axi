@@ -449,6 +449,24 @@ internal static class CliApplication
             static () => new DerivedTypeSearchCommandHandler(),
             host.ResponseWriter);
 
+        var overridesCommand = new Command("overrides", "Find exact compiler override relationships.");
+        var overridesTarget = new Argument<string>("symbol");
+        var overridesSolution = new Option<string?>("--solution");
+        var overridesProject = new Option<string?>("--project");
+        var overridesTests = new Option<bool>("--include-tests");
+        var overridesGenerated = new Option<bool>("--include-generated");
+        var overridesConfiguration = new Option<string?>("--configuration");
+        var overridesFramework = new Option<string?>("--framework");
+        var overridesProperties = new Option<string[]>("--property") { AllowMultipleArgumentsPerToken = false };
+        var overridesComplete = new Option<bool>("--complete");
+        var overridesLimit = new Option<int>("--limit") { DefaultValueFactory = static _ => 100 };
+        var overridesFull = new Option<bool>("--full");
+        overridesCommand.Arguments.Add(overridesTarget);
+        foreach (var option in new Option[] { overridesSolution, overridesProject, overridesTests, overridesGenerated, overridesConfiguration, overridesFramework, overridesProperties, overridesComplete, overridesLimit, overridesFull }) overridesCommand.Options.Add(option);
+        host.RegisterCommand(searchCommand, overridesCommand, OperationPolicy.ExecutingInspection,
+            ["dnaxi search overrides <symbol/v2/...>", "dnaxi search overrides Demo.Base.Run --complete"]);
+        overridesCommand.BindHandler(result => OverrideSearchCommandRequest.Create(result.GetValue(overridesTarget)!, result.GetValue(overridesSolution), result.GetValue(overridesProject), result.GetValue(overridesTests), result.GetValue(overridesGenerated), result.GetValue(overridesConfiguration), result.GetValue(overridesFramework), result.GetValue(overridesProperties) ?? [], result.GetValue(overridesComplete), result.GetValue(overridesLimit), result.Tokens.Any(token => token.Value == "--limit"), result.GetValue(overridesFull)), static () => new OverrideSearchCommandHandler(), host.ResponseWriter);
+
         var showCommand = new Command(
             "show",
             "Show bounded detail for one stable evidence identity or document.");

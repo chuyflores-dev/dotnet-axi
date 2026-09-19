@@ -64,6 +64,7 @@ public sealed record RoslynImplementationMatch
         string targetIdentity,
         string implementationIdentity,
         IReadOnlyList<string> inheritancePath,
+        IReadOnlyList<string> overridePath,
         string? owner,
         string project,
         string? configuration,
@@ -75,6 +76,7 @@ public sealed record RoslynImplementationMatch
         TargetIdentity = targetIdentity;
         ImplementationIdentity = implementationIdentity;
         InheritancePath = inheritancePath;
+        OverridePath = overridePath;
         Owner = owner;
         Project = project;
         Configuration = configuration;
@@ -90,6 +92,8 @@ public sealed record RoslynImplementationMatch
     public string ImplementationIdentity { get; }
 
     public IReadOnlyList<string> InheritancePath { get; }
+
+    public IReadOnlyList<string> OverridePath { get; }
 
     public string? Owner { get; }
 
@@ -945,6 +949,7 @@ public sealed class RoslynImplementationSearcher
             targetIdentity,
             identity,
             InheritancePath(implementation, targetIdentity),
+            OverridePath(implementation, targetIdentity),
             owner,
             coverage.Project,
             coverage.Configuration,
@@ -968,6 +973,28 @@ public sealed class RoslynImplementationSearcher
             ? [targetIdentity, type.GetDocumentationCommentId()
                 ?? type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)]
             : Array.AsReadOnly(path.ToArray());
+    }
+
+    private static IReadOnlyList<string> OverridePath(
+        ISymbol implementation,
+        string targetIdentity)
+    {
+        if (implementation is not IMethodSymbol method)
+        {
+            return [];
+        }
+
+        var path = new List<string>();
+        for (var current = method; current is not null; current = current.OverriddenMethod)
+        {
+            path.Add(current.GetDocumentationCommentId()
+                ?? current.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat));
+        }
+
+        path.Reverse();
+        return path.Count > 0 && string.Equals(path[0], targetIdentity, StringComparison.Ordinal)
+            ? Array.AsReadOnly(path.ToArray())
+            : [];
     }
 
     private static IReadOnlyList<string>? FindInheritancePath(
