@@ -405,6 +405,50 @@ internal static class CliApplication
             static () => new ImplementationSearchCommandHandler(),
             host.ResponseWriter);
 
+        var derivedCommand = new Command(
+            "derived",
+            "Find exact compiler-derived source types in dependency-aware project and framework scope.");
+        var derivedTarget = new Argument<string>("symbol")
+        {
+            Description = "Canonical symbol/v2 ID, fully qualified name, or declaration query.",
+        };
+        var derivedSolution = new Option<string?>("--solution");
+        var derivedProject = new Option<string?>("--project");
+        var derivedIncludeTests = new Option<bool>("--include-tests");
+        var derivedIncludeGenerated = new Option<bool>("--include-generated");
+        var derivedConfiguration = new Option<string?>("--configuration");
+        var derivedFramework = new Option<string?>("--framework");
+        var derivedProperties = new Option<string[]>("--property") { AllowMultipleArgumentsPerToken = false };
+        var derivedComplete = new Option<bool>("--complete");
+        var derivedLimit = new Option<int>("--limit") { DefaultValueFactory = static _ => 100 };
+        var derivedFull = new Option<bool>("--full");
+        var derivedFields = CreateFieldsOption();
+        derivedCommand.Arguments.Add(derivedTarget);
+        derivedCommand.Options.Add(derivedSolution);
+        derivedCommand.Options.Add(derivedProject);
+        derivedCommand.Options.Add(derivedIncludeTests);
+        derivedCommand.Options.Add(derivedIncludeGenerated);
+        derivedCommand.Options.Add(derivedConfiguration);
+        derivedCommand.Options.Add(derivedFramework);
+        derivedCommand.Options.Add(derivedProperties);
+        derivedCommand.Options.Add(derivedComplete);
+        derivedCommand.Options.Add(derivedLimit);
+        derivedCommand.Options.Add(derivedFull);
+        derivedCommand.Options.Add(derivedFields);
+        host.RegisterCommand(searchCommand, derivedCommand, OperationPolicy.ExecutingInspection,
+            ["dnaxi search derived <symbol/v2/...>", "dnaxi search derived Demo.Base --complete"]);
+        derivedCommand.BindHandler(
+            result => DerivedTypeSearchCommandRequest.Create(
+                result.GetValue(derivedTarget)!, result.GetValue(derivedSolution),
+                result.GetValue(derivedProject), result.GetValue(derivedIncludeTests),
+                result.GetValue(derivedIncludeGenerated), result.GetValue(derivedConfiguration),
+                result.GetValue(derivedFramework), result.GetValue(derivedProperties) ?? [],
+                result.GetValue(derivedComplete), result.GetValue(derivedLimit),
+                result.Tokens.Any(token => token.Value == "--limit"), result.GetValue(derivedFull),
+                result.GetValue(derivedFields) ?? []),
+            static () => new DerivedTypeSearchCommandHandler(),
+            host.ResponseWriter);
+
         var showCommand = new Command(
             "show",
             "Show bounded detail for one stable evidence identity or document.");

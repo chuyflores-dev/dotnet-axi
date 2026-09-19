@@ -5,6 +5,20 @@ namespace DotNetAxi.Cli.Tests;
 public sealed class ImplementationSearchCommandTests
 {
     [Fact]
+    public async Task Derived_search_returns_compiler_identity_and_inheritance_path()
+    {
+        using var workspace = await TestWorkspace.CreateAsync();
+
+        var result = await workspace.RunAsync("search", "derived", "Demo.Root", "--full");
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Contains("command: search derived", result.Output);
+        Assert.Contains("derived_identity", result.Output);
+        Assert.Contains("T:Demo.Leaf", result.Output);
+        Assert.Contains("inheritance_path", result.Output);
+    }
+
+    [Fact]
     public async Task Implementation_search_returns_verified_semantic_locations()
     {
         using var workspace = await TestWorkspace.CreateAsync();
@@ -152,6 +166,9 @@ public sealed class ImplementationSearchCommandTests
                     {
                         public void Run() { }
                     }
+
+                    public class Root { }
+                    public class Leaf : Root { }
                     """);
                 await workspace.WriteAsync(
                     "Workspace.slnx",

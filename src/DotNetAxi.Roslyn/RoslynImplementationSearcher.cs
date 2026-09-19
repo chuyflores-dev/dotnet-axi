@@ -62,6 +62,8 @@ public sealed record RoslynImplementationMatch
     internal RoslynImplementationMatch(
         string id,
         string targetIdentity,
+        string implementationIdentity,
+        IReadOnlyList<string> inheritancePath,
         string? owner,
         string project,
         string? configuration,
@@ -71,6 +73,8 @@ public sealed record RoslynImplementationMatch
     {
         Id = id;
         TargetIdentity = targetIdentity;
+        ImplementationIdentity = implementationIdentity;
+        InheritancePath = inheritancePath;
         Owner = owner;
         Project = project;
         Configuration = configuration;
@@ -82,6 +86,10 @@ public sealed record RoslynImplementationMatch
     public string Id { get; }
 
     public string TargetIdentity { get; }
+
+    public string ImplementationIdentity { get; }
+
+    public IReadOnlyList<string> InheritancePath { get; }
 
     public string? Owner { get; }
 
@@ -737,7 +745,9 @@ public sealed class RoslynImplementationSearcher
         foreach (var type in SourceNamedTypes(compilation.Assembly.GlobalNamespace))
         {
             if (target is INamedTypeSymbol targetType
-                && type.TypeKind is TypeKind.Class or TypeKind.Struct
+                && (targetType.TypeKind is TypeKind.Interface
+                    ? type.TypeKind is TypeKind.Class or TypeKind.Struct or TypeKind.Interface
+                    : type.TypeKind is TypeKind.Class)
                 && !SymbolEqualityComparer.Default.Equals(type, targetType)
                 && Implements(type, targetType))
             {
@@ -933,12 +943,63 @@ public sealed class RoslynImplementationSearcher
         return new RoslynImplementationMatch(
             id,
             targetIdentity,
+            identity,
+            InheritancePath(implementation, targetIdentity),
             owner,
             coverage.Project,
             coverage.Configuration,
             coverage.Framework,
             start,
             end);
+    }
+
+    private static IReadOnlyList<string> InheritancePath(
+        ISymbol implementation,
+        string targetIdentity)
+    {
+        if (implementation is not INamedTypeSymbol type)
+        {
+            return [targetIdentity, implementation.GetDocumentationCommentId()
+                ?? implementation.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)];
+        }
+
+        var path = FindInheritancePath(type, targetIdentity, []);
+        return path is null
+            ? [targetIdentity, type.GetDocumentationCommentId()
+                ?? type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)]
+            : Array.AsReadOnly(path.ToArray());
+    }
+
+    private static IReadOnlyList<string>? FindInheritancePath(
+        INamedTypeSymbol type,
+        string targetIdentity,
+        HashSet<INamedTypeSymbol> visited)
+    {
+        if (!visited.Add(type))
+        {
+            return null;
+        }
+
+        var identity = type.GetDocumentationCommentId()
+            ?? type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+        if (string.Equals(identity, targetIdentity, StringComparison.Ordinal))
+        {
+            return [identity];
+        }
+
+        var parents = type.BaseType is null
+            ? type.Interfaces
+            : type.Interfaces.Append(type.BaseType);
+        foreach (var parent in parents)
+        {
+            var parentPath = FindInheritancePath(parent, targetIdentity, visited);
+            if (parentPath is not null)
+            {
+                return parentPath.Append(identity).ToArray();
+            }
+        }
+
+        return null;
     }
 
     private static string ImplementationId(
