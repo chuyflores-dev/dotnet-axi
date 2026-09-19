@@ -1,0 +1,14 @@
+{
+  "schema": "dotnet-axi/fixture/v1",
+  "name": "agent-semantic-generic-inheritance",
+  "seed": 13045,
+  "sdk": { "version": "10.0.302", "rollForward": "latestPatch", "allowPrerelease": false },
+  "capabilities": ["language:csharp", "project:sdk-style", "workspace:multi-project"],
+  "files": [
+    { "path": "Workspace.slnx", "template": "templates/Workspace.slnx", "expandTokens": false },
+    { "path": "src/Models/Models.csproj", "template": "templates/Models.csproj", "expandTokens": false },
+    { "path": "src/Models/EnvelopeModels.cs", "template": "templates/EnvelopeModels.cs", "expandTokens": false },
+    { "path": "src/Consumers/Consumers.csproj", "template": "templates/Consumers.csproj", "expandTokens": false },
+    { "path": "src/Consumers/EnvelopePresenter.cs", "template": "templates/EnvelopePresenter.cs", "expandTokens": false }
+  ]
+}
