@@ -30,6 +30,10 @@ public sealed class AgentBenchmarkScriptTests
             "rename-ledger-format-contract",
             result.Output,
             StringComparison.Ordinal);
+        Assert.Contains(
+            "rename-report-format-string-overload",
+            result.Output,
+            StringComparison.Ordinal);
     }
 
     [Fact]
@@ -67,9 +71,9 @@ public sealed class AgentBenchmarkScriptTests
             .EnumerateArray()
             .ToArray();
 
-        Assert.Equal(3, tasks.Length);
+        Assert.Equal(4, tasks.Length);
         Assert.Equal(
-            ["refactor", "feature", "refactor"],
+            ["refactor", "feature", "refactor", "refactor"],
             tasks.Select(static task =>
                 task.GetProperty("kind").GetString()!).ToArray());
         var expectedChanges = new Dictionary<string, string[]>(
@@ -84,6 +88,14 @@ public sealed class AgentBenchmarkScriptTests
                 "src/Contracts/ILedgerFormatter.cs",
                 "src/Implementations/LedgerFormatter.cs",
                 "src/Implementations/WorkerLedgerFormatter.cs",
+            ],
+            ["rename-report-format-string-overload"] =
+            [
+                "src/Consumers/ReportView.cs",
+                "src/Consumers/WorkerReportView.cs",
+                "src/Contracts/IReportFormatter.cs",
+                "src/Implementations/ReportFormatter.cs",
+                "src/Implementations/WorkerReportFormatter.cs",
             ],
         };
         Assert.All(
@@ -297,6 +309,143 @@ public sealed class AgentBenchmarkScriptTests
     }
 
     [Fact]
+    public async Task Exact_overload_semantic_task_is_neutral_and_hidden()
+    {
+        var corpusPath = Path.Combine(
+            RepositoryRoot(),
+            "tests",
+            "Fixtures",
+            "AgentTasks",
+            "repository-work",
+            "corpus.json");
+        using var corpus = JsonDocument.Parse(await File.ReadAllTextAsync(
+            corpusPath));
+        var task = corpus.RootElement.GetProperty("tasks")
+            .EnumerateArray()
+            .Single(task => task.GetProperty("id").GetString() ==
+                "rename-report-format-string-overload");
+
+        Assert.Equal("0.6.0", task.GetProperty("milestone").GetString());
+        Assert.True(task.GetProperty("applicability").GetProperty("baseline")
+            .GetBoolean());
+        Assert.True(task.GetProperty("applicability").GetProperty("candidate")
+            .GetBoolean());
+        var prompt = task.GetProperty("prompt").GetString()!;
+        Assert.DoesNotContain("dnaxi", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("search references", prompt,
+            StringComparison.OrdinalIgnoreCase);
+
+        var manifestPath = Path.GetFullPath(
+            Path.Combine(
+                Path.GetDirectoryName(corpusPath)!,
+                task.GetProperty("repository")
+                    .GetProperty("fixtureManifest")
+                    .GetString()!));
+        using var manifest = JsonDocument.Parse(await File.ReadAllTextAsync(
+            manifestPath));
+        Assert.DoesNotContain(
+            manifest.RootElement.GetProperty("files").EnumerateArray(),
+            static file => file.GetProperty("path").GetString()!
+                .StartsWith(".benchmark-validation/", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Exact_overload_oracle_rejects_bad_states_and_accepts_exact_change()
+    {
+        var root = await MaterializeSemanticOverloadTaskAsync();
+        try
+        {
+            var original = await RunValidatorAsync(root);
+            Assert.NotEqual(0, original.ExitCode);
+            Assert.Contains("semantic-oracle: rejected", original.Output);
+
+            var productionFiles = new[]
+            {
+                "src/Consumers/ReportView.cs",
+                "src/Consumers/WorkerReportView.cs",
+                "src/Contracts/IReportFormatter.cs",
+                "src/Implementations/ReportFormatter.cs",
+                "src/Implementations/WorkerReportFormatter.cs",
+            };
+            var originalContents = productionFiles.ToDictionary(
+                relativePath => relativePath,
+                relativePath => File.ReadAllText(Path.Combine(root, relativePath)),
+                StringComparer.Ordinal);
+
+            foreach (var relativePath in productionFiles)
+            {
+                var path = Path.Combine(root, relativePath);
+                await File.WriteAllTextAsync(
+                    path,
+                    (await File.ReadAllTextAsync(path))
+                        .Replace("Format(int", "Render(int", StringComparison.Ordinal)
+                        .Replace(".Format(revision)", ".Render(revision)", StringComparison.Ordinal));
+            }
+
+            var wrongOverload = await RunValidatorAsync(root);
+            Assert.NotEqual(0, wrongOverload.ExitCode);
+            Assert.Contains("semantic-oracle: rejected", wrongOverload.Output);
+
+            foreach (var (relativePath, content) in originalContents)
+            {
+                await File.WriteAllTextAsync(Path.Combine(root, relativePath), content);
+            }
+
+            foreach (var relativePath in productionFiles)
+            {
+                var path = Path.Combine(root, relativePath);
+                await File.WriteAllTextAsync(
+                    path,
+                    (await File.ReadAllTextAsync(path))
+                        .Replace("Format(string", "Render(string", StringComparison.Ordinal)
+                        .Replace(".Format(value)", ".Render(value)", StringComparison.Ordinal));
+            }
+
+            var correctContents = productionFiles.ToDictionary(
+                relativePath => relativePath,
+                relativePath => File.ReadAllText(Path.Combine(root, relativePath)),
+                StringComparer.Ordinal);
+            var correct = await RunValidatorAsync(root);
+            Assert.Equal(0, correct.ExitCode);
+            Assert.Contains("semantic-oracle: verified", correct.Output);
+
+            AddForwarder(
+                Path.Combine(root, "src/Contracts/IReportFormatter.cs"),
+                "string Format(string value) => Render(value);");
+            AddForwarder(
+                Path.Combine(root, "src/Implementations/ReportFormatter.cs"),
+                "public string Format(string value) => Render(value);");
+            AddForwarder(
+                Path.Combine(root, "src/Implementations/WorkerReportFormatter.cs"),
+                "public string Format(string value) => Render(value);");
+            var retainedStringMember = await RunValidatorAsync(root);
+            Assert.NotEqual(0, retainedStringMember.ExitCode);
+            Assert.Contains("semantic-oracle: rejected", retainedStringMember.Output);
+
+            foreach (var (relativePath, content) in correctContents)
+            {
+                await File.WriteAllTextAsync(Path.Combine(root, relativePath), content);
+            }
+            var formatterPath = Path.Combine(
+                root,
+                "src/Implementations/ReportFormatter.cs");
+            await File.WriteAllTextAsync(
+                formatterPath,
+                (await File.ReadAllTextAsync(formatterPath)).Replace(
+                    "report:{value}",
+                    "changed:{value}",
+                    StringComparison.Ordinal));
+            var changedBehavior = await RunValidatorAsync(root);
+            Assert.NotEqual(0, changedBehavior.ExitCode);
+            Assert.Contains("semantic-oracle: rejected", changedBehavior.Output);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
     public async Task Event_metrics_count_completed_dnaxi_and_raw_read_commands_deterministically()
     {
         var root = Path.Combine(
@@ -436,6 +585,18 @@ public sealed class AgentBenchmarkScriptTests
     }
 
     private static async Task<string> MaterializeSemanticRelationshipTaskAsync()
+        => await MaterializeSemanticTaskAsync(
+            "semantic-relationships",
+            "RenameLedgerFormatContract.cs");
+
+    private static async Task<string> MaterializeSemanticOverloadTaskAsync()
+        => await MaterializeSemanticTaskAsync(
+            "semantic-overload-relationships",
+            "RenameReportFormatStringOverload.cs");
+
+    private static async Task<string> MaterializeSemanticTaskAsync(
+        string fixtureName,
+        string validatorName)
     {
         var root = Path.Combine(
             Path.GetTempPath(),
@@ -446,7 +607,7 @@ public sealed class AgentBenchmarkScriptTests
             "tests",
             "Fixtures",
             "AgentTasks",
-            "semantic-relationships");
+            fixtureName);
         using var manifest = JsonDocument.Parse(await File.ReadAllTextAsync(
             Path.Combine(fixtureDirectory, "fixture.json")));
         foreach (var file in manifest.RootElement.GetProperty("files")
@@ -479,7 +640,7 @@ public sealed class AgentBenchmarkScriptTests
             Path.Combine(validators, "Validate.ps1"),
             Path.Combine(validationDirectory, "Validate.ps1"));
         File.Copy(
-            Path.Combine(validators, "RenameLedgerFormatContract.cs"),
+            Path.Combine(validators, validatorName),
             Path.Combine(validationDirectory, "Program.cs"));
         return root;
     }

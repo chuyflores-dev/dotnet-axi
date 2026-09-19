@@ -17,15 +17,18 @@ claim unmeasured analysis, validation, or mutation capability.
 
 ## Acceptance
 
-- Every affected 0.6.0 task runs at least five times per baseline and candidate
-  condition with randomized interleaving and equivalent isolated workspaces.
-- The report retains complete manifests, metrics, validation, activation, and
-  raw-trajectory evidence and separates 0.6.0 results from earlier series.
-- Safety, scope, activation, and regression thresholds are evaluated even when
-  no improvement claim is made, and missing or incomparable runs remain
-  explicit.
-- Exact-fact-set, inspected-scope, and candidate-activation reconciliation use
-  the corrected versioned protocol without rewriting retained earlier series.
+- Every affected 0.6.0 task has one matched baseline and candidate run by
+  default, using equivalent isolated workspaces. Broader representative task
+  coverage takes priority over repeated runs of a small synthetic subset.
+- A formal comparative claim may repeat the complete matched suite for added
+  confidence. It retains every original run, including timeouts and startup
+  failures, and never reruns or discards only unfavorable cases.
+- The report retains the run manifest, metrics, deterministic validation,
+  activation observations, and raw events; it separates 0.6.0 results from
+  earlier series and leaves missing or incomparable runs explicit.
+- Safety and scope remain correctness gates. Activation and recovered command
+  diagnostics are retained observations and do not replace deterministic task
+  validation.
 
 ## Verification
 

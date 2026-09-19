@@ -16,11 +16,17 @@ impact, and bounded relationship-context scenarios for 0.6.0.
 The corpus does not add analyzer, SDK execution, validation, package policy,
 or mutation tasks before their corresponding capabilities ship.
 
+Each scenario is delivered through an atomic child work item after the
+corresponding command is accepted. The first staged slices use only shipped
+target resolution, references, and implementations; graph, impact, and
+relationship-context cases remain deferred until their command dependencies
+are accepted.
+
 ## Acceptance
 
-- Tasks cover target resolution, references, implementations, overrides,
-  derived types, callers, callees, project dependencies, cycles, paths,
-  impact, and bounded relationship context.
+- Atomic child tasks cumulatively cover target resolution, references,
+  implementations, overrides, derived types, callers, callees, project
+  dependencies, cycles, paths, impact, and bounded relationship context.
 - Scenarios distinguish partial from complete coverage, verified direct edges
   from possible or heuristic edges, and verified empty results from failed or
   unexpanded scope.
