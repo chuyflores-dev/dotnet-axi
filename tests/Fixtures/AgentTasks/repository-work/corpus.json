@@ -276,6 +276,13 @@
         { "template": "validators/Validate.ps1", "path": ".benchmark-validation/Validate.ps1" },
         { "template": "validators/RenameVirtualFormat.cs", "path": ".benchmark-validation/Program.cs" }
       ], "command": ["pwsh", "-NoLogo", "-NoProfile", "-NonInteractive", "-File", ".benchmark-validation/Validate.ps1"], "timeoutSeconds": 180 }
+    },
+    {
+      "id":"rename-message-extension-format","milestone":"0.6.0","kind":"refactor",
+      "prompt":"In Workspace.slnx, rename the extension Format(string) member declared by SemanticExtensionMethods.Models.MessageExtensions to Render and update its production call site. Preserve the same-named instance and static Format members and the extension, instance, and static outputs, along with all types, namespaces, accessibility, target frameworks, and project relationships. Change production C# source only.",
+      "repository":{"fixtureManifest":"../semantic-extension-methods/fixture.json"},"applicability":{"baseline":true,"candidate":true},
+      "allowedChanges":["src/Models/Formatters.cs","src/Consumers/FormatView.cs"],
+      "validation":{"files":[{"template":"validators/ExtensionMethodVerifier.csproj","path":".benchmark-validation/Verifier.csproj"},{"template":"validators/Validate.ps1","path":".benchmark-validation/Validate.ps1"},{"template":"validators/RenameExtensionFormat.cs","path":".benchmark-validation/Program.cs"}],"command":["pwsh","-NoLogo","-NoProfile","-NonInteractive","-File",".benchmark-validation/Validate.ps1"],"timeoutSeconds":180}
     }
   ]
 }
