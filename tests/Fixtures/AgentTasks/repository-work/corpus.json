@@ -262,6 +262,20 @@
         "command": ["pwsh", "-NoLogo", "-NoProfile", "-NonInteractive", "-File", ".benchmark-validation/Validate.ps1"],
         "timeoutSeconds": 180
       }
+    },
+    {
+      "id": "rename-virtual-format-overrides",
+      "milestone": "0.6.0",
+      "kind": "refactor",
+      "prompt": "In Workspace.slnx, rename the virtual Format(string) member declared by SemanticVirtualOverrides.Models.MessageFormatter to Render and update every production override and dispatch call site that resolves to it. Preserve ShadowFormatter.Format(string), the distinct base, audit, worker, and shadow outputs, and all types, namespaces, accessibility, target frameworks, and project relationships. Change production C# source only.",
+      "repository": { "fixtureManifest": "../semantic-virtual-overrides/fixture.json" },
+      "applicability": { "baseline": true, "candidate": true },
+      "allowedChanges": ["src/Models/Formatters.cs", "src/Consumers/FormatterPresenter.cs"],
+      "validation": { "files": [
+        { "template": "validators/VirtualOverrideVerifier.csproj", "path": ".benchmark-validation/Verifier.csproj" },
+        { "template": "validators/Validate.ps1", "path": ".benchmark-validation/Validate.ps1" },
+        { "template": "validators/RenameVirtualFormat.cs", "path": ".benchmark-validation/Program.cs" }
+      ], "command": ["pwsh", "-NoLogo", "-NoProfile", "-NonInteractive", "-File", ".benchmark-validation/Validate.ps1"], "timeoutSeconds": 180 }
     }
   ]
 }
