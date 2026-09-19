@@ -155,6 +155,47 @@ public sealed class RoslynImplementationSearcherTests
             && variant.Status is ImplementationSearchVariantStatus.Failed);
     }
 
+    [Fact]
+    public async Task Finds_transitive_overrides_and_excludes_hidden_members()
+    {
+        using var workspace = await ImplementationWorkspace.CreateAsync(includeBroken: true);
+        var result = await workspace.FindOverridesAsync("Demo.OverrideBase.Run", OverrideSearchScopeMode.Complete);
+
+        Assert.Contains(result.Matches, match => match.OverrideIdentity == "M:Demo.OverrideMid.Run" && match.OverridePath.SequenceEqual(["M:Demo.OverrideBase.Run", "M:Demo.OverrideMid.Run"]));
+        Assert.Contains(result.Matches, match => match.OverrideIdentity == "M:Demo.OverrideLeaf.Run" && match.OverridePath.SequenceEqual(["M:Demo.OverrideBase.Run", "M:Demo.OverrideMid.Run", "M:Demo.OverrideLeaf.Run"]));
+        Assert.DoesNotContain(result.Matches, match => match.OverrideIdentity == "M:Demo.HiddenRun.Run");
+        Assert.Contains(result.Variants, variant => variant.Project == "Broken/Broken.csproj" && variant.Status is ImplementationSearchVariantStatus.Failed);
+    }
+
+    [Fact]
+    public async Task Finds_overrides_from_an_intermediate_member_and_for_properties_events_and_generics()
+    {
+        using var workspace = await ImplementationWorkspace.CreateAsync();
+
+        var intermediate = await workspace.FindOverridesAsync("Demo.OverrideMid.Run", OverrideSearchScopeMode.Complete);
+        Assert.Contains(intermediate.Matches, match =>
+            match.OverrideIdentity == "M:Demo.OverrideLeaf.Run"
+            && match.OverridePath.SequenceEqual(["M:Demo.OverrideMid.Run", "M:Demo.OverrideLeaf.Run"]));
+
+        var abstractMethod = await workspace.FindOverridesAsync("Demo.WorkerBase.Execute", OverrideSearchScopeMode.Complete);
+        Assert.Contains(abstractMethod.Matches, match =>
+            match.OverrideIdentity == "M:Demo.ConcreteWorker.Execute(System.String)");
+
+        var property = await workspace.FindOverridesAsync("Demo.MemberBase.Value", OverrideSearchScopeMode.Complete);
+        Assert.Contains(property.Matches, match =>
+            match.OverrideIdentity == "P:Demo.MemberLeaf.Value"
+            && match.OverridePath.SequenceEqual(["P:Demo.MemberBase.Value", "P:Demo.MemberLeaf.Value"]));
+
+        var @event = await workspace.FindOverridesAsync("Demo.MemberBase.Changed", OverrideSearchScopeMode.Complete);
+        Assert.Contains(@event.Matches, match =>
+            match.OverrideIdentity == "E:Demo.MemberLeaf.Changed"
+            && match.OverridePath.SequenceEqual(["E:Demo.MemberBase.Changed", "E:Demo.MemberLeaf.Changed"]));
+
+        var generic = await workspace.FindOverridesAsync("Demo.GenericBase.Transform", OverrideSearchScopeMode.Complete);
+        Assert.Contains(generic.Matches, match =>
+            match.OverrideIdentity == "M:Demo.GenericLeaf.Transform(System.Int32)");
+    }
+
     private static bool IsServiceOwner(string? owner) =>
         owner is "ServiceA" or "Demo.ServiceA" or "ServiceB" or "Demo.ServiceB";
 
@@ -190,6 +231,22 @@ public sealed class RoslynImplementationSearcherTests
                     public interface IMarker { }
                     public interface IChildMarker : IMarker { }
                     public class InterfaceLeaf : IChildMarker { }
+                    public abstract class OverrideBase { public virtual void Run() { } }
+                    public class OverrideMid : OverrideBase { public override void Run() { } }
+                    public sealed class OverrideLeaf : OverrideMid { public sealed override void Run() { } }
+                    public class HiddenRun : OverrideBase { public new void Run() { } }
+                    public abstract class MemberBase
+                    {
+                        public virtual int Value { get; set; }
+                        public virtual event System.EventHandler? Changed;
+                    }
+                    public class MemberLeaf : MemberBase
+                    {
+                        public override int Value { get; set; }
+                        public override event System.EventHandler? Changed { add { } remove { } }
+                    }
+                    public class GenericBase<T> { public virtual T Transform(T value) => value; }
+                    public class GenericLeaf : GenericBase<int> { public override int Transform(int value) => value; }
                     """);
                 await workspace.WriteProjectAsync(
                     "Consumer/Consumer.csproj",
@@ -275,6 +332,13 @@ public sealed class RoslynImplementationSearcherTests
                     new WorkspacePathTraverser(), context.Ownership, context.Projects)
                 .FindAsync(target, context.Discovery, context.Selection, context.Traversal,
                     context.Scope, scopeMode, new ProjectGraphEvaluationOptions());
+        }
+
+        public async Task<RoslynOverrideSearchResult> FindOverridesAsync(string target, OverrideSearchScopeMode scopeMode)
+        {
+            var context = Context();
+            return await new RoslynOverrideSearcher(new WorkspacePathTraverser(), context.Ownership, context.Projects)
+                .FindAsync(target, context.Discovery, context.Selection, context.Traversal, context.Scope, scopeMode, new ProjectGraphEvaluationOptions());
         }
 
         private TestContext Context()
