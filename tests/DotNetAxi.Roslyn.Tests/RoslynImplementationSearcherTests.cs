@@ -219,6 +219,20 @@ public sealed class RoslynImplementationSearcherTests
             variant.Project == "Broken/Broken.csproj"
             && variant.Status is CallerSearchVariantStatus.Failed);
 
+        var partial = await workspace.FindCallersAsync(
+            "Demo.CallerTarget.Virtual", CallerSearchScopeMode.Default);
+        Assert.Contains(partial.Variants, variant =>
+            variant.Project == "Consumer/Consumer.csproj"
+            && variant.Status is CallerSearchVariantStatus.Remaining);
+        Assert.DoesNotContain(partial.Variants, variant =>
+            variant.Project == "Unrelated/Unrelated.csproj");
+        Assert.DoesNotContain(virtualCall.Variants, variant =>
+            variant.Status is CallerSearchVariantStatus.Remaining);
+        Assert.Equal(["net10.0", "net8.0"], virtualCall.Matches
+            .Select(static match => match.Framework)
+            .Distinct()
+            .Order(StringComparer.Ordinal));
+
         var dispatch = await workspace.FindCallersAsync(
             "Demo.ICallerContract.Contract", CallerSearchScopeMode.Complete);
         Assert.Contains(dispatch.Matches, match =>
@@ -302,6 +316,12 @@ public sealed class RoslynImplementationSearcherTests
                         public void Interface(ICallerContract target) => target.Contract();
                     }
                     """);
+                await workspace.WriteProjectAsync(
+                    "Unrelated/Unrelated.csproj",
+                    WorkspaceProjectBody());
+                await workspace.WriteAsync(
+                    "Unrelated/Unrelated.cs",
+                    "namespace Demo; public sealed class Unrelated { }");
                 await workspace.WriteAsync(
                     "Workspace.slnx",
                     includeBroken
@@ -309,6 +329,7 @@ public sealed class RoslynImplementationSearcherTests
                           <Solution>
                             <Project Path="Contracts/Contracts.csproj" />
                             <Project Path="Consumer/Consumer.csproj" />
+                            <Project Path="Unrelated/Unrelated.csproj" />
                             <Project Path="Broken/Broken.csproj" />
                           </Solution>
                           """
@@ -316,6 +337,7 @@ public sealed class RoslynImplementationSearcherTests
                           <Solution>
                             <Project Path="Contracts/Contracts.csproj" />
                             <Project Path="Consumer/Consumer.csproj" />
+                            <Project Path="Unrelated/Unrelated.csproj" />
                           </Solution>
                           """);
 
