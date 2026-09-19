@@ -287,16 +287,32 @@ public sealed class MsBuildProjectGraphEvaluatorTests
             [
                 new ProjectDependency(
                     "src/App/App.csproj",
-                    "src/Conditional/Conditional.csproj"),
+                    "src/Conditional/Conditional.csproj",
+                    "Debug",
+                    "net9.0",
+                    "Debug",
+                    "net10.0"),
                 new ProjectDependency(
                     "src/App/App.csproj",
-                    "src/DebugOnly/DebugOnly.csproj"),
+                    "src/DebugOnly/DebugOnly.csproj",
+                    "Debug",
+                    "net9.0",
+                    "Debug",
+                    "net10.0"),
                 new ProjectDependency(
                     "src/App/App.csproj",
-                    "src/NetNine/NetNine.csproj"),
+                    "src/NetNine/NetNine.csproj",
+                    "Debug",
+                    "net9.0",
+                    "Debug",
+                    "net10.0"),
                 new ProjectDependency(
                     "src/App/App.csproj",
-                    "src/Repeated/Repeated.csproj"),
+                    "src/Repeated/Repeated.csproj",
+                    "Debug",
+                    "net9.0",
+                    "Debug",
+                    "net10.0"),
             ],
             graph.Dependencies);
         Assert.Equal(
@@ -338,7 +354,11 @@ public sealed class MsBuildProjectGraphEvaluatorTests
         Assert.Contains(
             new ProjectDependency(
                 "src/App/App.csproj",
-                "src/Central/Central.csproj"),
+                "src/Central/Central.csproj",
+                "Release",
+                "net10.0",
+                "Release",
+                "net10.0"),
             imported.Dependencies);
         Assert.DoesNotContain(
             overridden.Dependencies,
@@ -421,10 +441,14 @@ public sealed class MsBuildProjectGraphEvaluatorTests
             [
                 new ProjectDependency(
                     "src/A/A.csproj",
-                    "src/B/B.csproj"),
+                    "src/B/B.csproj",
+                    "Debug",
+                    "net10.0"),
                 new ProjectDependency(
                     "src/B/B.csproj",
-                    "src/A/A.csproj"),
+                    "src/A/A.csproj",
+                    "Debug",
+                    "net10.0"),
             ],
             graph.Dependencies);
         Assert.Contains(
