@@ -5,6 +5,20 @@ namespace DotNetAxi.Cli.Tests;
 public sealed class ImplementationSearchCommandTests
 {
     [Fact]
+    public async Task Override_search_returns_exact_override_paths()
+    {
+        using var workspace = await TestWorkspace.CreateAsync();
+
+        var result = await workspace.RunAsync("search", "overrides", "Demo.Base.Run", "--full");
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Contains("command: search overrides", result.Output);
+        Assert.Contains("M:Demo.Middle.Run", result.Output);
+        Assert.Contains("M:Demo.LeafOverride.Run", result.Output);
+        Assert.Contains("override_path", result.Output);
+    }
+
+    [Fact]
     public async Task Derived_search_returns_compiler_identity_and_inheritance_path()
     {
         using var workspace = await TestWorkspace.CreateAsync();
@@ -169,6 +183,9 @@ public sealed class ImplementationSearchCommandTests
 
                     public class Root { }
                     public class Leaf : Root { }
+                    public class Base { public virtual void Run() { } }
+                    public class Middle : Base { public override void Run() { } }
+                    public sealed class LeafOverride : Middle { public sealed override void Run() { } }
                     """);
                 await workspace.WriteAsync(
                     "Workspace.slnx",

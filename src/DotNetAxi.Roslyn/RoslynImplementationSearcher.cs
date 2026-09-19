@@ -765,9 +765,7 @@ public sealed class RoslynImplementationSearcher
                              .OfType<IMethodSymbol>()
                              .Where(method =>
                                  method.OverriddenMethod is not null
-                                 && SameSymbol(
-                                     method.OverriddenMethod,
-                                     targetMethod)
+                                 && Overrides(method, targetMethod)
                                  || method.ExplicitInterfaceImplementations
                                      .Any(candidate => SameSymbol(
                                          candidate,
@@ -841,6 +839,21 @@ public sealed class RoslynImplementationSearcher
         || SymbolEqualityComparer.Default.Equals(
             left.OriginalDefinition,
             right.OriginalDefinition);
+
+    private static bool Overrides(IMethodSymbol method, IMethodSymbol target)
+    {
+        for (var current = method.OverriddenMethod;
+             current is not null;
+             current = current.OverriddenMethod)
+        {
+            if (SameSymbol(current, target))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
 
     private static AnalyzedVariant Analyzed(
         ProjectVariantCoverage coverage,

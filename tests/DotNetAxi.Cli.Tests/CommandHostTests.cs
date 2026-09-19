@@ -183,6 +183,13 @@ public sealed class CommandHostTests
                     OperationPolicy.ExecutingInspection,
                     operation.Policy);
             },
+            operation =>
+            {
+                Assert.Equal("search overrides", operation.Name);
+                Assert.Same(
+                    OperationPolicy.ExecutingInspection,
+                    operation.Policy);
+            },
             operation => Assert.Equal("show", operation.Name),
             operation => Assert.Equal("show symbol", operation.Name),
             operation => Assert.Equal("show document", operation.Name),
@@ -198,7 +205,8 @@ public sealed class CommandHostTests
         {
             if (operation.Name is not "search references"
                 && operation.Name is not "search implementations"
-                && operation.Name is not "search derived")
+                && operation.Name is not "search derived"
+                && operation.Name is not "search overrides")
             {
                 Assert.Same(OperationPolicy.Passive, operation.Policy);
             }

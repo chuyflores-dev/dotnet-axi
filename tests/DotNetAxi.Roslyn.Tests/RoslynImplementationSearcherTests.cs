@@ -155,6 +155,18 @@ public sealed class RoslynImplementationSearcherTests
             && variant.Status is ImplementationSearchVariantStatus.Failed);
     }
 
+    [Fact]
+    public async Task Finds_transitive_overrides_and_excludes_hidden_members()
+    {
+        using var workspace = await ImplementationWorkspace.CreateAsync(includeBroken: true);
+        var result = await workspace.FindOverridesAsync("Demo.OverrideBase.Run", OverrideSearchScopeMode.Complete);
+
+        Assert.Contains(result.Matches, match => match.OverrideIdentity == "M:Demo.OverrideMid.Run" && match.OverridePath.SequenceEqual(["M:Demo.OverrideBase.Run", "M:Demo.OverrideMid.Run"]));
+        Assert.Contains(result.Matches, match => match.OverrideIdentity == "M:Demo.OverrideLeaf.Run" && match.OverridePath.SequenceEqual(["M:Demo.OverrideBase.Run", "M:Demo.OverrideMid.Run", "M:Demo.OverrideLeaf.Run"]));
+        Assert.DoesNotContain(result.Matches, match => match.OverrideIdentity == "M:Demo.HiddenRun.Run");
+        Assert.Contains(result.Variants, variant => variant.Project == "Broken/Broken.csproj" && variant.Status is ImplementationSearchVariantStatus.Failed);
+    }
+
     private static bool IsServiceOwner(string? owner) =>
         owner is "ServiceA" or "Demo.ServiceA" or "ServiceB" or "Demo.ServiceB";
 
@@ -190,6 +202,10 @@ public sealed class RoslynImplementationSearcherTests
                     public interface IMarker { }
                     public interface IChildMarker : IMarker { }
                     public class InterfaceLeaf : IChildMarker { }
+                    public abstract class OverrideBase { public virtual void Run() { } }
+                    public class OverrideMid : OverrideBase { public override void Run() { } }
+                    public sealed class OverrideLeaf : OverrideMid { public sealed override void Run() { } }
+                    public class HiddenRun : OverrideBase { public new void Run() { } }
                     """);
                 await workspace.WriteProjectAsync(
                     "Consumer/Consumer.csproj",
@@ -275,6 +291,13 @@ public sealed class RoslynImplementationSearcherTests
                     new WorkspacePathTraverser(), context.Ownership, context.Projects)
                 .FindAsync(target, context.Discovery, context.Selection, context.Traversal,
                     context.Scope, scopeMode, new ProjectGraphEvaluationOptions());
+        }
+
+        public async Task<RoslynOverrideSearchResult> FindOverridesAsync(string target, OverrideSearchScopeMode scopeMode)
+        {
+            var context = Context();
+            return await new RoslynOverrideSearcher(new WorkspacePathTraverser(), context.Ownership, context.Projects)
+                .FindAsync(target, context.Discovery, context.Selection, context.Traversal, context.Scope, scopeMode, new ProjectGraphEvaluationOptions());
         }
 
         private TestContext Context()

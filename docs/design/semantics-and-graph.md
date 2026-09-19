@@ -70,6 +70,13 @@ results include derived interfaces and source classes that implement the
 selected interface through an interface chain. Runtime-generated, dynamically
 loaded, and reflection-only types are outside this static coverage.
 
+`search overrides` accepts one virtual or abstract member and returns only
+compiler override relationships. Each row preserves the exact override member
+identity and ordered chain from the selected member through every overridden
+member, with its owner project and framework variant. Hidden `new` members and
+same-name members are excluded. It uses the same default/`--complete` scope
+and coverage reporting as the other compiler relationship commands.
+
 `--configuration`, `--framework`, and repeated `--property name=value`
 selectors apply consistently to target resolution, graph evaluation, project
 coverage, and Roslyn workspace loading. Dedicated configuration and framework
