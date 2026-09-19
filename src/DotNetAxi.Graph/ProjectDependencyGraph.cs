@@ -720,3 +720,205 @@ public static class ProjectDependencyCycleDetector
 public sealed record ProjectDependencyCycleDetection(
     IReadOnlyList<ProjectDependencyCycle> Cycles,
     bool TotalKnown);
+
+/// <summary>
+/// One directed shortest path through materialized project-reference evidence.
+/// </summary>
+public sealed class ProjectDependencyPath
+{
+    internal ProjectDependencyPath(
+        IReadOnlyList<ProjectGraphNode> nodes,
+        IReadOnlyList<ProjectGraphRelationship> relationships)
+    {
+        if (nodes.Count == 0 || relationships.Count + 1 != nodes.Count)
+        {
+            throw new ArgumentException("A path must contain one more node than relationships.");
+        }
+
+        Nodes = Array.AsReadOnly(nodes.ToArray());
+        Relationships = Array.AsReadOnly(relationships.ToArray());
+    }
+
+    public IReadOnlyList<ProjectGraphNode> Nodes { get; }
+
+    public IReadOnlyList<ProjectGraphRelationship> Relationships { get; }
+}
+
+/// <summary>
+/// Bounded shortest-path evidence. A false total-known result means a caller
+/// requested fewer paths than were reconstructed at the shortest depth.
+/// </summary>
+public sealed record ProjectDependencyPathSearch(
+    IReadOnlyList<ProjectDependencyPath> Paths,
+    int? ShortestDepth,
+    bool DepthLimited,
+    bool TotalKnown);
+
+/// <summary>
+/// Finds deterministic shortest paths through evaluated project references.
+/// Package and unsupported semantic relationships are deliberately outside the
+/// first project-level path operation.
+/// </summary>
+public static class ProjectDependencyPathFinder
+{
+    public const int MaximumDetectedPaths = 10_000;
+
+    public static ProjectDependencyPathSearch FindShortestPaths(
+        ProjectDependencyGraph graph,
+        string fromId,
+        string toId,
+        int maxDepth,
+        int maximumPaths,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(graph);
+        ArgumentException.ThrowIfNullOrWhiteSpace(fromId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(toId);
+        if (maxDepth < 0 || maximumPaths < 1)
+        {
+            throw new ArgumentOutOfRangeException(maxDepth < 0 ? nameof(maxDepth) : nameof(maximumPaths));
+        }
+
+        var nodes = graph.Nodes
+            .Where(static node => node.Kind is ProjectGraphNodeKind.Project)
+            .ToDictionary(static node => node.Id, StringComparer.Ordinal);
+        if (!nodes.ContainsKey(fromId) || !nodes.ContainsKey(toId))
+        {
+            throw new ArgumentException("Path endpoints must be project graph nodes.");
+        }
+
+        if (fromId.Equals(toId, StringComparison.Ordinal))
+        {
+            return new ProjectDependencyPathSearch(
+                [new ProjectDependencyPath([nodes[fromId]], [])], 0, false, true);
+        }
+
+        var outgoing = nodes.Keys.ToDictionary(
+            static id => id,
+            static _ => new List<PathEdge>(),
+            StringComparer.Ordinal);
+        foreach (var relationship in graph.Relationships.Where(static relationship =>
+                     relationship.Kind is ProjectGraphRelationshipKind.ProjectReference))
+        {
+            var (from, to) = relationship.Direction
+                is ProjectGraphRelationshipDirection.SourceDependsOnTarget
+                ? (relationship.SourceId, relationship.TargetId)
+                : (relationship.TargetId, relationship.SourceId);
+            if (nodes.ContainsKey(from) && nodes.ContainsKey(to))
+            {
+                outgoing[from].Add(new PathEdge(to, relationship));
+            }
+        }
+
+        foreach (var edges in outgoing.Values)
+        {
+            edges.Sort(static (left, right) => StringComparer.Ordinal.Compare(
+                left.Relationship.Id,
+                right.Relationship.Id));
+        }
+
+        var distances = new Dictionary<string, int>(StringComparer.Ordinal) { [fromId] = 0 };
+        var parents = new Dictionary<string, List<PathParent>>(StringComparer.Ordinal);
+        var queue = new Queue<string>();
+        queue.Enqueue(fromId);
+        int? shortestDepth = null;
+        var depthLimited = false;
+        while (queue.TryDequeue(out var current))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var depth = distances[current];
+            if (shortestDepth is not null && depth >= shortestDepth)
+            {
+                continue;
+            }
+
+            if (depth == maxDepth)
+            {
+                depthLimited = true;
+                continue;
+            }
+
+            foreach (var edge in outgoing[current])
+            {
+                var nextDepth = depth + 1;
+                if (!distances.TryGetValue(edge.TargetId, out var knownDepth))
+                {
+                    distances.Add(edge.TargetId, nextDepth);
+                    parents.Add(edge.TargetId, [new PathParent(current, edge.Relationship)]);
+                    queue.Enqueue(edge.TargetId);
+                }
+                else if (knownDepth == nextDepth)
+                {
+                    parents[edge.TargetId].Add(new PathParent(current, edge.Relationship));
+                }
+                else
+                {
+                    continue;
+                }
+
+                if (edge.TargetId.Equals(toId, StringComparison.Ordinal))
+                {
+                    shortestDepth = nextDepth;
+                }
+            }
+        }
+
+        if (shortestDepth is null)
+        {
+            return new ProjectDependencyPathSearch([], null, depthLimited, true);
+        }
+
+        var paths = new List<ProjectDependencyPath>();
+        var reversedNodes = new List<ProjectGraphNode> { nodes[toId] };
+        var reversedRelationships = new List<ProjectGraphRelationship>();
+        var totalKnown = true;
+        Reconstruct(toId);
+        return new ProjectDependencyPathSearch(
+            paths.OrderBy(PathKey, StringComparer.Ordinal).ToArray(),
+            shortestDepth,
+            depthLimited,
+            totalKnown);
+
+        void Reconstruct(string current)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (!totalKnown)
+            {
+                return;
+            }
+
+            if (current.Equals(fromId, StringComparison.Ordinal))
+            {
+                if (paths.Count == maximumPaths)
+                {
+                    totalKnown = false;
+                    return;
+                }
+
+                paths.Add(new ProjectDependencyPath(
+                    reversedNodes.AsEnumerable().Reverse().ToArray(),
+                    reversedRelationships.AsEnumerable().Reverse().ToArray()));
+                return;
+            }
+
+            foreach (var parent in parents[current].OrderBy(
+                         static parent => parent.Relationship.Id,
+                         StringComparer.Ordinal))
+            {
+                reversedNodes.Add(nodes[parent.NodeId]);
+                reversedRelationships.Add(parent.Relationship);
+                Reconstruct(parent.NodeId);
+                reversedRelationships.RemoveAt(reversedRelationships.Count - 1);
+                reversedNodes.RemoveAt(reversedNodes.Count - 1);
+            }
+        }
+    }
+
+    private static string PathKey(ProjectDependencyPath path) => string.Join(
+        "\u001F",
+        path.Relationships.Select(static relationship => relationship.Id));
+
+    private sealed record PathEdge(string TargetId, ProjectGraphRelationship Relationship);
+
+    private sealed record PathParent(string NodeId, ProjectGraphRelationship Relationship);
+}

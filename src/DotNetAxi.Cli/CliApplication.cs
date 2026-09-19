@@ -675,6 +675,26 @@ internal static class CliApplication
             static () => new ProjectCycleCommandHandler(),
             host.ResponseWriter);
 
+        var graphPathCommand = new Command("path", "Find bounded shortest paths between evaluated projects.");
+        var graphPathFrom = new Option<string>("--from") { Required = true };
+        var graphPathTo = new Option<string>("--to") { Required = true };
+        var graphPathDepth = new Option<int>("--max-depth") { DefaultValueFactory = static _ => 10 };
+        var graphPathSolution = new Option<string?>("--solution");
+        var graphPathProject = new Option<string?>("--project");
+        var graphPathConfiguration = new Option<string?>("--configuration");
+        var graphPathFramework = new Option<string?>("--framework");
+        var graphPathProperties = new Option<string[]>("--property") { AllowMultipleArgumentsPerToken = false };
+        var graphPathLimit = new Option<int>("--limit") { DefaultValueFactory = static _ => 100 };
+        var graphPathFull = new Option<bool>("--full");
+        foreach (var option in new Option[] { graphPathFrom, graphPathTo, graphPathDepth, graphPathSolution, graphPathProject, graphPathConfiguration, graphPathFramework, graphPathProperties, graphPathLimit, graphPathFull }) graphPathCommand.Options.Add(option);
+        host.RegisterCommand(graphCommand, graphPathCommand, OperationPolicy.ExecutingInspection,
+            ["dnaxi graph path --from src/App/App.csproj --to src/Core/Core.csproj", "dnaxi graph path --from src/App/App.csproj --to src/Core/Core.csproj --max-depth 4"]);
+        graphPathCommand.BindHandler(result => ProjectPathCommandRequest.Create(
+            result.GetValue(graphPathFrom)!, result.GetValue(graphPathTo)!, result.GetValue(graphPathDepth),
+            result.GetValue(graphPathSolution), result.GetValue(graphPathProject), result.GetValue(graphPathConfiguration), result.GetValue(graphPathFramework),
+            result.GetValue(graphPathProperties) ?? [], result.GetValue(graphPathLimit), result.Tokens.Any(token => token.Value == "--limit"), result.GetValue(graphPathFull)),
+            static () => new ProjectPathCommandHandler(), host.ResponseWriter);
+
         var showCommand = new Command(
             "show",
             "Show bounded detail for one stable evidence identity or document.");

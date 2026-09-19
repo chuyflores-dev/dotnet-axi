@@ -2,8 +2,8 @@
 
 ## Outcome
 
-`graph path` finds bounded, deterministic relationship paths between supported
-entities.
+`graph path` finds bounded, deterministic project-reference paths between
+selected evaluated projects.
 
 ## Design
 
@@ -11,19 +11,28 @@ entities.
 
 ## Boundary
 
-Path results include only materialized or on-demand discoverable edges and
-never imply missing runtime relationships were disproven.
+The first operation version traverses only directed, evaluated
+`project-reference` relationships. Project paths are workspace-relative
+project-file endpoints in the selected graph; code-entity and mixed-edge paths
+remain deferred until their relationship composition has accepted authority.
+Path results include only materialized edges and never imply missing runtime
+relationships were disproven.
 
 ## Acceptance
 
-- Project and supported code entities can be endpoints.
-- Depth limits, no-path results, mixed evidence, partial expansion, and
-  provenance are explicit.
+- Selected evaluated projects can be endpoints.
+- Shortest paths and equal-length ties are deterministic, bounded, and retain
+  relationship provenance.
+- Depth limits and presentation limits are explicit. A deterministic safety
+  cap reports an unknown total and requires callers to narrow the graph. A
+  no-path result is a verified absence only when the selected graph coverage
+  is complete and the depth bound did not stop traversal.
+- Partial evaluation retains failures and variant coverage.
 
 ## Verification
 
 - Graph fixtures cover shortest paths, ties, cycles, depth limits, no path,
-  mixed edge kinds, and partial scope.
+  and partial scope.
 
 ## Dependencies
 

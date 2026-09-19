@@ -153,6 +153,48 @@ public sealed class ProjectGraphCommandTests
     }
 
     [Fact]
+    public async Task Path_returns_a_bounded_shortest_project_reference_path()
+    {
+        using var workspace = await TestWorkspace.CreateAsync();
+
+        var result = await workspace.RunAsync(
+            "graph", "path",
+            "--from", "App.csproj",
+            "--to", "Library/Library.csproj",
+            "--property", "Flavor=conditional",
+            "--framework", "net9.0",
+            "--full");
+
+        Assert.True(result.ExitCode == 0, result.Output);
+        Assert.Contains("command: graph path", result.Output);
+        Assert.Contains("shortest_depth: 1", result.Output);
+        Assert.Contains("paths:\n  count: 1", result.Output);
+        Assert.Contains("App.csproj", result.Output);
+        Assert.Contains("Library/Library.csproj", result.Output);
+    }
+
+    [Fact]
+    public void Path_retrieval_command_escapes_quoted_endpoints()
+    {
+        var request = ProjectPathCommandRequest.Create(
+            "App.csproj",
+            "Direct'ly/Target.csproj",
+            10,
+            solution: null,
+            project: null,
+            configuration: null,
+            framework: "net9.0",
+            properties: ["Flavor=quoted"],
+            limit: 1,
+            limitSpecified: true,
+            full: false);
+
+        Assert.Equal(
+            "dnaxi graph path --from 'App.csproj' --to 'Direct'\\''ly/Target.csproj' --framework 'net9.0' --property 'Flavor=quoted'",
+            ProjectPathCommandHandler.RetrievalCommand(request));
+    }
+
+    [Fact]
     public void Graph_commands_are_registered_as_executing_inspection()
     {
         var host = CliApplication.Create(new StringWriter(), new StringWriter());
@@ -160,6 +202,7 @@ public sealed class ProjectGraphCommandTests
         var projects = host.Parse(["graph", "projects"]);
         var dependencies = host.Parse(["graph", "dependencies", "App.csproj"]);
         var cycles = host.Parse(["graph", "cycles"]);
+        var path = host.Parse(["graph", "path", "--from", "App.csproj", "--to", "Library/Library.csproj"]);
 
         Assert.Equal(
             DotNetAxi.Contracts.OperationClassification.Executing,
@@ -172,6 +215,9 @@ public sealed class ProjectGraphCommandTests
         Assert.Equal(
             DotNetAxi.Contracts.OperationClassification.Executing,
             host.ResolvePolicy(cycles).Classification);
+        Assert.Equal(
+            DotNetAxi.Contracts.OperationClassification.Executing,
+            host.ResolvePolicy(path).Classification);
     }
 
     private sealed class TestWorkspace : IDisposable

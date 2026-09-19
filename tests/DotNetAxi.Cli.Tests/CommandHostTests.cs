@@ -232,6 +232,13 @@ public sealed class CommandHostTests
                     OperationPolicy.ExecutingInspection,
                     operation.Policy);
             },
+            operation =>
+            {
+                Assert.Equal("graph path", operation.Name);
+                Assert.Same(
+                    OperationPolicy.ExecutingInspection,
+                    operation.Policy);
+            },
             operation => Assert.Equal("show", operation.Name),
             operation => Assert.Equal("show symbol", operation.Name),
             operation => Assert.Equal("show document", operation.Name),
@@ -254,7 +261,8 @@ public sealed class CommandHostTests
                 && operation.Name is not "graph"
                 && operation.Name is not "graph projects"
                 && operation.Name is not "graph dependencies"
-                && operation.Name is not "graph cycles")
+                && operation.Name is not "graph cycles"
+                && operation.Name is not "graph path")
             {
                 Assert.Same(OperationPolicy.Passive, operation.Policy);
             }
