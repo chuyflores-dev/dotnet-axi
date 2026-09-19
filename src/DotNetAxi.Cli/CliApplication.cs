@@ -598,6 +598,47 @@ internal static class CliApplication
             static () => new ProjectGraphCommandHandler(),
             host.ResponseWriter);
 
+        var graphCyclesCommand = new Command(
+            "cycles",
+            "Return normalized cycles in the evaluated project-reference graph.");
+        var graphCyclesSolution = new Option<string?>("--solution");
+        var graphCyclesProject = new Option<string?>("--project");
+        var graphCyclesConfiguration = new Option<string?>("--configuration");
+        var graphCyclesFramework = new Option<string?>("--framework");
+        var graphCyclesProperties = new Option<string[]>("--property")
+        {
+            AllowMultipleArgumentsPerToken = false,
+        };
+        var graphCyclesLimit = new Option<int>("--limit")
+        {
+            DefaultValueFactory = static _ => 100,
+        };
+        var graphCyclesFull = new Option<bool>("--full");
+        graphCyclesCommand.Options.Add(graphCyclesSolution);
+        graphCyclesCommand.Options.Add(graphCyclesProject);
+        graphCyclesCommand.Options.Add(graphCyclesConfiguration);
+        graphCyclesCommand.Options.Add(graphCyclesFramework);
+        graphCyclesCommand.Options.Add(graphCyclesProperties);
+        graphCyclesCommand.Options.Add(graphCyclesLimit);
+        graphCyclesCommand.Options.Add(graphCyclesFull);
+        host.RegisterCommand(graphCommand, graphCyclesCommand, OperationPolicy.ExecutingInspection,
+            [
+                "dnaxi graph cycles",
+                "dnaxi graph cycles --solution src/App.sln --framework net10.0",
+            ]);
+        graphCyclesCommand.BindHandler(
+            result => ProjectCycleCommandRequest.Create(
+                result.GetValue(graphCyclesSolution),
+                result.GetValue(graphCyclesProject),
+                result.GetValue(graphCyclesConfiguration),
+                result.GetValue(graphCyclesFramework),
+                result.GetValue(graphCyclesProperties) ?? [],
+                result.GetValue(graphCyclesLimit),
+                result.Tokens.Any(token => token.Value == "--limit"),
+                result.GetValue(graphCyclesFull)),
+            static () => new ProjectCycleCommandHandler(),
+            host.ResponseWriter);
+
         var showCommand = new Command(
             "show",
             "Show bounded detail for one stable evidence identity or document.");

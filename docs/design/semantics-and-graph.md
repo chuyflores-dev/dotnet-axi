@@ -171,6 +171,21 @@ Rows are ordered deterministically by stable identity. A failed evaluator or
 an omitted/unsupported project keeps response coverage partial and cannot be
 reported as a verified empty graph.
 
+`graph cycles` traverses only directed evaluated `project-reference`
+relationships. It emits each simple directed cycle once by choosing a stable
+rotation, while retaining an opposite direction and overlapping cycles as
+distinct observations. Its bounded `cycles` collection reports the complete
+known count before presentation truncation; `--full` returns every materialized
+cycle. To prevent exponential enumeration from making a query unbounded, the
+detector first skips acyclic components, then materializes at most 10,000
+cycles and traverses at most 1,000,000 cycle-candidate edges. Hitting either
+deterministic safety bound reports a truncated collection with an unknown total
+and explicit detection bounds; callers narrow the selected graph before
+retrying. Empty
+cycles are a verified absence only when the enclosing graph coverage is
+complete. Partial and failed evaluation retain their failures and variant
+coverage rather than being recast as an acyclic graph.
+
 This is not a universal graph engine. Document, namespace, type, member, test,
 diagnostic, and code-relationship materialization remains on-demand and is
 introduced only by the operation that has its authority and bounded evidence.
