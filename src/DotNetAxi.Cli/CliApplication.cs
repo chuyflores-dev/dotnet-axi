@@ -327,6 +327,42 @@ internal static class CliApplication
             static () => new ReferenceSearchCommandHandler(),
             host.ResponseWriter);
 
+        var callersCommand = new Command("callers", "Find compiler-verified call sites in dependency-aware project and framework scope.");
+        var callersTarget = new Argument<string>("symbol") { Description = "Canonical symbol/v2 ID, fully qualified name, or declaration query." };
+        var callersSolution = new Option<string?>("--solution") { Description = "Select one solution scope." };
+        var callersProject = new Option<string?>("--project") { Description = "Select one project and its evaluated dependency scope." };
+        var callersIncludeTests = new Option<bool>("--include-tests");
+        var callersIncludeGenerated = new Option<bool>("--include-generated");
+        var callersConfiguration = new Option<string?>("--configuration") { Description = "Select one evaluated MSBuild configuration." };
+        var callersFramework = new Option<string?>("--framework") { Description = "Select one declared target framework." };
+        var callersProperties = new Option<string[]>("--property") { AllowMultipleArgumentsPerToken = false, Description = "Set an MSBuild name=value property; repeat for additional properties." };
+        var callersComplete = new Option<bool>("--complete") { Description = "Analyze the transitive reverse project graph and every supported framework variant." };
+        var callersLimit = new Option<int>("--limit") { DefaultValueFactory = static _ => 100 };
+        var callersFull = new Option<bool>("--full");
+        var callersFields = CreateFieldsOption();
+        callersCommand.Arguments.Add(callersTarget);
+        callersCommand.Options.Add(callersSolution);
+        callersCommand.Options.Add(callersProject);
+        callersCommand.Options.Add(callersIncludeTests);
+        callersCommand.Options.Add(callersIncludeGenerated);
+        callersCommand.Options.Add(callersConfiguration);
+        callersCommand.Options.Add(callersFramework);
+        callersCommand.Options.Add(callersProperties);
+        callersCommand.Options.Add(callersComplete);
+        callersCommand.Options.Add(callersLimit);
+        callersCommand.Options.Add(callersFull);
+        callersCommand.Options.Add(callersFields);
+        host.RegisterCommand(searchCommand, callersCommand, OperationPolicy.ExecutingInspection,
+            ["dnaxi search callers <symbol/v2/...>", "dnaxi search callers Demo.Service.Run --complete"]);
+        callersCommand.BindHandler(
+            result => CallerSearchCommandRequest.Create(
+                result.GetValue(callersTarget)!, result.GetValue(callersSolution), result.GetValue(callersProject),
+                result.GetValue(callersIncludeTests), result.GetValue(callersIncludeGenerated),
+                result.GetValue(callersConfiguration), result.GetValue(callersFramework), result.GetValue(callersProperties) ?? [],
+                result.GetValue(callersComplete), result.GetValue(callersLimit),
+                result.Tokens.Any(token => token.Value == "--limit"), result.GetValue(callersFull), result.GetValue(callersFields) ?? []),
+            static () => new CallerSearchCommandHandler(), host.ResponseWriter);
+
         var implementationsCommand = new Command(
             "implementations",
             "Find exact compiler implementations in dependency-aware project and framework scope.");

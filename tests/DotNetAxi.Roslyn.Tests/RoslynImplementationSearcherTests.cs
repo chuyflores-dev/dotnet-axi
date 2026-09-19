@@ -196,6 +196,51 @@ public sealed class RoslynImplementationSearcherTests
             match.OverrideIdentity == "M:Demo.GenericLeaf.Transform(System.Int32)");
     }
 
+    [Fact]
+    public async Task Caller_search_uses_exact_overload_binding_dispatch_scope_and_broken_callers()
+    {
+        using var workspace = await ImplementationWorkspace.CreateAsync(includeBroken: true);
+
+        var overloadId = (await workspace.SearchSymbolsAsync("Demo.CallerTarget.Overload"))
+            .Matches.Single(match => match.Signature.Contains("int", StringComparison.OrdinalIgnoreCase)).Id;
+        var overload = await workspace.FindCallersAsync(overloadId, CallerSearchScopeMode.Complete);
+        Assert.Equal(2, overload.Matches.Count(match =>
+            match.ContainingSymbol == "M:Demo.CallerConsumer.Direct(Demo.CallerTarget)"));
+
+        var virtualCall = await workspace.FindCallersAsync(
+            "Demo.CallerTarget.Virtual", CallerSearchScopeMode.Complete);
+        Assert.Contains(virtualCall.Matches, match =>
+            match.ContainingSymbol == "M:Demo.CallerConsumer.Direct(Demo.CallerTarget)"
+            && match.Relationship == "possible_dispatch"
+            && match.Confidence == "possible");
+        Assert.Equal(2, virtualCall.Matches.Count(match =>
+            match.ContainingSymbol == "M:Demo.CallerConsumer.Direct(Demo.CallerTarget)"));
+        Assert.Contains(virtualCall.Variants, variant =>
+            variant.Project == "Broken/Broken.csproj"
+            && variant.Status is CallerSearchVariantStatus.Failed);
+
+        var partial = await workspace.FindCallersAsync(
+            "Demo.CallerTarget.Virtual", CallerSearchScopeMode.Default);
+        Assert.Contains(partial.Variants, variant =>
+            variant.Project == "Consumer/Consumer.csproj"
+            && variant.Status is CallerSearchVariantStatus.Remaining);
+        Assert.DoesNotContain(partial.Variants, variant =>
+            variant.Project == "Unrelated/Unrelated.csproj");
+        Assert.DoesNotContain(virtualCall.Variants, variant =>
+            variant.Status is CallerSearchVariantStatus.Remaining);
+        Assert.Equal(["net10.0", "net8.0"], virtualCall.Matches
+            .Select(static match => match.Framework)
+            .Distinct()
+            .Order(StringComparer.Ordinal));
+
+        var dispatch = await workspace.FindCallersAsync(
+            "Demo.ICallerContract.Contract", CallerSearchScopeMode.Complete);
+        Assert.Contains(dispatch.Matches, match =>
+            match.Relationship == "possible_dispatch"
+            && match.Confidence == "possible"
+            && match.ContainingSymbol == "M:Demo.CallerConsumer.Interface(Demo.ICallerContract)");
+    }
+
     private static bool IsServiceOwner(string? owner) =>
         owner is "ServiceA" or "Demo.ServiceA" or "ServiceB" or "Demo.ServiceB";
 
@@ -247,6 +292,13 @@ public sealed class RoslynImplementationSearcherTests
                     }
                     public class GenericBase<T> { public virtual T Transform(T value) => value; }
                     public class GenericLeaf : GenericBase<int> { public override int Transform(int value) => value; }
+                    public interface ICallerContract { void Contract(); }
+                    public class CallerTarget
+                    {
+                        public void Overload(int value) { }
+                        public void Overload(string value) { }
+                        public virtual void Virtual() { }
+                    }
                     """);
                 await workspace.WriteProjectAsync(
                     "Consumer/Consumer.csproj",
@@ -258,7 +310,18 @@ public sealed class RoslynImplementationSearcherTests
                     public sealed class ServiceA : IService { public void Execute(int value) { } }
                     public sealed class ServiceB : IService { void IService.Execute(int value) => throw new System.NotImplementedException(); }
                     public sealed class ConcreteWorker : WorkerBase { public override string Execute(string value) => value; }
+                    public sealed class CallerConsumer
+                    {
+                        public void Direct(CallerTarget target) { target.Overload(1); target.Overload("text"); target.Virtual(); }
+                        public void Interface(ICallerContract target) => target.Contract();
+                    }
                     """);
+                await workspace.WriteProjectAsync(
+                    "Unrelated/Unrelated.csproj",
+                    WorkspaceProjectBody());
+                await workspace.WriteAsync(
+                    "Unrelated/Unrelated.cs",
+                    "namespace Demo; public sealed class Unrelated { }");
                 await workspace.WriteAsync(
                     "Workspace.slnx",
                     includeBroken
@@ -266,6 +329,7 @@ public sealed class RoslynImplementationSearcherTests
                           <Solution>
                             <Project Path="Contracts/Contracts.csproj" />
                             <Project Path="Consumer/Consumer.csproj" />
+                            <Project Path="Unrelated/Unrelated.csproj" />
                             <Project Path="Broken/Broken.csproj" />
                           </Solution>
                           """
@@ -273,6 +337,7 @@ public sealed class RoslynImplementationSearcherTests
                           <Solution>
                             <Project Path="Contracts/Contracts.csproj" />
                             <Project Path="Consumer/Consumer.csproj" />
+                            <Project Path="Unrelated/Unrelated.csproj" />
                           </Solution>
                           """);
 
@@ -339,6 +404,20 @@ public sealed class RoslynImplementationSearcherTests
             var context = Context();
             return await new RoslynOverrideSearcher(new WorkspacePathTraverser(), context.Ownership, context.Projects)
                 .FindAsync(target, context.Discovery, context.Selection, context.Traversal, context.Scope, scopeMode, new ProjectGraphEvaluationOptions());
+        }
+
+        public async Task<RoslynCallerSearchResult> FindCallersAsync(string target, CallerSearchScopeMode scopeMode)
+        {
+            var context = Context();
+            return await new RoslynCallerSearcher(new WorkspacePathTraverser(), context.Ownership, context.Projects)
+                .FindAsync(target, context.Discovery, context.Selection, context.Traversal, context.Scope, scopeMode, new ProjectGraphEvaluationOptions());
+        }
+
+        public async Task<SymbolDeclarationSearchResult> SearchSymbolsAsync(string query)
+        {
+            var context = Context();
+            return await new SymbolDeclarationSearcher(new WorkspacePathTraverser(), context.Ownership)
+                .SearchAsync(new SymbolDeclarationSearchRequest(query, context.Traversal, includeTests: false, scope: context.Scope));
         }
 
         private TestContext Context()

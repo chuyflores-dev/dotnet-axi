@@ -5,6 +5,49 @@ namespace DotNetAxi.Cli.Tests;
 public sealed class ImplementationSearchCommandTests
 {
     [Fact]
+    public async Task Caller_search_returns_semantic_call_sites_and_relationships()
+    {
+        using var workspace = await TestWorkspace.CreateAsync();
+
+        var result = await workspace.RunAsync("search", "callers", "Demo.ServiceA.Run", "--full");
+
+        Assert.True(result.ExitCode == 0, result.Output);
+        Assert.Contains("command: search callers", result.Output);
+        Assert.Contains("containing_symbol", result.Output);
+        Assert.Contains("relationship", result.Output);
+        Assert.Contains("direct_call", result.Output);
+        Assert.Contains("M:Demo.Consumer.Call", result.Output);
+    }
+
+    [Fact]
+    public async Task Caller_search_distinguishes_possible_dispatch_and_delegate_references()
+    {
+        using var workspace = await TestWorkspace.CreateAsync();
+
+        var dispatch = await workspace.RunAsync("search", "callers", "Demo.IService.Run", "--full");
+        var method = await workspace.RunAsync("search", "callers", "Demo.ServiceA.Run", "--full");
+
+        Assert.True(dispatch.ExitCode == 0, dispatch.Output);
+        Assert.Contains("possible_dispatch", dispatch.Output);
+        Assert.Contains("possible", dispatch.Output);
+        Assert.True(method.ExitCode == 0, method.Output);
+        Assert.Contains("delegate", method.Output);
+        Assert.Contains("possible", method.Output);
+    }
+
+    [Fact]
+    public async Task Caller_search_finds_reduced_extension_method_calls()
+    {
+        using var workspace = await TestWorkspace.CreateAsync();
+
+        var result = await workspace.RunAsync("search", "callers", "Demo.ServiceExtensions.Touch", "--full");
+
+        Assert.True(result.ExitCode == 0, result.Output);
+        Assert.Contains("direct_call", result.Output);
+        Assert.Contains("M:Demo.Consumer.CallExtension", result.Output);
+    }
+
+    [Fact]
     public async Task Override_search_returns_exact_override_paths()
     {
         using var workspace = await TestWorkspace.CreateAsync();
@@ -206,6 +249,22 @@ public sealed class ImplementationSearchCommandTests
                     public sealed class ServiceB : IService
                     {
                         public void Run() { }
+                    }
+
+                    public sealed class Consumer
+                    {
+                        public void Call(ServiceA service) => service.Run();
+                        public void CallInterface(IService service) => service.Run();
+                        public void Capture(ServiceA service)
+                        {
+                            System.Action callback = service.Run;
+                        }
+                        public void CallExtension(ServiceA service) => service.Touch();
+                    }
+
+                    public static class ServiceExtensions
+                    {
+                        public static void Touch(this ServiceA service) { }
                     }
 
                     public class Root { }
