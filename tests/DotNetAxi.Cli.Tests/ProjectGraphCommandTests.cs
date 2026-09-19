@@ -122,12 +122,44 @@ public sealed class ProjectGraphCommandTests
     }
 
     [Fact]
+    public async Task Cycles_retains_partial_failed_evaluation_evidence()
+    {
+        var fixtures = new DotNetAxi.Testing.RepositoryFixtureFactory();
+        await using var fixture = await fixtures.CreateAsync(
+            Path.Combine(
+                AppContext.BaseDirectory,
+                "Fixtures",
+                "ProjectGraph",
+                "cycle-scope",
+                "fixture.json"));
+        await AddAssetsAsync(fixture.WorkspacePath, "src/A/A.csproj", """{ "version": 3, "targets": { "net10.0": {} } }""");
+        await AddAssetsAsync(fixture.WorkspacePath, "src/B/B.csproj", """{ "version": 3, "targets": { "net10.0": {} } }""");
+        await AddAssetsAsync(fixture.WorkspacePath, "src/Root/Root.csproj", """{ "version": 3, "targets": { "net10.0": {} } }""");
+        await AddAssetsAsync(fixture.WorkspacePath, "src/Unrelated/Unrelated.csproj", """{ "version": 3, "targets": { "net10.0": {} } }""");
+
+        var result = await RunAsync(
+            fixture.WorkspacePath,
+            "graph",
+            "cycles",
+            "--solution",
+            "Cycle.slnx",
+            "--full");
+
+        Assert.True(result.ExitCode == 0, result.Output);
+        Assert.Contains("command: graph cycles", result.Output);
+        Assert.Contains("status: partial", result.Output);
+        Assert.Contains("cycles:", result.Output);
+        Assert.Contains("circular_dependency", result.Output);
+    }
+
+    [Fact]
     public void Graph_commands_are_registered_as_executing_inspection()
     {
         var host = CliApplication.Create(new StringWriter(), new StringWriter());
 
         var projects = host.Parse(["graph", "projects"]);
         var dependencies = host.Parse(["graph", "dependencies", "App.csproj"]);
+        var cycles = host.Parse(["graph", "cycles"]);
 
         Assert.Equal(
             DotNetAxi.Contracts.OperationClassification.Executing,
@@ -137,6 +169,9 @@ public sealed class ProjectGraphCommandTests
             host.ResolvePolicy(dependencies).Classification);
         Assert.True(host.ResolvePolicy(projects).MayExecuteRepositoryCode);
         Assert.False(host.ResolvePolicy(projects).MayAccessNetwork);
+        Assert.Equal(
+            DotNetAxi.Contracts.OperationClassification.Executing,
+            host.ResolvePolicy(cycles).Classification);
     }
 
     private sealed class TestWorkspace : IDisposable

@@ -211,6 +211,13 @@ public sealed class CommandHostTests
                     OperationPolicy.ExecutingInspection,
                     operation.Policy);
             },
+            operation =>
+            {
+                Assert.Equal("graph cycles", operation.Name);
+                Assert.Same(
+                    OperationPolicy.ExecutingInspection,
+                    operation.Policy);
+            },
             operation => Assert.Equal("show", operation.Name),
             operation => Assert.Equal("show symbol", operation.Name),
             operation => Assert.Equal("show document", operation.Name),
@@ -230,7 +237,8 @@ public sealed class CommandHostTests
                 && operation.Name is not "search overrides"
                 && operation.Name is not "graph"
                 && operation.Name is not "graph projects"
-                && operation.Name is not "graph dependencies")
+                && operation.Name is not "graph dependencies"
+                && operation.Name is not "graph cycles")
             {
                 Assert.Same(OperationPolicy.Passive, operation.Policy);
             }

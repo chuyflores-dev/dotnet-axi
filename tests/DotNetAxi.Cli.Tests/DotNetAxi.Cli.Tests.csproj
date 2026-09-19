@@ -37,5 +37,9 @@
       Include="../Fixtures/ProjectGraph/coverage/**/*"
       Link="Fixtures/ProjectGraph/coverage/%(RecursiveDir)%(Filename)%(Extension)"
       CopyToOutputDirectory="PreserveNewest" />
+    <None
+      Include="../Fixtures/ProjectGraph/cycle-scope/**/*"
+      Link="Fixtures/ProjectGraph/cycle-scope/%(RecursiveDir)%(Filename)%(Extension)"
+      CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

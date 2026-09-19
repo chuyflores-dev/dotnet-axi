@@ -463,3 +463,260 @@ public static class ProjectGraphIdentity
         return prefix + Convert.ToHexStringLower(hash.GetHashAndReset());
     }
 }
+
+/// <summary>
+/// One normalized directed cycle in the evaluated project-reference graph.
+/// Nodes and relationships are ordered along the cycle; the final
+/// relationship returns to the first node.
+/// </summary>
+public sealed class ProjectDependencyCycle
+{
+    internal ProjectDependencyCycle(
+        IReadOnlyList<ProjectGraphNode> nodes,
+        IReadOnlyList<ProjectGraphRelationship> relationships)
+    {
+        ArgumentNullException.ThrowIfNull(nodes);
+        ArgumentNullException.ThrowIfNull(relationships);
+        if (nodes.Count == 0 || nodes.Count != relationships.Count)
+        {
+            throw new ArgumentException(
+                "A project dependency cycle requires one relationship for each node.");
+        }
+
+        Nodes = Array.AsReadOnly(nodes.ToArray());
+        Relationships = Array.AsReadOnly(relationships.ToArray());
+        Id = CreateIdentity(Relationships);
+    }
+
+    public string Id { get; }
+
+    public IReadOnlyList<ProjectGraphNode> Nodes { get; }
+
+    public IReadOnlyList<ProjectGraphRelationship> Relationships { get; }
+
+    private static string CreateIdentity(
+        IReadOnlyList<ProjectGraphRelationship> relationships)
+    {
+        using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+        Span<byte> length = stackalloc byte[sizeof(int)];
+        foreach (var relationship in relationships)
+        {
+            var bytes = Encoding.UTF8.GetBytes(relationship.Id);
+            BinaryPrimitives.WriteInt32BigEndian(length, bytes.Length);
+            hash.AppendData(length);
+            hash.AppendData(bytes);
+        }
+
+        return "project-cycle/v1/" + Convert.ToHexStringLower(hash.GetHashAndReset());
+    }
+}
+
+/// <summary>
+/// Detects directed cycles in project-reference relationships. This is a
+/// project-only operation: package references and incomplete graph rows stay
+/// in the enclosing graph evidence but never become cycle edges.
+/// </summary>
+public static class ProjectDependencyCycleDetector
+{
+    public const int MaximumDetectedCycles = 10_000;
+    public const int MaximumTraversalSteps = 1_000_000;
+
+    public static ProjectDependencyCycleDetection FindCycles(
+        ProjectDependencyGraph graph,
+        int maximumCycles,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(graph);
+        if (maximumCycles < 1)
+        {
+            throw new ArgumentOutOfRangeException(nameof(maximumCycles));
+        }
+
+        var projects = graph.Nodes
+            .Where(static node => node.Kind is ProjectGraphNodeKind.Project)
+            .ToDictionary(static node => node.Id, StringComparer.Ordinal);
+        var outgoing = projects.Keys.ToDictionary(
+            static id => id,
+            static _ => new List<CycleEdge>(),
+            StringComparer.Ordinal);
+        foreach (var relationship in graph.Relationships.Where(static relationship =>
+                     relationship.Kind is ProjectGraphRelationshipKind.ProjectReference))
+        {
+            var (from, to) = relationship.Direction
+                is ProjectGraphRelationshipDirection.SourceDependsOnTarget
+                ? (relationship.SourceId, relationship.TargetId)
+                : (relationship.TargetId, relationship.SourceId);
+            if (projects.ContainsKey(from) && projects.ContainsKey(to))
+            {
+                outgoing[from].Add(new CycleEdge(to, relationship));
+            }
+        }
+
+        foreach (var edges in outgoing.Values)
+        {
+            edges.Sort(static (left, right) => StringComparer.Ordinal.Compare(
+                left.Relationship.Id,
+                right.Relationship.Id));
+        }
+
+        var cycles = new List<ProjectDependencyCycle>();
+        var cyclicNodes = CyclicNodes(outgoing, cancellationToken);
+        var limitReached = false;
+        var traversalSteps = 0;
+        foreach (var start in projects.Keys.Order(StringComparer.Ordinal))
+        {
+            if (limitReached)
+            {
+                break;
+            }
+
+            if (!cyclicNodes.Contains(start))
+            {
+                continue;
+            }
+
+            var visited = new HashSet<string>(StringComparer.Ordinal) { start };
+            var nodes = new List<ProjectGraphNode> { projects[start] };
+            var relationships = new List<ProjectGraphRelationship>();
+            Visit(start);
+
+            void Visit(string current)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                foreach (var edge in outgoing[current])
+                {
+                    if (limitReached)
+                    {
+                        return;
+                    }
+
+                    if (!cyclicNodes.Contains(edge.TargetId))
+                    {
+                        continue;
+                    }
+
+                    if (++traversalSteps > MaximumTraversalSteps)
+                    {
+                        limitReached = true;
+                        return;
+                    }
+
+                    if (StringComparer.Ordinal.Compare(edge.TargetId, start) < 0)
+                    {
+                        continue;
+                    }
+
+                    if (edge.TargetId.Equals(start, StringComparison.Ordinal))
+                    {
+                        if (cycles.Count == maximumCycles)
+                        {
+                            limitReached = true;
+                        }
+                        else
+                        {
+                            cycles.Add(new ProjectDependencyCycle(
+                                nodes,
+                                relationships.Append(edge.Relationship).ToArray()));
+                        }
+                        continue;
+                    }
+
+                    if (!visited.Add(edge.TargetId))
+                    {
+                        continue;
+                    }
+
+                    nodes.Add(projects[edge.TargetId]);
+                    relationships.Add(edge.Relationship);
+                    Visit(edge.TargetId);
+                    relationships.RemoveAt(relationships.Count - 1);
+                    nodes.RemoveAt(nodes.Count - 1);
+                    visited.Remove(edge.TargetId);
+                }
+            }
+        }
+
+        return new ProjectDependencyCycleDetection(
+            cycles.OrderBy(static cycle => cycle.Id, StringComparer.Ordinal).ToArray(),
+            TotalKnown: !limitReached);
+    }
+
+    private sealed record CycleEdge(
+        string TargetId,
+        ProjectGraphRelationship Relationship);
+
+    private static HashSet<string> CyclicNodes(
+        IReadOnlyDictionary<string, List<CycleEdge>> outgoing,
+        CancellationToken cancellationToken)
+    {
+        var indexes = new Dictionary<string, int>(StringComparer.Ordinal);
+        var lowLinks = new Dictionary<string, int>(StringComparer.Ordinal);
+        var active = new HashSet<string>(StringComparer.Ordinal);
+        var stack = new Stack<string>();
+        var cyclic = new HashSet<string>(StringComparer.Ordinal);
+        var nextIndex = 0;
+
+        foreach (var node in outgoing.Keys.Order(StringComparer.Ordinal))
+        {
+            if (!indexes.ContainsKey(node))
+            {
+                Visit(node);
+            }
+        }
+
+        return cyclic;
+
+        void Visit(string node)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            indexes[node] = nextIndex;
+            lowLinks[node] = nextIndex;
+            nextIndex++;
+            stack.Push(node);
+            active.Add(node);
+
+            foreach (var edge in outgoing[node])
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                if (!indexes.ContainsKey(edge.TargetId))
+                {
+                    Visit(edge.TargetId);
+                    lowLinks[node] = Math.Min(lowLinks[node], lowLinks[edge.TargetId]);
+                }
+                else if (active.Contains(edge.TargetId))
+                {
+                    lowLinks[node] = Math.Min(lowLinks[node], indexes[edge.TargetId]);
+                }
+            }
+
+            if (lowLinks[node] != indexes[node])
+            {
+                return;
+            }
+
+            var component = new List<string>();
+            string member;
+            do
+            {
+                member = stack.Pop();
+                active.Remove(member);
+                component.Add(member);
+            }
+            while (!member.Equals(node, StringComparison.Ordinal));
+
+            if (component.Count > 1
+                || outgoing[node].Any(edge => edge.TargetId.Equals(node, StringComparison.Ordinal)))
+            {
+                cyclic.UnionWith(component);
+            }
+        }
+    }
+}
+
+/// <summary>
+/// Bounded cycle detection evidence. A false <see cref="TotalKnown"/> means
+/// enumeration stopped at a deterministic cycle or traversal safety bound.
+/// </summary>
+public sealed record ProjectDependencyCycleDetection(
+    IReadOnlyList<ProjectDependencyCycle> Cycles,
+    bool TotalKnown);

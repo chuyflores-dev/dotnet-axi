@@ -122,6 +122,54 @@ internal sealed class ProjectGraphCommandHandler :
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
+        var query = await QueryAsync(request, cancellationToken).ConfigureAwait(false);
+        var graph = query.Graph;
+        if (request.DependencyProject is not null)
+        {
+            graph = DependenciesFor(graph, request.DependencyProject, query.Workspace);
+        }
+
+        var retrievalCommand = RetrievalCommand(request);
+        var nodes = request.Full
+            ? BoundedCollection<ProjectGraphNode>.Create(graph.Nodes, graph.Nodes.Count)
+            : BoundedCollection<ProjectGraphNode>.Create(
+                graph.Nodes,
+                request.Limit,
+                graph.Nodes.Count,
+                retrievalCommand + " --full");
+        var includedNodes = nodes.Items
+            .Select(static node => node.Id)
+            .ToHashSet(StringComparer.Ordinal);
+        var visibleRelationships = graph.Relationships.Where(
+            relationship => includedNodes.Contains(relationship.SourceId)
+                            && includedNodes.Contains(relationship.TargetId));
+        var relationships = request.Full
+            ? BoundedCollection<ProjectGraphRelationship>.Create(
+                graph.Relationships,
+                graph.Relationships.Count)
+            : BoundedCollection<ProjectGraphRelationship>.Create(
+                visibleRelationships,
+                request.Limit,
+                graph.Relationships.Count,
+                retrievalCommand + " --full");
+        var payload = new ProjectGraphPayload(
+            nodes,
+            relationships,
+            query.Evaluated.Failures,
+            query.Coverage.Variants.Select(Variant).ToArray());
+        var command = request.DependencyProject is null
+            ? "graph projects"
+            : "graph dependencies";
+        return query.Coverage.Coverage.Level is CoverageLevel.Complete
+            ? CommandResult<ProjectGraphPayload>.Success(command, payload, query.Evidence)
+            : CommandResult<ProjectGraphPayload>.Partial(command, payload, query.Evidence);
+    }
+
+    internal static async ValueTask<ProjectGraphQuery> QueryAsync(
+        ProjectGraphCommandRequest request,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
         cancellationToken.ThrowIfCancellationRequested();
 
         var workspace = new WorkspaceDiscoverer()
@@ -168,48 +216,7 @@ internal sealed class ProjectGraphCommandHandler :
                 cancellationToken)
             .ConfigureAwait(false);
         var graph = Materialize(evaluated, coverage, evidence);
-        if (request.DependencyProject is not null)
-        {
-            graph = DependenciesFor(
-                graph,
-                request.DependencyProject,
-                workspace);
-        }
-
-        var retrievalCommand = RetrievalCommand(request);
-        var nodes = request.Full
-            ? BoundedCollection<ProjectGraphNode>.Create(graph.Nodes, graph.Nodes.Count)
-            : BoundedCollection<ProjectGraphNode>.Create(
-                graph.Nodes,
-                request.Limit,
-                graph.Nodes.Count,
-                retrievalCommand + " --full");
-        var includedNodes = nodes.Items
-            .Select(static node => node.Id)
-            .ToHashSet(StringComparer.Ordinal);
-        var visibleRelationships = graph.Relationships.Where(
-            relationship => includedNodes.Contains(relationship.SourceId)
-                            && includedNodes.Contains(relationship.TargetId));
-        var relationships = request.Full
-            ? BoundedCollection<ProjectGraphRelationship>.Create(
-                graph.Relationships,
-                graph.Relationships.Count)
-            : BoundedCollection<ProjectGraphRelationship>.Create(
-                visibleRelationships,
-                request.Limit,
-                graph.Relationships.Count,
-                retrievalCommand + " --full");
-        var payload = new ProjectGraphPayload(
-            nodes,
-            relationships,
-            evaluated.Failures,
-            coverage.Variants.Select(Variant).ToArray());
-        var command = request.DependencyProject is null
-            ? "graph projects"
-            : "graph dependencies";
-        return coverage.Coverage.Level is CoverageLevel.Complete
-            ? CommandResult<ProjectGraphPayload>.Success(command, payload, evidence)
-            : CommandResult<ProjectGraphPayload>.Partial(command, payload, evidence);
+        return new ProjectGraphQuery(workspace, evaluated, coverage, evidence, graph);
     }
 
     private static ProjectDependencyGraph DependenciesFor(
@@ -268,10 +275,11 @@ internal sealed class ProjectGraphCommandHandler :
             relationships);
     }
 
-    private static ProjectDependencyGraph Materialize(
+    internal static ProjectDependencyGraph Materialize(
         EvaluatedProjectGraph evaluated,
         ProjectCoverageReport coverage,
-        Evidence evidence)
+        Evidence evidence,
+        bool includeIncompleteProjectReferences = false)
     {
         var scope = evidence.Scope;
         var projects = evaluated.Projects
@@ -317,7 +325,8 @@ internal sealed class ProjectGraphCommandHandler :
                 dependency,
                 projectNodes,
                 scope,
-                coverage.Coverage))
+                coverage.Coverage,
+                includeIncompleteProjectReferences))
             .OfType<ProjectGraphRelationship>()
             .Concat(evaluated.PackageDependencies.Select(dependency => PackageRelationship(
                 dependency,
@@ -340,14 +349,24 @@ internal sealed class ProjectGraphCommandHandler :
         ProjectDependency dependency,
         IReadOnlyDictionary<string, ProjectGraphNode> projects,
         EvidenceScope scope,
-        EvidenceCoverage coverage)
+        EvidenceCoverage coverage,
+        bool includeIncompleteProjectReferences)
     {
         var source = projects[dependency.Project];
         var target = projects[dependency.Dependency];
-        if (dependency.DependencyConfiguration is null
-            || dependency.DependencyFramework is null
-            || !MatchesVariant(source, dependency.Configuration, dependency.Framework)
-            || !MatchesVariant(
+        if (!MatchesVariant(source, dependency.Configuration, dependency.Framework))
+        {
+            return null;
+        }
+
+        var hasTargetVariant = dependency.DependencyConfiguration is not null
+            && dependency.DependencyFramework is not null;
+        if (!hasTargetVariant && !includeIncompleteProjectReferences)
+        {
+            return null;
+        }
+
+        if (hasTargetVariant && !MatchesVariant(
                 target,
                 dependency.DependencyConfiguration,
                 dependency.DependencyFramework))
@@ -609,6 +628,13 @@ internal sealed class ProjectGraphCommandHandler :
         }
     }
 }
+
+internal sealed record ProjectGraphQuery(
+    WorkspaceDiscoveryResult Workspace,
+    EvaluatedProjectGraph Evaluated,
+    ProjectCoverageReport Coverage,
+    Evidence Evidence,
+    ProjectDependencyGraph Graph);
 
 internal sealed record ProjectGraphPayload(
     BoundedCollection<ProjectGraphNode> Nodes,
