@@ -177,7 +177,24 @@ public sealed class EvaluatedProject
     public IReadOnlyList<ProjectEvaluationFailure> Failures { get; }
 }
 
-public sealed record ProjectDependency(string Project, string Dependency);
+public sealed record ProjectDependency(
+    string Project,
+    string Dependency,
+    string? Configuration = null,
+    string? Framework = null,
+    string? DependencyConfiguration = null,
+    string? DependencyFramework = null);
+
+/// <summary>
+/// An evaluated PackageReference observed on one project variant. A missing
+/// version is preserved when MSBuild evaluation did not supply one.
+/// </summary>
+public sealed record PackageDependency(
+    string Project,
+    string PackageId,
+    string? Version,
+    string? Configuration = null,
+    string? Framework = null);
 
 public sealed class EvaluatedProjectGraph
 {
@@ -187,6 +204,7 @@ public sealed class EvaluatedProjectGraph
         IEnumerable<AppliedMsBuildProperty> globalProperties,
         IEnumerable<EvaluatedProject> projects,
         IEnumerable<ProjectDependency> dependencies,
+        IEnumerable<PackageDependency> packageDependencies,
         MsBuildRuntimeIdentity? runtime,
         IEnumerable<ProjectEvaluationFailure> failures,
         IEnumerable<EvaluatedProjectVariantEvidence> coverageEvidence)
@@ -196,6 +214,7 @@ public sealed class EvaluatedProjectGraph
         GlobalProperties = Array.AsReadOnly(globalProperties.ToArray());
         Projects = Array.AsReadOnly(projects.ToArray());
         Dependencies = Array.AsReadOnly(dependencies.ToArray());
+        PackageDependencies = Array.AsReadOnly(packageDependencies.ToArray());
         Runtime = runtime;
         Failures = Array.AsReadOnly(failures.ToArray());
         CoverageEvidence = Array.AsReadOnly(coverageEvidence.ToArray());
@@ -210,6 +229,8 @@ public sealed class EvaluatedProjectGraph
     public IReadOnlyList<EvaluatedProject> Projects { get; }
 
     public IReadOnlyList<ProjectDependency> Dependencies { get; }
+
+    public IReadOnlyList<PackageDependency> PackageDependencies { get; }
 
     public MsBuildRuntimeIdentity? Runtime { get; }
 
@@ -416,13 +437,38 @@ public sealed class MsBuildProjectGraphEvaluator
                 selection,
                 node.ProjectInstance.FullPath,
                 discovery.RootPath))
+            .Where(node => ProjectType(node.ProjectInstance)
+                           is not CapturedProjectType.OuterBuild)
             .SelectMany(node => node.ProjectReferences.Select(reference =>
                 new ProjectDependency(
                     NormalizePath(discovery.RootPath, node.ProjectInstance.FullPath).Path,
-                    NormalizePath(discovery.RootPath, reference.ProjectInstance.FullPath).Path)))
+                    NormalizePath(discovery.RootPath, reference.ProjectInstance.FullPath).Path,
+                    Optional(node.ProjectInstance.GetPropertyValue("Configuration")),
+                    Optional(node.ProjectInstance.GetPropertyValue("TargetFramework")),
+                    Optional(reference.ProjectInstance.GetPropertyValue("Configuration")),
+                    Optional(reference.ProjectInstance.GetPropertyValue("TargetFramework")))))
             .Distinct()
             .OrderBy(static dependency => dependency.Project, StringComparer.Ordinal)
             .ThenBy(static dependency => dependency.Dependency, StringComparer.Ordinal)
+            .ThenBy(static dependency => dependency.Configuration, StringComparer.Ordinal)
+            .ThenBy(static dependency => dependency.Framework, StringComparer.Ordinal)
+            .ToArray();
+        var packageDependencies = graph.ProjectNodes
+            .Where(node => !IsSelectedSolutionNode(
+                selection,
+                node.ProjectInstance.FullPath,
+                discovery.RootPath))
+            .Where(node => ProjectType(node.ProjectInstance)
+                           is not CapturedProjectType.OuterBuild)
+            .SelectMany(node => PackageDependencies(
+                discovery.RootPath,
+                node.ProjectInstance))
+            .Distinct()
+            .OrderBy(static dependency => dependency.Project, StringComparer.Ordinal)
+            .ThenBy(static dependency => dependency.PackageId, StringComparer.Ordinal)
+            .ThenBy(static dependency => dependency.Version, StringComparer.Ordinal)
+            .ThenBy(static dependency => dependency.Configuration, StringComparer.Ordinal)
+            .ThenBy(static dependency => dependency.Framework, StringComparer.Ordinal)
             .ToArray();
         var completeness = projects.Any(
             static project => project.State is not EvaluatedProjectState.Evaluated)
@@ -435,6 +481,7 @@ public sealed class MsBuildProjectGraphEvaluator
             AppliedProperties(properties),
             projects,
             dependencies,
+            packageDependencies,
             runtime,
             [],
             evaluatedInstances.Select(
@@ -564,12 +611,33 @@ public sealed class MsBuildProjectGraphEvaluator
                 selection,
                 captured.Project.FullPath,
                 discovery.RootPath))
+            .Where(captured => ProjectType(captured.Project)
+                               is not CapturedProjectType.OuterBuild)
             .SelectMany(captured => ProjectDependencies(
                 discovery.RootPath,
                 captured.Project))
             .Distinct()
             .OrderBy(static dependency => dependency.Project, StringComparer.Ordinal)
             .ThenBy(static dependency => dependency.Dependency, StringComparer.Ordinal)
+            .ThenBy(static dependency => dependency.Configuration, StringComparer.Ordinal)
+            .ThenBy(static dependency => dependency.Framework, StringComparer.Ordinal)
+            .ToArray();
+        var packageDependencies = capturedProjects
+            .Where(captured => !IsSelectedSolutionNode(
+                selection,
+                captured.Project.FullPath,
+                discovery.RootPath))
+            .Where(captured => ProjectType(captured.Project)
+                               is not CapturedProjectType.OuterBuild)
+            .SelectMany(captured => PackageDependencies(
+                discovery.RootPath,
+                captured.Project))
+            .Distinct()
+            .OrderBy(static dependency => dependency.Project, StringComparer.Ordinal)
+            .ThenBy(static dependency => dependency.PackageId, StringComparer.Ordinal)
+            .ThenBy(static dependency => dependency.Version, StringComparer.Ordinal)
+            .ThenBy(static dependency => dependency.Configuration, StringComparer.Ordinal)
+            .ThenBy(static dependency => dependency.Framework, StringComparer.Ordinal)
             .ToArray();
 
         return new EvaluatedProjectGraph(
@@ -582,6 +650,7 @@ public sealed class MsBuildProjectGraphEvaluator
                 static project => project.Path,
                 StringComparer.Ordinal),
             dependencies,
+            packageDependencies,
             runtime,
             [failure],
             coverageEvidence);
@@ -600,7 +669,33 @@ public sealed class MsBuildProjectGraphEvaluator
                 projectDirectory);
             yield return new ProjectDependency(
                 projectPath,
-                NormalizePath(workspaceRoot, dependencyPath).Path);
+                NormalizePath(workspaceRoot, dependencyPath).Path,
+                Optional(project.GetPropertyValue("Configuration")),
+                Optional(project.GetPropertyValue("TargetFramework")));
+        }
+    }
+
+    private static IEnumerable<PackageDependency> PackageDependencies(
+        string workspaceRoot,
+        ProjectInstance project)
+    {
+        var projectPath = NormalizePath(workspaceRoot, project.FullPath).Path;
+        foreach (var reference in project.GetItems("PackageReference"))
+        {
+            var packageId = Optional(reference.EvaluatedInclude);
+            if (packageId is null)
+            {
+                continue;
+            }
+
+            var version = Optional(reference.GetMetadataValue("Version"))
+                ?? Optional(reference.GetMetadataValue("VersionOverride"));
+            yield return new PackageDependency(
+                projectPath,
+                packageId,
+                version,
+                Optional(project.GetPropertyValue("Configuration")),
+                Optional(project.GetPropertyValue("TargetFramework")));
         }
     }
 
@@ -790,6 +885,7 @@ public sealed class MsBuildProjectGraphEvaluator
             ProjectGraphCompleteness.Failed,
             AppliedProperties(properties),
             projects,
+            [],
             [],
             null,
             [failure],

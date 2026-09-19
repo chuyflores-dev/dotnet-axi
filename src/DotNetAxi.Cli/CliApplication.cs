@@ -467,6 +467,101 @@ internal static class CliApplication
             ["dnaxi search overrides <symbol/v2/...>", "dnaxi search overrides Demo.Base.Run --complete"]);
         overridesCommand.BindHandler(result => OverrideSearchCommandRequest.Create(result.GetValue(overridesTarget)!, result.GetValue(overridesSolution), result.GetValue(overridesProject), result.GetValue(overridesTests), result.GetValue(overridesGenerated), result.GetValue(overridesConfiguration), result.GetValue(overridesFramework), result.GetValue(overridesProperties) ?? [], result.GetValue(overridesComplete), result.GetValue(overridesLimit), result.Tokens.Any(token => token.Value == "--limit"), result.GetValue(overridesFull)), static () => new OverrideSearchCommandHandler(), host.ResponseWriter);
 
+        var graphCommand = new Command(
+            "graph",
+            "Inspect the evaluated project dependency graph.");
+        host.RegisterCommand(rootCommand, graphCommand, OperationPolicy.ExecutingInspection,
+            [
+                "dnaxi graph projects",
+                "dnaxi graph dependencies src/App/App.csproj",
+            ]);
+
+        var graphProjectsCommand = new Command(
+            "projects",
+            "Return the selected evaluated project graph.");
+        var graphProjectsSolution = new Option<string?>("--solution");
+        var graphProjectsProject = new Option<string?>("--project");
+        var graphProjectsConfiguration = new Option<string?>("--configuration");
+        var graphProjectsFramework = new Option<string?>("--framework");
+        var graphProjectsProperties = new Option<string[]>("--property")
+        {
+            AllowMultipleArgumentsPerToken = false,
+        };
+        var graphProjectsLimit = new Option<int>("--limit")
+        {
+            DefaultValueFactory = static _ => 100,
+        };
+        var graphProjectsFull = new Option<bool>("--full");
+        graphProjectsCommand.Options.Add(graphProjectsSolution);
+        graphProjectsCommand.Options.Add(graphProjectsProject);
+        graphProjectsCommand.Options.Add(graphProjectsConfiguration);
+        graphProjectsCommand.Options.Add(graphProjectsFramework);
+        graphProjectsCommand.Options.Add(graphProjectsProperties);
+        graphProjectsCommand.Options.Add(graphProjectsLimit);
+        graphProjectsCommand.Options.Add(graphProjectsFull);
+        host.RegisterCommand(graphCommand, graphProjectsCommand, OperationPolicy.ExecutingInspection,
+            [
+                "dnaxi graph projects",
+                "dnaxi graph projects --solution src/App.sln --framework net10.0",
+            ]);
+        graphProjectsCommand.BindHandler(
+            result => ProjectGraphCommandRequest.Create(
+                dependencyProject: null,
+                result.GetValue(graphProjectsSolution),
+                result.GetValue(graphProjectsProject),
+                result.GetValue(graphProjectsConfiguration),
+                result.GetValue(graphProjectsFramework),
+                result.GetValue(graphProjectsProperties) ?? [],
+                result.GetValue(graphProjectsLimit),
+                result.Tokens.Any(token => token.Value == "--limit"),
+                result.GetValue(graphProjectsFull)),
+            static () => new ProjectGraphCommandHandler(),
+            host.ResponseWriter);
+
+        var graphDependenciesCommand = new Command(
+            "dependencies",
+            "Return outgoing project and package dependencies for one evaluated project.");
+        var graphDependenciesProjectArgument = new Argument<string>("project");
+        var graphDependenciesSolution = new Option<string?>("--solution");
+        var graphDependenciesEntryProject = new Option<string?>("--project");
+        var graphDependenciesConfiguration = new Option<string?>("--configuration");
+        var graphDependenciesFramework = new Option<string?>("--framework");
+        var graphDependenciesProperties = new Option<string[]>("--property")
+        {
+            AllowMultipleArgumentsPerToken = false,
+        };
+        var graphDependenciesLimit = new Option<int>("--limit")
+        {
+            DefaultValueFactory = static _ => 100,
+        };
+        var graphDependenciesFull = new Option<bool>("--full");
+        graphDependenciesCommand.Arguments.Add(graphDependenciesProjectArgument);
+        graphDependenciesCommand.Options.Add(graphDependenciesSolution);
+        graphDependenciesCommand.Options.Add(graphDependenciesEntryProject);
+        graphDependenciesCommand.Options.Add(graphDependenciesConfiguration);
+        graphDependenciesCommand.Options.Add(graphDependenciesFramework);
+        graphDependenciesCommand.Options.Add(graphDependenciesProperties);
+        graphDependenciesCommand.Options.Add(graphDependenciesLimit);
+        graphDependenciesCommand.Options.Add(graphDependenciesFull);
+        host.RegisterCommand(graphCommand, graphDependenciesCommand, OperationPolicy.ExecutingInspection,
+            [
+                "dnaxi graph dependencies src/App/App.csproj",
+                "dnaxi graph dependencies src/App/App.csproj --framework net10.0",
+            ]);
+        graphDependenciesCommand.BindHandler(
+            result => ProjectGraphCommandRequest.Create(
+                result.GetValue(graphDependenciesProjectArgument),
+                result.GetValue(graphDependenciesSolution),
+                result.GetValue(graphDependenciesEntryProject),
+                result.GetValue(graphDependenciesConfiguration),
+                result.GetValue(graphDependenciesFramework),
+                result.GetValue(graphDependenciesProperties) ?? [],
+                result.GetValue(graphDependenciesLimit),
+                result.Tokens.Any(token => token.Value == "--limit"),
+                result.GetValue(graphDependenciesFull)),
+            static () => new ProjectGraphCommandHandler(),
+            host.ResponseWriter);
+
         var showCommand = new Command(
             "show",
             "Show bounded detail for one stable evidence identity or document.");

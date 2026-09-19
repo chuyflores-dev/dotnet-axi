@@ -190,6 +190,27 @@ public sealed class CommandHostTests
                     OperationPolicy.ExecutingInspection,
                     operation.Policy);
             },
+            operation =>
+            {
+                Assert.Equal("graph", operation.Name);
+                Assert.Same(
+                    OperationPolicy.ExecutingInspection,
+                    operation.Policy);
+            },
+            operation =>
+            {
+                Assert.Equal("graph projects", operation.Name);
+                Assert.Same(
+                    OperationPolicy.ExecutingInspection,
+                    operation.Policy);
+            },
+            operation =>
+            {
+                Assert.Equal("graph dependencies", operation.Name);
+                Assert.Same(
+                    OperationPolicy.ExecutingInspection,
+                    operation.Policy);
+            },
             operation => Assert.Equal("show", operation.Name),
             operation => Assert.Equal("show symbol", operation.Name),
             operation => Assert.Equal("show document", operation.Name),
@@ -206,7 +227,10 @@ public sealed class CommandHostTests
             if (operation.Name is not "search references"
                 && operation.Name is not "search implementations"
                 && operation.Name is not "search derived"
-                && operation.Name is not "search overrides")
+                && operation.Name is not "search overrides"
+                && operation.Name is not "graph"
+                && operation.Name is not "graph projects"
+                && operation.Name is not "graph dependencies")
             {
                 Assert.Same(OperationPolicy.Passive, operation.Policy);
             }
