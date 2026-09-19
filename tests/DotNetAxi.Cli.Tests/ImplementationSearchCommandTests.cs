@@ -48,6 +48,50 @@ public sealed class ImplementationSearchCommandTests
     }
 
     [Fact]
+    public async Task Callee_search_returns_direct_possible_and_delegate_targets_without_nested_bodies()
+    {
+        using var workspace = await TestWorkspace.CreateAsync();
+
+        var result = await workspace.RunAsync("search", "callees", "Demo.CalleeSource.Run", "--full");
+
+        Assert.True(result.ExitCode == 0, result.Output);
+        Assert.Contains("command: search callees", result.Output);
+        Assert.Contains("M:Demo.ServiceA.Run", result.Output);
+        Assert.Contains("M:Demo.ServiceExtensions.Touch(Demo.ServiceA)", result.Output);
+        Assert.Contains("M:Demo.IService.Run", result.Output);
+        Assert.Contains("direct_call", result.Output);
+        Assert.Contains("possible_dispatch", result.Output);
+        Assert.Contains("delegate", result.Output);
+        Assert.Contains("possible", result.Output);
+        Assert.DoesNotContain("M:Demo.CalleeSource.NestedOnly", result.Output);
+    }
+
+    [Fact]
+    public void Callee_search_is_registered_as_executing_inspection()
+    {
+        var host = CliApplication.Create(new StringWriter(), new StringWriter());
+
+        var parsed = host.Parse(["search", "callees", "Demo.CalleeSource.Run"]);
+
+        Assert.Equal(
+            DotNetAxi.Contracts.OperationClassification.Executing,
+            host.ResolvePolicy(parsed).Classification);
+    }
+
+    [Fact]
+    public async Task Callee_search_rejects_a_type_target_before_body_traversal()
+    {
+        using var workspace = await TestWorkspace.CreateAsync();
+
+        var result = await workspace.RunAsync("search", "callees", "Demo.CalleeSource");
+
+        Assert.Equal(1, result.ExitCode);
+        Assert.Contains("target_status: unsupported", result.Output);
+        Assert.Contains("semantic.target_unsupported", result.Output);
+        Assert.Contains("Select a source method", result.Output);
+    }
+
+    [Fact]
     public async Task Override_search_returns_exact_override_paths()
     {
         using var workspace = await TestWorkspace.CreateAsync();
@@ -260,6 +304,25 @@ public sealed class ImplementationSearchCommandTests
                             System.Action callback = service.Run;
                         }
                         public void CallExtension(ServiceA service) => service.Touch();
+                    }
+
+                    public sealed class CalleeSource
+                    {
+                        public void Run(ServiceA service, IService contract)
+                        {
+                            service.Run();
+                            service.Touch();
+                            contract.Run();
+                            _ = new ServiceA();
+                            System.Action callback = service.Run;
+                            System.Action nested = () => NestedOnly(service);
+                            Local(service);
+                            dynamic unknown = service;
+                            unknown.Run();
+                        }
+
+                        private static void Local(ServiceA service) => NestedOnly(service);
+                        private static void NestedOnly(ServiceA service) => service.Run();
                     }
 
                     public static class ServiceExtensions

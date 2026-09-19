@@ -88,6 +88,19 @@ runtime-only dispatch are outside static coverage. It uses the same
 reverse-dependency scope, default/`--complete` expansion, and explicit
 project/framework coverage as `search references`.
 
+`search callees` returns compiler-known targets from the body of one selected
+member. Each row retains the invoked target identity, call-site range,
+containing symbol, project and framework variant, relationship, semantic
+resolution, and confidence. Ordinary calls, object construction, and reduced
+extension-method calls are `direct_call` with verified confidence. Virtual or
+interface calls are `possible_dispatch` with possible confidence; method-group
+references are `delegate` with possible confidence. Dynamic, unresolved, and
+reflection-discovered targets are omitted rather than represented as verified
+callees. Nested local-function and lambda bodies are not attributed to their
+enclosing member. The target's owning project is the only legal source scope;
+default mode analyzes its evaluated default framework and `--complete`
+analyzes every supported framework variant.
+
 `--configuration`, `--framework`, and repeated `--property name=value`
 selectors apply consistently to target resolution, graph evaluation, project
 coverage, and Roslyn workspace loading. Dedicated configuration and framework

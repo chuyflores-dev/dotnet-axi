@@ -241,6 +241,54 @@ public sealed class RoslynImplementationSearcherTests
             && match.ContainingSymbol == "M:Demo.CallerConsumer.Interface(Demo.ICallerContract)");
     }
 
+    [Fact]
+    public async Task Callee_search_uses_operations_and_does_not_promote_runtime_unknown_or_nested_calls()
+    {
+        using var workspace = await ImplementationWorkspace.CreateAsync(includeBroken: true);
+
+        var result = await workspace.FindCalleesAsync(
+            "Demo.CalleeSource.Run", CalleeSearchScopeMode.Complete);
+
+        Assert.Contains(result.Matches, match =>
+            match.TargetIdentity == "M:Demo.CalleeTarget.Overload(System.Int32)"
+            && match.Relationship == "direct_call"
+            && match.Confidence == "verified"
+            && match.ContainingSymbol == "M:Demo.CalleeSource.Run(Demo.CalleeTarget,Demo.ICalleeContract)");
+        Assert.DoesNotContain(result.Matches, match =>
+            match.TargetIdentity == "M:Demo.CalleeTarget.Overload(System.String)");
+        Assert.Contains(result.Matches, match =>
+            match.TargetIdentity == "M:Demo.ICalleeContract.Contract"
+            && match.Relationship == "possible_dispatch"
+            && match.Confidence == "possible");
+        Assert.Contains(result.Matches, match =>
+            match.TargetIdentity == "M:Demo.CalleeExtensions.Touch(Demo.CalleeTarget)"
+            && match.Relationship == "direct_call");
+        Assert.Contains(result.Matches, match =>
+            match.TargetIdentity == "M:Demo.CalleeTarget.Virtual"
+            && match.Relationship == "delegate"
+            && match.Confidence == "possible");
+        Assert.DoesNotContain(result.Matches, match =>
+            match.TargetIdentity == "M:Demo.CalleeSource.NestedOnly(Demo.CalleeTarget)");
+        Assert.DoesNotContain(result.Matches, match =>
+            match.TargetIdentity.Contains("Dynamic", StringComparison.Ordinal));
+        Assert.DoesNotContain(result.Variants, variant =>
+            variant.Project == "Broken/Broken.csproj");
+
+        var broken = await workspace.FindCalleesAsync(
+            "Broken.Broken.Execute", CalleeSearchScopeMode.Complete);
+        Assert.Empty(broken.Matches);
+        Assert.Contains(broken.Variants, variant =>
+            variant.Project == "Broken/Broken.csproj"
+            && variant.Status is CalleeSearchVariantStatus.Failed);
+
+        var unsupported = await workspace.FindCalleesAsync(
+            "Demo.CalleeSource", CalleeSearchScopeMode.Complete);
+        Assert.False(unsupported.TargetResolved);
+        Assert.Equal(SemanticTargetResolutionStatus.Unsupported, unsupported.TargetStatus);
+        Assert.Equal("semantic.target_unsupported", unsupported.ErrorCode);
+        Assert.Empty(unsupported.Matches);
+    }
+
     private static bool IsServiceOwner(string? owner) =>
         owner is "ServiceA" or "Demo.ServiceA" or "ServiceB" or "Demo.ServiceB";
 
@@ -298,6 +346,35 @@ public sealed class RoslynImplementationSearcherTests
                         public void Overload(int value) { }
                         public void Overload(string value) { }
                         public virtual void Virtual() { }
+                    }
+                    public interface ICalleeContract { void Contract(); }
+                    public class CalleeTarget
+                    {
+                        public void Overload(int value) { }
+                        public void Overload(string value) { }
+                        public virtual void Virtual() { }
+                    }
+                    public static class CalleeExtensions
+                    {
+                        public static void Touch(this CalleeTarget target) { }
+                    }
+                    public class CalleeSource
+                    {
+                        public void Run(CalleeTarget target, ICalleeContract contract)
+                        {
+                            target.Overload(1);
+                            contract.Contract();
+                            target.Touch();
+                            _ = new CalleeTarget();
+                            System.Action callback = target.Virtual;
+                            System.Action nested = () => NestedOnly(target);
+                            Local(target);
+                            dynamic unknown = target;
+                            unknown.Virtual();
+                        }
+
+                        private static void Local(CalleeTarget target) => NestedOnly(target);
+                        private static void NestedOnly(CalleeTarget target) => target.Virtual();
                     }
                     """);
                 await workspace.WriteProjectAsync(
@@ -410,6 +487,13 @@ public sealed class RoslynImplementationSearcherTests
         {
             var context = Context();
             return await new RoslynCallerSearcher(new WorkspacePathTraverser(), context.Ownership, context.Projects)
+                .FindAsync(target, context.Discovery, context.Selection, context.Traversal, context.Scope, scopeMode, new ProjectGraphEvaluationOptions());
+        }
+
+        public async Task<RoslynCalleeSearchResult> FindCalleesAsync(string target, CalleeSearchScopeMode scopeMode)
+        {
+            var context = Context();
+            return await new RoslynCalleeSearcher(new WorkspacePathTraverser(), context.Ownership, context.Projects)
                 .FindAsync(target, context.Discovery, context.Selection, context.Traversal, context.Scope, scopeMode, new ProjectGraphEvaluationOptions());
         }
 

@@ -363,6 +363,42 @@ internal static class CliApplication
                 result.Tokens.Any(token => token.Value == "--limit"), result.GetValue(callersFull), result.GetValue(callersFields) ?? []),
             static () => new CallerSearchCommandHandler(), host.ResponseWriter);
 
+        var calleesCommand = new Command("callees", "Find compiler-known targets invoked by one selected member.");
+        var calleesTarget = new Argument<string>("symbol") { Description = "Canonical symbol/v2 ID, fully qualified name, or declaration query." };
+        var calleesSolution = new Option<string?>("--solution") { Description = "Select one solution scope." };
+        var calleesProject = new Option<string?>("--project") { Description = "Select one project and its evaluated framework variants." };
+        var calleesIncludeTests = new Option<bool>("--include-tests");
+        var calleesIncludeGenerated = new Option<bool>("--include-generated");
+        var calleesConfiguration = new Option<string?>("--configuration") { Description = "Select one evaluated MSBuild configuration." };
+        var calleesFramework = new Option<string?>("--framework") { Description = "Select one declared target framework." };
+        var calleesProperties = new Option<string[]>("--property") { AllowMultipleArgumentsPerToken = false, Description = "Set an MSBuild name=value property; repeat for additional properties." };
+        var calleesComplete = new Option<bool>("--complete") { Description = "Analyze every supported framework variant of the target project." };
+        var calleesLimit = new Option<int>("--limit") { DefaultValueFactory = static _ => 100 };
+        var calleesFull = new Option<bool>("--full");
+        var calleesFields = CreateFieldsOption();
+        calleesCommand.Arguments.Add(calleesTarget);
+        calleesCommand.Options.Add(calleesSolution);
+        calleesCommand.Options.Add(calleesProject);
+        calleesCommand.Options.Add(calleesIncludeTests);
+        calleesCommand.Options.Add(calleesIncludeGenerated);
+        calleesCommand.Options.Add(calleesConfiguration);
+        calleesCommand.Options.Add(calleesFramework);
+        calleesCommand.Options.Add(calleesProperties);
+        calleesCommand.Options.Add(calleesComplete);
+        calleesCommand.Options.Add(calleesLimit);
+        calleesCommand.Options.Add(calleesFull);
+        calleesCommand.Options.Add(calleesFields);
+        host.RegisterCommand(searchCommand, calleesCommand, OperationPolicy.ExecutingInspection,
+            ["dnaxi search callees <symbol/v2/...>", "dnaxi search callees Demo.Service.Run --complete"]);
+        calleesCommand.BindHandler(
+            result => CalleeSearchCommandRequest.Create(
+                result.GetValue(calleesTarget)!, result.GetValue(calleesSolution), result.GetValue(calleesProject),
+                result.GetValue(calleesIncludeTests), result.GetValue(calleesIncludeGenerated),
+                result.GetValue(calleesConfiguration), result.GetValue(calleesFramework), result.GetValue(calleesProperties) ?? [],
+                result.GetValue(calleesComplete), result.GetValue(calleesLimit),
+                result.Tokens.Any(token => token.Value == "--limit"), result.GetValue(calleesFull), result.GetValue(calleesFields) ?? []),
+            static () => new CalleeSearchCommandHandler(), host.ResponseWriter);
+
         var implementationsCommand = new Command(
             "implementations",
             "Find exact compiler implementations in dependency-aware project and framework scope.");
