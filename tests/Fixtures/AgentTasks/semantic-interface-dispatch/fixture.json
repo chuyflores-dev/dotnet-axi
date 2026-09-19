@@ -1,0 +1,18 @@
+{
+  "schema": "dotnet-axi/fixture/v1",
+  "name": "agent-semantic-interface-dispatch",
+  "seed": 13044,
+  "sdk": { "version": "10.0.302", "rollForward": "latestPatch", "allowPrerelease": false },
+  "capabilities": ["language:csharp", "project:sdk-style", "workspace:multi-project"],
+  "files": [
+    { "path": "Workspace.slnx", "template": "templates/Workspace.slnx", "expandTokens": false },
+    { "path": "src/Contracts/Contracts.csproj", "template": "templates/Contracts.csproj", "expandTokens": false },
+    { "path": "src/Contracts/IMessageFormatter.cs", "template": "templates/IMessageFormatter.cs", "expandTokens": false },
+    { "path": "src/Implementations/Implementations.csproj", "template": "templates/Implementations.csproj", "expandTokens": false },
+    { "path": "src/Implementations/EmailMessageFormatter.cs", "template": "templates/EmailMessageFormatter.cs", "expandTokens": false },
+    { "path": "src/Implementations/SmsMessageFormatter.cs", "template": "templates/SmsMessageFormatter.cs", "expandTokens": false },
+    { "path": "src/Implementations/PushMessageFormatter.cs", "template": "templates/PushMessageFormatter.cs", "expandTokens": false },
+    { "path": "src/Consumers/Consumers.csproj", "template": "templates/Consumers.csproj", "expandTokens": false },
+    { "path": "src/Consumers/MessageDispatcher.cs", "template": "templates/MessageDispatcher.cs", "expandTokens": false }
+  ]
+}
