@@ -174,6 +174,28 @@
         ],
         "timeoutSeconds": 180
       }
+    },
+    {
+      "id": "rename-canonical-status-format",
+      "milestone": "0.6.0",
+      "kind": "refactor",
+      "prompt": "In Workspace.slnx, rename the Format(string) member declared by SemanticUnrelatedNames.Canonical.Contracts.IStatusFormatter to Render and update its production implementation and call site. Preserve the identically named declarations and behavior in the unrelated Archive project, along with all types, namespaces, accessibility, target frameworks, and project relationships. Change production C# source only.",
+      "repository": { "fixtureManifest": "../semantic-unrelated-names/fixture.json" },
+      "applicability": { "baseline": true, "candidate": true },
+      "allowedChanges": [
+        "src/Canonical.Contracts/IStatusFormatter.cs",
+        "src/Canonical.Implementations/StatusFormatter.cs",
+        "src/Canonical.Consumers/StatusView.cs"
+      ],
+      "validation": {
+        "files": [
+          { "template": "validators/UnrelatedNameVerifier.csproj", "path": ".benchmark-validation/Verifier.csproj" },
+          { "template": "validators/Validate.ps1", "path": ".benchmark-validation/Validate.ps1" },
+          { "template": "validators/RenameCanonicalStatusFormat.cs", "path": ".benchmark-validation/Program.cs" }
+        ],
+        "command": ["pwsh", "-NoLogo", "-NoProfile", "-NonInteractive", "-File", ".benchmark-validation/Validate.ps1"],
+        "timeoutSeconds": 180
+      }
     }
   ]
 }
