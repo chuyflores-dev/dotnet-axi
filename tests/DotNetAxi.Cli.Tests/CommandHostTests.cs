@@ -243,7 +243,13 @@ public sealed class CommandHostTests
             operation => Assert.Equal("show symbol", operation.Name),
             operation => Assert.Equal("show document", operation.Name),
             operation => Assert.Equal("context", operation.Name),
-            operation => Assert.Equal("context symbol", operation.Name),
+            operation =>
+            {
+                Assert.Equal("context symbol", operation.Name);
+                Assert.Same(
+                    OperationPolicy.ExecutingInspection,
+                    operation.Policy);
+            },
             operation => Assert.Equal("outline", operation.Name),
             operation => Assert.Equal("search syntax", operation.Name),
             operation => Assert.Equal("search syntax invocation", operation.Name),
@@ -262,7 +268,8 @@ public sealed class CommandHostTests
                 && operation.Name is not "graph projects"
                 && operation.Name is not "graph dependencies"
                 && operation.Name is not "graph cycles"
-                && operation.Name is not "graph path")
+                && operation.Name is not "graph path"
+                && operation.Name is not "context symbol")
             {
                 Assert.Same(OperationPolicy.Passive, operation.Policy);
             }

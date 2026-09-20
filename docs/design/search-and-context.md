@@ -460,31 +460,38 @@ is included, an oversized section is omitted, and later sections that fit may
 still be included. This makes selection independent of input enumeration,
 culture, and repeated-call order.
 
-The `0.5.0` slice composes declaration, owner, document, and outline evidence.
-Relationship sections such as references, callers, and callees become
-available with the corresponding `0.6.0` capabilities; requesting an
-unavailable section returns a capability correction rather than partial
-unlabeled output.
+The structural slice composes declaration, owner, document, and outline
+evidence. `0.6.0` additionally supports `references`, `implementations`,
+`overrides`, `derived`, `callers`, and `callees`. `tests` remains unavailable
+until an affected-test capability ships and returns a capability correction.
 
-`context symbol` defaults to all four `0.5.0` sections. `--include` accepts
-the canonical names `declaration`, `owner`, `document`, and `outline`; values
-may be comma-separated, supplied as multiple values, or repeated. Section
-priority follows that canonical order. Blank or unknown names are usage
-errors. The reserved relationship names `references`, `callers`, `callees`,
-and `tests` return a capability correction until their graph capabilities are
-available.
+`context symbol` defaults to the four structural sections. `--include` accepts
+the canonical names `declaration`, `owner`, `document`, `outline`,
+`references`, `implementations`, `overrides`, `derived`, `callers`, and
+`callees`; values may be comma-separated, supplied as multiple values, or
+repeated. Section priority follows that order. Blank or unknown names are
+usage errors.
 
-The command resolves the caller-selected symbol workspace scope and symbol
-identity once. Declaration detail, the resolved source document, ownership,
-and the Roslyn outline are derived from that same immutable resolution input
-and share its workspace snapshot. The document text owns the source bytes;
-the declaration and outline refer to the document and resolved declaration by
-stable ID instead of emitting the root declaration span again. Section values
-carry their resolution, confidence, and provenance while the envelope reports
-the shared snapshot, coverage, and effective scope. A shared target header
-keeps the resolved symbol identity, source location, and document reference
-available even when the declaration section is not selected or does not fit.
-That header is emitted once outside the section budget.
+The command resolves the caller-selected symbol workspace scope once. Its
+structural header, declaration detail, source document, ownership, and outline
+share that immutable input and snapshot. Requested semantic sections resolve
+the same canonical `symbol/v2` target once, then share evaluated graph,
+compiler-variant, and compiler-context lifetime across every selected
+relationship query. Each relationship section retains the underlying query's
+target status, coverage, partial reasons, scope, confidence, and provenance;
+failed or inapplicable sections never become verified empty results. The
+document text owns the source bytes; the declaration and outline refer to the
+document and resolved declaration by stable ID instead of emitting the root
+declaration span again. `relationship_evidence` emits each compiler source
+span once, and relationship rows refer to it by stable `source_span_ref`.
+`relationship_declarations` similarly emits target-correction candidates once,
+with relationship sections referring to them by stable `candidate_refs`. These
+shared tables are emitted only with an included relationship section and count
+toward the context character budget. A
+shared target header keeps the resolved symbol
+identity, source location, and document reference available even when the
+declaration section is not selected or does not fit. That header is emitted
+once outside the section budget.
 
 Each section cost is measured from the exact structured TOON list item that
 the caller receives, including the section's name, order, evidence metadata,

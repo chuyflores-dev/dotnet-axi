@@ -827,7 +827,7 @@ internal static class CliApplication
             ]);
         var contextSymbolCommand = new Command(
             "symbol",
-            "Compose declaration, owner, document, and outline evidence once.");
+            "Compose bounded structural and selected compiler-relationship evidence once.");
         var contextSymbolId = new Argument<string>("symbol");
         var contextSymbolSolution = new Option<string?>("--solution")
         {
@@ -853,7 +853,7 @@ internal static class CliApplication
         var contextSymbolSections = new Option<string[]>("--include")
         {
             AllowMultipleArgumentsPerToken = true,
-            Description = "Sections: declaration, owner, document, outline. Defaults to all four.",
+            Description = "Sections: declaration, owner, document, outline, references, implementations, overrides, derived, callers, callees. Defaults to structural sections.",
         };
         var contextSymbolMaxCharacters = new Option<int>("--max-chars")
         {
@@ -876,10 +876,10 @@ internal static class CliApplication
         host.RegisterCommand(
             contextCommand,
             contextSymbolCommand,
-            OperationPolicy.Passive,
+            OperationPolicy.ExecutingInspection,
             [
                 "dnaxi context symbol <symbol/v2/...>",
-                "dnaxi context symbol <symbol/v2/...> --include declaration,owner --max-chars 4000",
+                "dnaxi context symbol <symbol/v2/...> --include declaration,callers,callees --max-chars 4000",
                 "dnaxi context symbol <symbol/v2/...> --full",
             ]);
         contextSymbolCommand.BindHandler(

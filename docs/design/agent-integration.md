@@ -239,9 +239,10 @@ reduces errors or round trips:
 Compositions preserve transparent engine, scope, coverage, and confidence
 metadata.
 
-`context symbol` is a passive composition: it returns declaration, owner,
-document, and outline tool evidence under one caller-selected whole-section
-character budget. It does not infer intent or synthesize conclusions. Shared
-document and declaration identities make provenance and deduplication explicit,
-and every rerun or candidate continuation preserves the effective symbol
-workspace scope.
+`context symbol` composes declaration, owner, document, outline, and selected
+compiler-relationship evidence under one caller-selected whole-section
+character budget. Relationship sections are executing inspections because
+Roslyn/MSBuild loading may run repository design-time targets. It does not
+infer intent or synthesize conclusions. Shared document and declaration
+identities make provenance and deduplication explicit, and every rerun or
+candidate continuation preserves the effective symbol workspace scope.
