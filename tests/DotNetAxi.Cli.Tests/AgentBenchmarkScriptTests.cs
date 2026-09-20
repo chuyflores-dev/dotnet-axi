@@ -44,6 +44,8 @@ public sealed class AgentBenchmarkScriptTests
             StringComparison.Ordinal);
         Assert.Contains("rename-message-extension-format", result.Output,
             StringComparison.Ordinal);
+        Assert.Contains("rename-partial-linked-format", result.Output,
+            StringComparison.Ordinal);
     }
 
     [Fact]
@@ -81,9 +83,9 @@ public sealed class AgentBenchmarkScriptTests
             .EnumerateArray()
             .ToArray();
 
-        Assert.Equal(9, tasks.Length);
+        Assert.Equal(10, tasks.Length);
         Assert.Equal(
-            ["refactor", "feature", "refactor", "refactor", "refactor", "refactor", "refactor", "refactor", "refactor"],
+            ["refactor", "feature", "refactor", "refactor", "refactor", "refactor", "refactor", "refactor", "refactor", "refactor"],
             tasks.Select(static task =>
                 task.GetProperty("kind").GetString()!).ToArray());
         var expectedChanges = new Dictionary<string, string[]>(
@@ -130,6 +132,12 @@ public sealed class AgentBenchmarkScriptTests
             ["src/Models/Formatters.cs", "src/Consumers/FormatterPresenter.cs"],
             ["rename-message-extension-format"] =
             ["src/Models/Formatters.cs", "src/Consumers/FormatView.cs"],
+            ["rename-partial-linked-format"] =
+            [
+                "src/Shared/LinkedFormatter.Format.cs",
+                "src/Primary/PrimaryView.cs",
+                "src/Secondary/SecondaryView.cs",
+            ],
         };
         Assert.All(
             tasks,
@@ -821,6 +829,150 @@ public sealed class AgentBenchmarkScriptTests
             await File.WriteAllTextAsync(view, correctView);
         }
         finally { Directory.Delete(root,recursive:true); }
+    }
+
+    [Fact]
+    public async Task Partial_linked_ownership_oracle_rejects_bad_states_and_accepts_exact_change()
+    {
+        var root = await MaterializeSemanticTaskAsync(
+            "semantic-partial-linked-ownership",
+            "RenamePartialLinkedFormat.cs",
+            "PartialLinkedOwnershipVerifier.csproj");
+        try
+        {
+            var original = await RunValidatorAsync(root);
+            Assert.NotEqual(0, original.ExitCode);
+            Assert.Contains("semantic-oracle: rejected", original.Output);
+
+            var sharedPath = Path.Combine(root, "src/Shared/LinkedFormatter.Format.cs");
+            var corePath = Path.Combine(root, "src/Shared/LinkedFormatter.Core.cs");
+            var primaryPath = Path.Combine(root, "src/Primary/PrimaryView.cs");
+            var secondaryPath = Path.Combine(root, "src/Secondary/SecondaryView.cs");
+            var originalShared = await File.ReadAllTextAsync(sharedPath);
+            var originalCore = await File.ReadAllTextAsync(corePath);
+            var originalPrimary = await File.ReadAllTextAsync(primaryPath);
+            var originalSecondary = await File.ReadAllTextAsync(secondaryPath);
+
+            await File.WriteAllTextAsync(sharedPath, originalShared.Replace(
+                "public string Format(string", "public string Render(string", StringComparison.Ordinal));
+            await File.WriteAllTextAsync(primaryPath, originalPrimary.Replace(
+                "formatter.Format(value)", "formatter.Render(value)", StringComparison.Ordinal));
+            await File.WriteAllTextAsync(secondaryPath, originalSecondary.Replace(
+                "formatter.Format(value)", "formatter.Render(value)", StringComparison.Ordinal));
+            var correctShared = await File.ReadAllTextAsync(sharedPath);
+            var correctPrimary = await File.ReadAllTextAsync(primaryPath);
+            var correctSecondary = await File.ReadAllTextAsync(secondaryPath);
+            var correct = await RunValidatorAsync(root);
+            Assert.True(correct.ExitCode == 0, correct.Output);
+            Assert.Contains("semantic-oracle: verified", correct.Output);
+
+            await File.WriteAllTextAsync(sharedPath, """
+                namespace SemanticPartialLinked;
+                public sealed class LinkedFormatter
+                {
+                    private int callCount;
+                    public int CallCount => callCount;
+                    private string Record(string value) => $"linked:{value}:{++callCount}";
+                    public string Format(int value) => $"number:{value}";
+                    public string Render(string value) => Record(value);
+                }
+                """);
+            await File.WriteAllTextAsync(corePath, "namespace SemanticPartialLinked;");
+            var removedPartial = await RunValidatorAsync(root);
+            Assert.NotEqual(0, removedPartial.ExitCode);
+            Assert.Contains("semantic-oracle: rejected", removedPartial.Output);
+            await File.WriteAllTextAsync(sharedPath, correctShared);
+            await File.WriteAllTextAsync(corePath, originalCore);
+
+            await File.WriteAllTextAsync(sharedPath, "// public sealed partial class LinkedFormatter");
+            await File.WriteAllTextAsync(primaryPath, """
+                using SemanticPartialLinked;
+                namespace SemanticPartialLinked.Primary
+                {
+                    public sealed class PrimaryView
+                    {
+                        public string Create(LinkedFormatter formatter, string value) => $"primary:{formatter.Render(value)}|{formatter.Format(7)}";
+                    }
+                }
+                namespace SemanticPartialLinked
+                {
+                    public sealed partial class LinkedFormatter
+                    {
+                        public string Render(string value) => Record(value);
+                    }
+                }
+                """);
+            await File.WriteAllTextAsync(secondaryPath, """
+                using SemanticPartialLinked;
+                namespace SemanticPartialLinked.Secondary
+                {
+                    public sealed class SecondaryView
+                    {
+                        public string Create(LinkedFormatter formatter, string value) => $"secondary:{formatter.Render(value)}|{formatter.Format(7)}";
+                    }
+                }
+                namespace SemanticPartialLinked
+                {
+                    public sealed partial class LinkedFormatter
+                    {
+                        public string Render(string value) => Record(value);
+                    }
+                }
+                """);
+            var relocatedRender = await RunValidatorAsync(root);
+            Assert.NotEqual(0, relocatedRender.ExitCode);
+            Assert.Contains("semantic-oracle: rejected", relocatedRender.Output);
+            await File.WriteAllTextAsync(sharedPath, correctShared);
+            await File.WriteAllTextAsync(primaryPath, correctPrimary);
+            await File.WriteAllTextAsync(secondaryPath, correctSecondary);
+
+            await File.WriteAllTextAsync(corePath, originalCore.Replace(
+                "public string Format(int", "public string Render(int", StringComparison.Ordinal));
+            await File.WriteAllTextAsync(primaryPath, correctPrimary.Replace(
+                "formatter.Format(7)", "formatter.Render(7)", StringComparison.Ordinal));
+            await File.WriteAllTextAsync(secondaryPath, correctSecondary.Replace(
+                "formatter.Format(7)", "formatter.Render(7)", StringComparison.Ordinal));
+            var wrongTarget = await RunValidatorAsync(root);
+            Assert.NotEqual(0, wrongTarget.ExitCode);
+            Assert.Contains("semantic-oracle: rejected", wrongTarget.Output);
+            await File.WriteAllTextAsync(corePath, originalCore);
+            await File.WriteAllTextAsync(primaryPath, correctPrimary);
+            await File.WriteAllTextAsync(secondaryPath, correctSecondary);
+
+            await File.WriteAllTextAsync(sharedPath, correctShared.Replace(
+                "=> Record(value);\n}",
+                "=> Record(value);\n    public string Format(string value) => Render(value);\n}",
+                StringComparison.Ordinal));
+            await File.WriteAllTextAsync(secondaryPath, correctSecondary.Replace(
+                "formatter.Render(value)", "formatter.Format(value)", StringComparison.Ordinal));
+            var incompleteOwner = await RunValidatorAsync(root);
+            Assert.NotEqual(0, incompleteOwner.ExitCode);
+            Assert.Contains("semantic-oracle: rejected", incompleteOwner.Output);
+            await File.WriteAllTextAsync(sharedPath, correctShared);
+            await File.WriteAllTextAsync(secondaryPath, correctSecondary);
+
+            await File.WriteAllTextAsync(primaryPath, correctPrimary.Replace(
+                "formatter.Render(value)", "\"linked:\" + value + \":1\"", StringComparison.Ordinal));
+            var bypassedCall = await RunValidatorAsync(root);
+            Assert.NotEqual(0, bypassedCall.ExitCode);
+            Assert.Contains("semantic-oracle: rejected", bypassedCall.Output);
+            await File.WriteAllTextAsync(primaryPath, correctPrimary);
+
+            await File.WriteAllTextAsync(corePath, originalCore.Replace(
+                "number:{value}", "changed:{value}", StringComparison.Ordinal));
+            var changedOverload = await RunValidatorAsync(root);
+            Assert.NotEqual(0, changedOverload.ExitCode);
+            Assert.Contains("semantic-oracle: rejected", changedOverload.Output);
+            await File.WriteAllTextAsync(corePath, originalCore.Replace(
+                "linked:{value}:{++callCount}", "changed:{value}", StringComparison.Ordinal));
+            var changedBehavior = await RunValidatorAsync(root);
+            Assert.NotEqual(0, changedBehavior.ExitCode);
+            Assert.Contains("semantic-oracle: rejected", changedBehavior.Output);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
     }
 
     [Fact]

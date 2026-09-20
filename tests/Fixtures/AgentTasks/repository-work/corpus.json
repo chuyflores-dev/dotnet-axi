@@ -283,6 +283,13 @@
       "repository":{"fixtureManifest":"../semantic-extension-methods/fixture.json"},"applicability":{"baseline":true,"candidate":true},
       "allowedChanges":["src/Models/Formatters.cs","src/Consumers/FormatView.cs"],
       "validation":{"files":[{"template":"validators/ExtensionMethodVerifier.csproj","path":".benchmark-validation/Verifier.csproj"},{"template":"validators/Validate.ps1","path":".benchmark-validation/Validate.ps1"},{"template":"validators/RenameExtensionFormat.cs","path":".benchmark-validation/Program.cs"}],"command":["pwsh","-NoLogo","-NoProfile","-NonInteractive","-File",".benchmark-validation/Validate.ps1"],"timeoutSeconds":180}
+    },
+    {
+      "id":"rename-partial-linked-format","milestone":"0.6.0","kind":"refactor",
+      "prompt":"In Workspace.slnx, rename the Format(string) member declared by the SemanticPartialLinked.LinkedFormatter partial declaration to Render and update every production call site in the solution that resolves to that member. Preserve the linked physical source file and both of its project owners, the partial type, the Format(int) overload, and the primary and secondary observable outputs, along with all types, namespaces, accessibility, target frameworks, and project relationships. Change production C# source only.",
+      "repository":{"fixtureManifest":"../semantic-partial-linked-ownership/fixture.json"},"applicability":{"baseline":true,"candidate":true},
+      "allowedChanges":["src/Shared/LinkedFormatter.Format.cs","src/Primary/PrimaryView.cs","src/Secondary/SecondaryView.cs"],
+      "validation":{"files":[{"template":"validators/PartialLinkedOwnershipVerifier.csproj","path":".benchmark-validation/Verifier.csproj"},{"template":"validators/Validate.ps1","path":".benchmark-validation/Validate.ps1"},{"template":"validators/RenamePartialLinkedFormat.cs","path":".benchmark-validation/Program.cs"}],"command":["pwsh","-NoLogo","-NoProfile","-NonInteractive","-File",".benchmark-validation/Validate.ps1"],"timeoutSeconds":180}
     }
   ]
 }
