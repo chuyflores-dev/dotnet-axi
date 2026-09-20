@@ -184,6 +184,14 @@ Rows are ordered deterministically by stable identity. A failed evaluator or
 an omitted/unsupported project keeps response coverage partial and cannot be
 reported as a verified empty graph.
 
+Graph evidence snapshots include a deterministic fingerprint of the evaluated
+project variants, relationships, package relationships, selected properties,
+runtime identity, and evaluation failures. Therefore a relationship introduced
+or removed through an imported MSBuild file changes the graph snapshot even
+when the selected project file itself is unchanged. Impact composes that graph
+fingerprint with its semantic target evidence so affected-project conclusions
+cannot retain a stale snapshot.
+
 `graph cycles` traverses only directed evaluated `project-reference`
 relationships. It emits each simple directed cycle once by choosing a stable
 rotation, while retaining an opposite direction and overlapping cycles as
