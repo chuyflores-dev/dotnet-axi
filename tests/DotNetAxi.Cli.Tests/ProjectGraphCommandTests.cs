@@ -226,6 +226,37 @@ public sealed class ProjectGraphCommandTests
     }
 
     [Fact]
+    public async Task Path_recovery_replays_a_twelve_edge_query()
+    {
+        using var workspace = await TestWorkspace.CreateAsync();
+        await workspace.CreatePathChainAsync(12);
+
+        var bounded = await workspace.RunAsync(
+            "graph", "path",
+            "--from", "Chain/P0/P0.csproj",
+            "--to", "Chain/P12/P12.csproj",
+            "--solution", "Chain.slnx",
+            "--max-depth", "12",
+            "--limit", "0");
+        var recovery = await workspace.RunAsync(
+            "graph", "path",
+            "--from", "Chain/P0/P0.csproj",
+            "--to", "Chain/P12/P12.csproj",
+            "--solution", "Chain.slnx",
+            "--max-depth", "12",
+            "--full");
+
+        Assert.True(bounded.ExitCode == 0, bounded.Output);
+        Assert.Contains("retrieval_command: dnaxi graph path", bounded.Output);
+        Assert.Contains("--solution 'Chain.slnx'", bounded.Output);
+        Assert.Contains("--max-depth 12", bounded.Output);
+        Assert.Contains("--full", bounded.Output);
+        Assert.DoesNotContain("--limit", bounded.Output);
+        Assert.True(recovery.ExitCode == 0, recovery.Output);
+        Assert.Contains("paths:\n  count: 1", recovery.Output);
+    }
+
+    [Fact]
     public async Task Impact_accepts_an_evaluated_project_target()
     {
         using var workspace = await TestWorkspace.CreateAsync();
@@ -296,7 +327,7 @@ public sealed class ProjectGraphCommandTests
             full: false);
 
         Assert.Equal(
-            "dnaxi graph path --from 'App.csproj' --to 'Direct'\\''ly/Target.csproj' --framework 'net9.0' --property 'Flavor=quoted'",
+            "dnaxi graph path --from 'App.csproj' --to 'Direct'\\''ly/Target.csproj' --max-depth 10 --framework 'net9.0' --property 'Flavor=quoted'",
             ProjectPathCommandHandler.RetrievalCommand(request));
     }
 
@@ -406,6 +437,30 @@ public sealed class ProjectGraphCommandTests
             => await ProjectGraphCommandTests.RunAsync(Root, arguments);
 
         public async Task RestoreAsync(string flavor)
+            => await RestoreProjectAsync("App.csproj", flavor);
+
+        public async Task CreatePathChainAsync(int edgeCount)
+        {
+            var projects = new List<string>();
+            for (var index = 0; index <= edgeCount; index++)
+            {
+                var path = $"Chain/P{index}/P{index}.csproj";
+                projects.Add(path);
+                var reference = index == edgeCount
+                    ? string.Empty
+                    : $"<ItemGroup><ProjectReference Include=\"../P{index + 1}/P{index + 1}.csproj\" /></ItemGroup>";
+                await WriteAsync(
+                    path,
+                    $"<Project Sdk=\"Microsoft.NET.Sdk\"><PropertyGroup><TargetFramework>net10.0</TargetFramework></PropertyGroup>{reference}</Project>");
+            }
+
+            await WriteAsync(
+                "Chain.slnx",
+                "<Solution>" + string.Concat(projects.Select(path => $"<Project Path=\"{path}\" />")) + "</Solution>");
+            await RestoreProjectAsync("Chain/P0/P0.csproj", flavor: null);
+        }
+
+        private async Task RestoreProjectAsync(string projectPath, string? flavor)
         {
             var start = new System.Diagnostics.ProcessStartInfo
             {
@@ -416,8 +471,11 @@ public sealed class ProjectGraphCommandTests
                 UseShellExecute = false,
             };
             start.ArgumentList.Add("restore");
-            start.ArgumentList.Add("App.csproj");
-            start.ArgumentList.Add("-p:Flavor=" + flavor);
+            start.ArgumentList.Add(projectPath);
+            if (flavor is not null)
+            {
+                start.ArgumentList.Add("-p:Flavor=" + flavor);
+            }
             start.ArgumentList.Add("--ignore-failed-sources");
             start.ArgumentList.Add("--nologo");
             start.ArgumentList.Add("--verbosity");

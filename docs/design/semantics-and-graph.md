@@ -217,10 +217,12 @@ deterministic safety cap. Hitting that cap reports an unknown total and the
 cap in path detection metadata; callers narrow the selected graph before
 retrying. A depth-limited no-path result is not a proof of absence; no path is
 verified only when graph coverage is complete and traversal exhausted before
-the depth bound. Paths retain their relationship provenance, while failures
-and variant coverage are reported alongside partial results. Code-entity and
-mixed-edge path traversal remain deferred until their relationship composition
-has accepted authority.
+the depth bound. A bounded path result's `--full` recovery preserves the
+selected `--max-depth` and graph selectors while omitting the display-only
+`--limit`, so it replays the same traversal scope. Paths retain their
+relationship provenance, while failures and variant coverage are reported
+alongside partial results. Code-entity and mixed-edge path traversal remain
+deferred until their relationship composition has accepted authority.
 
 `graph impact <entity>` is an executing inspection that produces bounded static
 change evidence. For a code entity, it resolves the exact semantic target once

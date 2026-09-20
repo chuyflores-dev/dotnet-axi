@@ -64,7 +64,8 @@ internal sealed class ProjectPathCommandHandler : ICommandHandler<ProjectPathCom
 
     internal static string RetrievalCommand(ProjectPathCommandRequest request)
     {
-        var command = "dnaxi graph path --from " + Quote(request.From) + " --to " + Quote(request.To);
+        var command = "dnaxi graph path --from " + Quote(request.From) + " --to " + Quote(request.To)
+            + " --max-depth " + request.MaxDepth.ToString(System.Globalization.CultureInfo.InvariantCulture);
         var graph = request.GraphRequest;
         if (graph.Solution is not null)
         {
