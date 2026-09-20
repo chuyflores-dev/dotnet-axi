@@ -2,8 +2,8 @@
 
 ## Outcome
 
-`graph impact` summarizes the statically supported change impact of one
-project or code entity.
+`graph impact` summarizes bounded, statically supported change impact of one
+evaluated project or exact code entity.
 
 ## Design
 
@@ -11,14 +11,21 @@ project or code entity.
 
 ## Boundary
 
-Candidate tests and convention-based effects remain heuristics with evidence;
-impact does not claim complete runtime knowledge.
+Code targets resolve once and compose supported references, implementations,
+callers, and callees through one operation-scoped semantic session. Project
+targets use evaluated project-reference evidence only. Candidate tests are
+heuristics selected only from affected projects that carry an evaluated known
+test-framework package reference; their selection reason is emitted. Impact
+does not claim complete runtime knowledge.
 
 ## Acceptance
 
 - Output summarizes affected projects, documents, candidate tests,
-  public-surface impact, important paths, and confidence.
-- Limits and partial coverage state what was not expanded.
+  public-surface impact, important reverse project paths, and the supported
+  semantic relationships for a code target.
+- Project targets keep code relationship and public-surface sections explicitly
+  inapplicable rather than synthesizing code evidence.
+- Limits, depth bounds, and partial coverage state what was not expanded.
 
 ## Verification
 

@@ -695,6 +695,31 @@ internal static class CliApplication
             result.GetValue(graphPathProperties) ?? [], result.GetValue(graphPathLimit), result.Tokens.Any(token => token.Value == "--limit"), result.GetValue(graphPathFull)),
             static () => new ProjectPathCommandHandler(), host.ResponseWriter);
 
+        var graphImpactCommand = new Command("impact", "Summarize bounded static impact for one exact code target.");
+        var graphImpactTarget = new Argument<string>("entity") { Description = "A canonical symbol/v2 ID or exact declaration query." };
+        var graphImpactSolution = new Option<string?>("--solution");
+        var graphImpactProject = new Option<string?>("--project");
+        var graphImpactPaths = new Option<string[]>("--path") { AllowMultipleArgumentsPerToken = false };
+        var graphImpactIncludeTests = new Option<bool>("--include-tests");
+        var graphImpactIncludeGenerated = new Option<bool>("--include-generated");
+        var graphImpactConfiguration = new Option<string?>("--configuration");
+        var graphImpactFramework = new Option<string?>("--framework");
+        var graphImpactProperties = new Option<string[]>("--property") { AllowMultipleArgumentsPerToken = false };
+        var graphImpactComplete = new Option<bool>("--complete");
+        var graphImpactDepth = new Option<int>("--max-depth") { DefaultValueFactory = static _ => 10 };
+        var graphImpactLimit = new Option<int>("--limit") { DefaultValueFactory = static _ => 100 };
+        var graphImpactFull = new Option<bool>("--full");
+        graphImpactCommand.Arguments.Add(graphImpactTarget);
+        foreach (var option in new Option[] { graphImpactSolution, graphImpactProject, graphImpactPaths, graphImpactIncludeTests, graphImpactIncludeGenerated, graphImpactConfiguration, graphImpactFramework, graphImpactProperties, graphImpactComplete, graphImpactDepth, graphImpactLimit, graphImpactFull }) graphImpactCommand.Options.Add(option);
+        host.RegisterCommand(graphCommand, graphImpactCommand, OperationPolicy.ExecutingInspection,
+            ["dnaxi graph impact Namespace.Service.Run", "dnaxi graph impact <symbol/v2/...> --complete --max-depth 4"]);
+        graphImpactCommand.BindHandler(result => ImpactCommandRequest.Create(
+            result.GetValue(graphImpactTarget)!, result.GetValue(graphImpactSolution), result.GetValue(graphImpactProject),
+            result.GetValue(graphImpactIncludeTests), result.GetValue(graphImpactIncludeGenerated), result.GetValue(graphImpactConfiguration),
+            result.GetValue(graphImpactFramework), result.GetValue(graphImpactProperties) ?? [], result.GetValue(graphImpactPaths) ?? [], result.GetValue(graphImpactComplete),
+            result.GetValue(graphImpactDepth), result.GetValue(graphImpactLimit), result.Tokens.Any(token => token.Value == "--limit"), result.GetValue(graphImpactFull)),
+            static () => new ImpactCommandHandler(), host.ResponseWriter);
+
         var showCommand = new Command(
             "show",
             "Show bounded detail for one stable evidence identity or document.");

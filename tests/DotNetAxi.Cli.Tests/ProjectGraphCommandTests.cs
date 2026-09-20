@@ -174,6 +174,28 @@ public sealed class ProjectGraphCommandTests
     }
 
     [Fact]
+    public async Task Impact_accepts_an_evaluated_project_target()
+    {
+        using var workspace = await TestWorkspace.CreateAsync();
+
+        var result = await workspace.RunAsync(
+            "graph", "impact", "Library/Library.csproj",
+            "--property", "Flavor=conditional",
+            "--framework", "net9.0",
+            "--full");
+
+        Assert.True(result.ExitCode == 0, result.Output);
+        Assert.Contains("command: graph impact", result.Output);
+        Assert.Contains("target_id: project/v1/", result.Output);
+        Assert.Contains("affected_projects:", result.Output);
+        Assert.Contains("App.csproj", result.Output);
+        Assert.Contains("candidate_tests:", result.Output);
+        Assert.Contains("xunit", result.Output);
+        Assert.Contains("applicability: not_applicable", result.Output);
+        Assert.Contains("not applicable to a project target", result.Output);
+    }
+
+    [Fact]
     public void Path_retrieval_command_escapes_quoted_endpoints()
     {
         var request = ProjectPathCommandRequest.Create(

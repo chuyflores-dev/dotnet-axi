@@ -27,6 +27,56 @@ public sealed class ReferenceSearchCommandTests
     }
 
     [Fact]
+    public async Task Graph_impact_composes_bounded_semantic_and_project_evidence()
+    {
+        using var workspace = await TestWorkspace.CreateAsync();
+
+        var result = await workspace.RunAsync(
+            "graph",
+            "impact",
+            "Demo.Service.Run",
+            "--full");
+
+        Assert.True(result.ExitCode == 0, result.Output);
+        Assert.Contains("command: graph impact", result.Output);
+        Assert.Contains("target_id: symbol/v2/", result.Output);
+        Assert.Contains("public_surface:", result.Output);
+        Assert.Contains("affected_projects:", result.Output);
+        Assert.Contains("affected_documents:", result.Output);
+        Assert.Contains("relationships:", result.Output);
+        Assert.Contains("references:", result.Output);
+        Assert.Contains("callers:", result.Output);
+        Assert.Contains("callees:", result.Output);
+        Assert.Contains("expansion:", result.Output);
+        Assert.Contains("Code.cs", result.Output);
+    }
+
+    [Fact]
+    public async Task Graph_impact_bounds_output_and_preserves_retrieval_scope()
+    {
+        using var workspace = await TestWorkspace.CreateAsync();
+
+        var result = await workspace.RunAsync(
+            "graph", "impact", "Demo.Service.Run",
+            "--path", "Code.cs",
+            "--configuration", "Release",
+            "--framework", "net10.0",
+            "--property", "Flavor=impact",
+            "--max-depth", "3",
+            "--limit", "0");
+
+        Assert.True(result.ExitCode == 0, result.Output);
+        Assert.Contains("truncated: true", result.Output);
+        Assert.Contains("dnaxi graph impact 'Demo.Service.Run'", result.Output);
+        Assert.Contains("--path 'Code.cs'", result.Output);
+        Assert.Contains("--configuration 'Release'", result.Output);
+        Assert.Contains("--framework 'net10.0'", result.Output);
+        Assert.Contains("--property 'Flavor=impact'", result.Output);
+        Assert.Contains("--max-depth 3 --full", result.Output);
+        Assert.DoesNotContain("--limit 0", result.Output);
+    }
+
+    [Fact]
     public async Task Reference_search_bounds_output_and_preserves_complete_retrieval()
     {
         using var workspace = await TestWorkspace.CreateAsync();
