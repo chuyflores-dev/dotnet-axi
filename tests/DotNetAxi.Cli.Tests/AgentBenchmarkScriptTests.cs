@@ -48,6 +48,8 @@ public sealed class AgentBenchmarkScriptTests
             StringComparison.Ordinal);
         Assert.Contains("rename-conditional-format", result.Output,
             StringComparison.Ordinal);
+        Assert.Contains("rename-impact-format", result.Output,
+            StringComparison.Ordinal);
     }
 
     [Fact]
@@ -85,9 +87,9 @@ public sealed class AgentBenchmarkScriptTests
             .EnumerateArray()
             .ToArray();
 
-        Assert.Equal(11, tasks.Length);
+        Assert.Equal(12, tasks.Length);
         Assert.Equal(
-            ["refactor", "feature", "refactor", "refactor", "refactor", "refactor", "refactor", "refactor", "refactor", "refactor", "refactor"],
+            ["refactor", "feature", "refactor", "refactor", "refactor", "refactor", "refactor", "refactor", "refactor", "refactor", "refactor", "refactor"],
             tasks.Select(static task =>
                 task.GetProperty("kind").GetString()!).ToArray());
         var expectedChanges = new Dictionary<string, string[]>(
@@ -142,6 +144,12 @@ public sealed class AgentBenchmarkScriptTests
             ],
             ["rename-conditional-format"] =
             ["src/Models/ConditionalFormatter.cs", "src/Consumers/ConditionalView.cs"],
+            ["rename-impact-format"] =
+            [
+                "src/Models/ImpactFormatter.cs",
+                "src/Consumers/ImpactView.cs",
+                "tests/CandidateTests/ImpactFormatterTests.cs",
+            ],
         };
         Assert.All(
             tasks,
@@ -202,6 +210,47 @@ public sealed class AgentBenchmarkScriptTests
             manifest.RootElement.GetProperty("files").EnumerateArray(),
             static file => file.GetProperty("path").GetString()!
                 .StartsWith(".benchmark-validation/", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Impact_task_is_neutral_and_declares_candidate_test_evidence()
+    {
+        var corpusPath = Path.Combine(
+            RepositoryRoot(),
+            "tests",
+            "Fixtures",
+            "AgentTasks",
+            "repository-work",
+            "corpus.json");
+        using var corpus = JsonDocument.Parse(await File.ReadAllTextAsync(
+            corpusPath));
+        var task = corpus.RootElement.GetProperty("tasks")
+            .EnumerateArray()
+            .Single(task => task.GetProperty("id").GetString() ==
+                "rename-impact-format");
+        var prompt = task.GetProperty("prompt").GetString()!;
+        Assert.DoesNotContain("dnaxi", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("graph impact", prompt,
+            StringComparison.OrdinalIgnoreCase);
+
+        var manifestPath = Path.GetFullPath(Path.Combine(
+            Path.GetDirectoryName(corpusPath)!,
+            task.GetProperty("repository").GetProperty("fixtureManifest")
+                .GetString()!));
+        var fixtureDirectory = Path.GetDirectoryName(manifestPath)!;
+        using var manifest = JsonDocument.Parse(await File.ReadAllTextAsync(
+            manifestPath));
+        var candidateProject = manifest.RootElement.GetProperty("files")
+            .EnumerateArray()
+            .Single(file => file.GetProperty("path").GetString() ==
+                "tests/CandidateTests/CandidateTests.csproj");
+        var candidateProjectSource = await File.ReadAllTextAsync(Path.Combine(
+            fixtureDirectory,
+            candidateProject.GetProperty("template").GetString()!));
+        Assert.Contains("PackageReference Include=\"xunit\" Version=\"2.9.3\"",
+            candidateProjectSource, StringComparison.Ordinal);
+        Assert.Contains("ProjectReference Include=\"../../src/Models/Models.csproj\"",
+            candidateProjectSource, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -1052,6 +1101,130 @@ public sealed class AgentBenchmarkScriptTests
             var changedLegacyBehavior = await RunValidatorAsync(root);
             Assert.NotEqual(0, changedLegacyBehavior.ExitCode);
             Assert.Contains("semantic-oracle: rejected", changedLegacyBehavior.Output);
+        }
+        finally { Directory.Delete(root, recursive: true); }
+    }
+
+    [Fact]
+    public async Task Impact_oracle_rejects_bad_states_and_accepts_exact_change()
+    {
+        var root = await MaterializeSemanticTaskAsync(
+            "semantic-impact",
+            "RenameImpactFormat.cs",
+            "ImpactVerifier.csproj");
+        try
+        {
+            var original = await RunValidatorAsync(root);
+            Assert.NotEqual(0, original.ExitCode);
+            Assert.Contains("semantic-oracle: rejected", original.Output);
+            var modelPath = Path.Combine(root, "src/Models/ImpactFormatter.cs");
+            var viewPath = Path.Combine(root, "src/Consumers/ImpactView.cs");
+            var testPath = Path.Combine(root, "tests/CandidateTests/ImpactFormatterTests.cs");
+            var originalModel = await File.ReadAllTextAsync(modelPath);
+            var originalView = await File.ReadAllTextAsync(viewPath);
+            var originalTest = await File.ReadAllTextAsync(testPath);
+            await File.WriteAllTextAsync(modelPath,
+                originalModel.Replace("Format(string", "Render(string", StringComparison.Ordinal));
+            await File.WriteAllTextAsync(viewPath,
+                originalView.Replace("formatter.Format(value)", "formatter.Render(value)", StringComparison.Ordinal));
+            await File.WriteAllTextAsync(testPath,
+                originalTest.Replace("formatter.Format(value)", "formatter.Render(value)", StringComparison.Ordinal));
+            var correctModel = await File.ReadAllTextAsync(modelPath);
+            var correctView = await File.ReadAllTextAsync(viewPath);
+            var correctTest = await File.ReadAllTextAsync(testPath);
+            var correct = await RunValidatorAsync(root);
+            Assert.True(correct.ExitCode == 0, correct.Output);
+
+            await File.WriteAllTextAsync(viewPath,
+                "using SemanticImpact.Models;\nnamespace SemanticImpact.Consumers;\npublic sealed class ImpactView\n{\n    public string Create(ImpactFormatter formatter, string value)\n    {\n        var rendered = formatter.Render(value);\n        return $\"{rendered}|{formatter.Format(7)}\";\n    }\n}\n");
+            var localProductionResult = await RunValidatorAsync(root);
+            Assert.True(localProductionResult.ExitCode == 0, localProductionResult.Output);
+            await File.WriteAllTextAsync(viewPath, correctView);
+
+            await File.WriteAllTextAsync(testPath,
+                "using SemanticImpact.Models;\nnamespace SemanticImpact.CandidateTests;\npublic static class ImpactFormatterTests\n{\n    public static string Verify(ImpactFormatter formatter, string value)\n    {\n        var rendered = formatter.Render(value);\n        return $\"{rendered}|{formatter.Format(7)}\";\n    }\n}\n");
+            var localCandidateTestResult = await RunValidatorAsync(root);
+            Assert.True(localCandidateTestResult.ExitCode == 0, localCandidateTestResult.Output);
+            await File.WriteAllTextAsync(testPath, correctTest);
+
+            await File.WriteAllTextAsync(modelPath,
+                correctModel.Replace("public string Format(int", "public string Render(int", StringComparison.Ordinal));
+            await File.WriteAllTextAsync(viewPath,
+                correctView.Replace("formatter.Format(7)", "formatter.Render(7)", StringComparison.Ordinal));
+            await File.WriteAllTextAsync(testPath,
+                correctTest.Replace("formatter.Format(7)", "formatter.Render(7)", StringComparison.Ordinal));
+            var wrongTarget = await RunValidatorAsync(root);
+            Assert.NotEqual(0, wrongTarget.ExitCode);
+            Assert.Contains("semantic-oracle: rejected", wrongTarget.Output);
+            await File.WriteAllTextAsync(modelPath, correctModel);
+            await File.WriteAllTextAsync(viewPath, correctView);
+            await File.WriteAllTextAsync(testPath, correctTest);
+
+            await File.WriteAllTextAsync(testPath,
+                correctTest.Replace("formatter.Render(value)", "formatter.Format(value)", StringComparison.Ordinal));
+            var incompleteCandidateTest = await RunValidatorAsync(root);
+            Assert.NotEqual(0, incompleteCandidateTest.ExitCode);
+            await File.WriteAllTextAsync(testPath, correctTest);
+
+            await File.WriteAllTextAsync(viewPath,
+                correctView.Replace("formatter.Render(value)", "\"impact:\" + value", StringComparison.Ordinal));
+            var bypassedProductionCallSite = await RunValidatorAsync(root);
+            Assert.NotEqual(0, bypassedProductionCallSite.ExitCode);
+            Assert.Contains("semantic-oracle: rejected", bypassedProductionCallSite.Output);
+            await File.WriteAllTextAsync(viewPath, correctView);
+
+            await File.WriteAllTextAsync(viewPath,
+                "using SemanticImpact.Models;\nnamespace SemanticImpact.Consumers;\npublic sealed class ImpactView\n{\n    public string Create(ImpactFormatter formatter, string value)\n    {\n        _ = formatter.Render(value);\n        return $\"impact:{value}:1|{formatter.Format(7)}\";\n    }\n}\n");
+            var ignoredProductionResult = await RunValidatorAsync(root);
+            Assert.NotEqual(0, ignoredProductionResult.ExitCode);
+            Assert.Contains("semantic-oracle: rejected", ignoredProductionResult.Output);
+            await File.WriteAllTextAsync(viewPath, correctView);
+
+            await File.WriteAllTextAsync(viewPath,
+                "using SemanticImpact.Models;\nnamespace SemanticImpact.Consumers;\npublic sealed class ImpactView\n{\n    private int callCount;\n\n    public string Create(ImpactFormatter formatter, string value)\n    {\n        _ = formatter.Render(value);\n        return $\"impact:{value}:{++callCount}|{formatter.Format(7)}\";\n    }\n}\n");
+            var reproducedProductionResult = await RunValidatorAsync(root);
+            Assert.NotEqual(0, reproducedProductionResult.ExitCode);
+            Assert.Contains("semantic-oracle: rejected", reproducedProductionResult.Output);
+            await File.WriteAllTextAsync(viewPath, correctView);
+
+            await File.WriteAllTextAsync(testPath,
+                correctTest.Replace("formatter.Render(value)", "\"impact:\" + value", StringComparison.Ordinal));
+            var bypassedCandidateTestCallSite = await RunValidatorAsync(root);
+            Assert.NotEqual(0, bypassedCandidateTestCallSite.ExitCode);
+            Assert.Contains("semantic-oracle: rejected", bypassedCandidateTestCallSite.Output);
+            await File.WriteAllTextAsync(testPath, correctTest);
+
+            await File.WriteAllTextAsync(testPath,
+                "using SemanticImpact.Models;\nnamespace SemanticImpact.CandidateTests;\npublic static class ImpactFormatterTests\n{\n    public static string Verify(ImpactFormatter formatter, string value)\n    {\n        _ = formatter.Render(value);\n        return $\"impact:{value}:1|{formatter.Format(7)}\";\n    }\n}\n");
+            var ignoredCandidateTestResult = await RunValidatorAsync(root);
+            Assert.NotEqual(0, ignoredCandidateTestResult.ExitCode);
+            Assert.Contains("semantic-oracle: rejected", ignoredCandidateTestResult.Output);
+            await File.WriteAllTextAsync(testPath, correctTest);
+
+            await File.WriteAllTextAsync(testPath,
+                "using SemanticImpact.Models;\nnamespace SemanticImpact.CandidateTests;\npublic static class ImpactFormatterTests\n{\n    private static int callCount;\n\n    public static string Verify(ImpactFormatter formatter, string value)\n    {\n        _ = formatter.Render(value);\n        return $\"impact:{value}:{++callCount}|{formatter.Format(7)}\";\n    }\n}\n");
+            var reproducedCandidateTestResult = await RunValidatorAsync(root);
+            Assert.NotEqual(0, reproducedCandidateTestResult.ExitCode);
+            Assert.Contains("semantic-oracle: rejected", reproducedCandidateTestResult.Output);
+            await File.WriteAllTextAsync(testPath, correctTest);
+
+            await File.WriteAllTextAsync(modelPath,
+                correctModel.Replace("public string Format(int", "public string Format(string value) => Render(value);\n    public string Format(int", StringComparison.Ordinal));
+            var retainedMember = await RunValidatorAsync(root);
+            Assert.NotEqual(0, retainedMember.ExitCode);
+            Assert.Contains("semantic-oracle: rejected", retainedMember.Output);
+            await File.WriteAllTextAsync(modelPath, correctModel);
+
+            await File.WriteAllTextAsync(modelPath,
+                correctModel.Replace("number:{value}", "changed:{value}", StringComparison.Ordinal));
+            var changedNumericBehavior = await RunValidatorAsync(root);
+            Assert.NotEqual(0, changedNumericBehavior.ExitCode);
+            Assert.Contains("semantic-oracle: rejected", changedNumericBehavior.Output);
+            await File.WriteAllTextAsync(modelPath, correctModel.Replace(
+                "impact:{value}", "changed:{value}", StringComparison.Ordinal));
+            var changedStringBehavior = await RunValidatorAsync(root);
+            Assert.NotEqual(0, changedStringBehavior.ExitCode);
+            Assert.Contains("semantic-oracle: rejected", changedStringBehavior.Output);
         }
         finally { Directory.Delete(root, recursive: true); }
     }

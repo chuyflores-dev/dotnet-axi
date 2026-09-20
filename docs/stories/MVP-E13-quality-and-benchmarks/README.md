@@ -83,6 +83,7 @@ testing until the end.
 - [MVP-E13-S47 — Add extension-method semantic benchmark task](MVP-E13-S47-add-extension-method-semantic-benchmark-task.md)
 - [MVP-E13-S48 — Add partial-declaration linked-ownership semantic benchmark task](MVP-E13-S48-add-partial-declaration-linked-ownership-semantic-benchmark-task.md)
 - [MVP-E13-S49 — Add multi-target conditional semantic benchmark task](MVP-E13-S49-add-multitarget-conditional-semantic-benchmark-task.md)
+- [MVP-E13-S50 — Add impact semantic benchmark task](MVP-E13-S50-add-impact-semantic-benchmark-task.md)
 
 ## Complete when
 
