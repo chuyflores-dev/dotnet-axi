@@ -244,6 +244,29 @@ public sealed class ContextSymbolCommandTests
     }
 
     [Fact]
+    public async Task Derived_context_section_rejects_a_method_target()
+    {
+        using var workspace = new TestWorkspace();
+        await workspace.WriteAsync(
+            "App.csproj",
+            "<Project Sdk=\"Microsoft.NET.Sdk\"><PropertyGroup><TargetFramework>net10.0</TargetFramework></PropertyGroup></Project>");
+        await workspace.WriteAsync(
+            "Symbols.cs",
+            "namespace Demo; public class Base { public virtual void Run() { } } public class Middle : Base { public override void Run() { } }");
+        await workspace.RestoreAsync("App.csproj");
+        var id = await workspace.SymbolIdAsync("Demo.Base.Run");
+
+        var result = await workspace.RunAsync(
+            "context", "symbol", id, "--include", "derived", "--full");
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Contains("status: failed", result.Output);
+        Assert.Contains("target_status: unsupported", result.Output);
+        Assert.Contains("semantic.target_unsupported", result.Output);
+        Assert.DoesNotContain("M:Demo.Middle.Run", result.Output);
+    }
+
+    [Fact]
     public async Task Relationship_sections_use_declared_priority_and_budget_recovery()
     {
         using var workspace = new TestWorkspace();

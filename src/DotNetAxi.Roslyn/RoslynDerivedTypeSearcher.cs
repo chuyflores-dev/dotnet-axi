@@ -28,6 +28,25 @@ public sealed class RoslynDerivedTypeSearchResult
         RoslynImplementationSearchResult source,
         DerivedTypeSearchScopeMode scopeMode)
     {
+        if (source.TargetStatus is SemanticTargetResolutionStatus.Resolved
+            && !source.TargetIsType)
+        {
+            Target = source.Target;
+            TargetId = null;
+            TargetStatus = SemanticTargetResolutionStatus.Unsupported;
+            Snapshot = source.Snapshot;
+            ScopeMode = scopeMode;
+            Matches = [];
+            Coverage = new EvidenceCoverage(CoverageLevel.NotApplicable);
+            Variants = [];
+            Candidates = [];
+            CandidateTotal = 0;
+            ErrorCode = "semantic.target_unsupported";
+            Correction = "Select a source type declaration and retry.";
+            PartialReasons = ["semantic.target_not_type"];
+            return;
+        }
+
         Target = source.Target;
         TargetId = source.TargetId;
         TargetStatus = source.TargetStatus;
@@ -80,8 +99,12 @@ public sealed class RoslynDerivedTypeSearcher
     public RoslynDerivedTypeSearcher(
         IWorkspacePathTraverser traverser,
         IFileOwnershipResolver ownership,
-        IEnumerable<string> projects) =>
-        _implementations = new RoslynImplementationSearcher(traverser, ownership, projects);
+        IEnumerable<string> projects)
+    {
+        ArgumentNullException.ThrowIfNull(projects);
+        var projectList = projects.ToArray();
+        _implementations = new RoslynImplementationSearcher(traverser, ownership, projectList);
+    }
 
     public async ValueTask<RoslynDerivedTypeSearchResult> FindAsync(
         string target,

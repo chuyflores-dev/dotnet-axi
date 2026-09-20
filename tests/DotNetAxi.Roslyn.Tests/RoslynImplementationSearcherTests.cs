@@ -133,6 +133,26 @@ public sealed class RoslynImplementationSearcherTests
             match.DerivedIdentity == "T:Demo.InterfaceLeaf"
             && match.InheritancePath.SequenceEqual(
                 ["T:Demo.IMarker", "T:Demo.IChildMarker", "T:Demo.InterfaceLeaf"]));
+
+        var record = await workspace.FindDerivedAsync("Demo.RootRecord", DerivedTypeSearchScopeMode.Complete);
+        Assert.True(record.TargetResolved);
+        Assert.Empty(record.Matches);
+    }
+
+    [Fact]
+    public async Task Derived_type_search_rejects_member_targets()
+    {
+        using var workspace = await ImplementationWorkspace.CreateAsync();
+
+        var result = await workspace.FindDerivedAsync(
+            "Demo.OverrideBase.Run",
+            DerivedTypeSearchScopeMode.Complete);
+
+        Assert.False(result.TargetResolved);
+        Assert.Equal(SemanticTargetResolutionStatus.Unsupported, result.TargetStatus);
+        Assert.Empty(result.Matches);
+        Assert.Equal("semantic.target_unsupported", result.ErrorCode);
+        Assert.Equal(CoverageLevel.NotApplicable, result.Coverage.Level);
     }
 
     [Fact]
@@ -239,6 +259,22 @@ public sealed class RoslynImplementationSearcherTests
             match.Relationship == "possible_dispatch"
             && match.Confidence == "possible"
             && match.ContainingSymbol == "M:Demo.CallerConsumer.Interface(Demo.ICallerContract)");
+
+        var abstractCall = await workspace.FindCallersAsync(
+            "Demo.WorkerBase.Execute", CallerSearchScopeMode.Complete);
+        Assert.Contains(abstractCall.Matches, match =>
+            match.Relationship == "possible_dispatch"
+            && match.Confidence == "possible"
+            && match.ContainingSymbol == "M:Demo.CallerConsumer.Abstract(Demo.WorkerBase)");
+
+        var overrideCall = await workspace.FindCallersAsync(
+            "Demo.OverrideMid.Run", CallerSearchScopeMode.Complete);
+        Assert.Contains(overrideCall.Matches, match =>
+            match.Relationship == "possible_dispatch"
+            && match.Confidence == "possible"
+            && match.ContainingSymbol == "M:Demo.CallerConsumer.Overridable(Demo.OverrideMid)");
+        Assert.DoesNotContain(overrideCall.Matches, match =>
+            match.ContainingSymbol == "M:Demo.CallerConsumer.NameOnly()");
     }
 
     [Fact]
@@ -319,6 +355,7 @@ public sealed class RoslynImplementationSearcherTests
                     public interface IService { void Execute(int value); }
                     public abstract class WorkerBase { public abstract string Execute(string value); }
                     public class Root { }
+                    public record RootRecord;
                     public class Middle<T> : Root { }
                     public class Leaf : Middle<int> { public class Nested : Leaf { } }
                     public interface IMarker { }
@@ -391,6 +428,9 @@ public sealed class RoslynImplementationSearcherTests
                     {
                         public void Direct(CallerTarget target) { target.Overload(1); target.Overload("text"); target.Virtual(); }
                         public void Interface(ICallerContract target) => target.Contract();
+                        public string Abstract(WorkerBase target) => target.Execute("value");
+                        public void Overridable(OverrideMid target) => target.Run();
+                        public string NameOnly() => nameof(OverrideMid.Run);
                     }
                     """);
                 await workspace.WriteProjectAsync(

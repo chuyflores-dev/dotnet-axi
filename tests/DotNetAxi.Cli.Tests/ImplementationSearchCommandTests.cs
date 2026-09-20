@@ -147,6 +147,21 @@ public sealed class ImplementationSearchCommandTests
     }
 
     [Fact]
+    public async Task Derived_search_rejects_a_method_target()
+    {
+        using var workspace = await TestWorkspace.CreateAsync();
+
+        var result = await workspace.RunAsync(
+            "search", "derived", "Demo.Base.Run", "--complete");
+
+        Assert.Equal(1, result.ExitCode);
+        Assert.Contains("target_status: unsupported", result.Output);
+        Assert.Contains("semantic.target_unsupported", result.Output);
+        Assert.Contains("Select a source type declaration", result.Output);
+        Assert.DoesNotContain("M:Demo.Middle.Run", result.Output);
+    }
+
+    [Fact]
     public async Task Implementation_search_returns_verified_semantic_locations()
     {
         using var workspace = await TestWorkspace.CreateAsync();
