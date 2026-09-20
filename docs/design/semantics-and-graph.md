@@ -199,6 +199,21 @@ cycles are a verified absence only when the enclosing graph coverage is
 complete. Partial and failed evaluation retain their failures and variant
 coverage rather than being recast as an acyclic graph.
 
+`graph path` likewise traverses only directed, evaluated
+`project-reference` relationships in its first version. `--from` and `--to`
+identify workspace-relative project files within the selected graph. It finds
+shortest directed paths up to `--max-depth` (default 10), orders equal-length
+paths deterministically by stable relationship identity, and bounds returned
+paths through the ordinary `--limit`/`--full` contract and a 10,000-path
+deterministic safety cap. Hitting that cap reports an unknown total and the
+cap in path detection metadata; callers narrow the selected graph before
+retrying. A depth-limited no-path result is not a proof of absence; no path is
+verified only when graph coverage is complete and traversal exhausted before
+the depth bound. Paths retain their relationship provenance, while failures
+and variant coverage are reported alongside partial results. Code-entity and
+mixed-edge path traversal remain deferred until their relationship composition
+has accepted authority.
+
 This is not a universal graph engine. Document, namespace, type, member, test,
 diagnostic, and code-relationship materialization remains on-demand and is
 introduced only by the operation that has its authority and bounded evidence.

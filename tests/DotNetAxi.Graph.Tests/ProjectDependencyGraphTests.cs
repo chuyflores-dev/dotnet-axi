@@ -303,6 +303,65 @@ public sealed class ProjectDependencyGraphTests
         Assert.Empty(detection.Cycles);
     }
 
+    [Fact]
+    public void Shortest_paths_are_deterministic_and_retain_equal_length_ties()
+    {
+        var evidence = RowEvidence(CoverageLevel.Complete, EvidenceConfidence.Verified, ProjectGraphProvenance.EvaluatedProjectGraph);
+        var a = Project("A.csproj", evidence);
+        var b = Project("B.csproj", evidence);
+        var c = Project("C.csproj", evidence);
+        var d = Project("D.csproj", evidence);
+        var graph = new ProjectDependencyGraph(ResponseEvidence(), [a, b, c, d],
+            [Edge(a, b, evidence), Edge(a, c, evidence), Edge(b, d, evidence), Edge(c, d, evidence)]);
+
+        var search = ProjectDependencyPathFinder.FindShortestPaths(graph, a.Id, d.Id, 4, 10);
+
+        Assert.Equal(2, search.ShortestDepth);
+        Assert.True(search.TotalKnown);
+        Assert.False(search.DepthLimited);
+        Assert.Equal(2, search.Paths.Count);
+        Assert.All(search.Paths, path => Assert.Equal(2, path.Relationships.Count));
+        Assert.Equal(
+            ["A.csproj", "B.csproj", "D.csproj"],
+            search.Paths[0].Nodes.Select(static node => node.Project!.ProjectPath));
+        Assert.Equal(
+            ["A.csproj", "C.csproj", "D.csproj"],
+            search.Paths[1].Nodes.Select(static node => node.Project!.ProjectPath));
+    }
+
+    [Fact]
+    public void Path_search_reports_depth_limited_no_path()
+    {
+        var evidence = RowEvidence(CoverageLevel.Complete, EvidenceConfidence.Verified, ProjectGraphProvenance.EvaluatedProjectGraph);
+        var a = Project("A.csproj", evidence);
+        var b = Project("B.csproj", evidence);
+        var c = Project("C.csproj", evidence);
+        var graph = new ProjectDependencyGraph(ResponseEvidence(), [a, b, c], [Edge(a, b, evidence), Edge(b, c, evidence)]);
+
+        var search = ProjectDependencyPathFinder.FindShortestPaths(graph, a.Id, c.Id, 1, 10);
+
+        Assert.Empty(search.Paths);
+        Assert.Null(search.ShortestDepth);
+        Assert.True(search.DepthLimited);
+    }
+
+    [Fact]
+    public void Path_search_reports_a_complete_no_path_when_traversal_exhausts()
+    {
+        var evidence = RowEvidence(CoverageLevel.Complete, EvidenceConfidence.Verified, ProjectGraphProvenance.EvaluatedProjectGraph);
+        var a = Project("A.csproj", evidence);
+        var b = Project("B.csproj", evidence);
+        var c = Project("C.csproj", evidence);
+        var graph = new ProjectDependencyGraph(ResponseEvidence(), [a, b, c], [Edge(a, b, evidence)]);
+
+        var search = ProjectDependencyPathFinder.FindShortestPaths(graph, a.Id, c.Id, 4, 10);
+
+        Assert.Empty(search.Paths);
+        Assert.Null(search.ShortestDepth);
+        Assert.False(search.DepthLimited);
+        Assert.True(search.TotalKnown);
+    }
+
     private static ProjectGraphNode Project(
         string path,
         ProjectGraphEvidence evidence) =>
