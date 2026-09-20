@@ -80,6 +80,7 @@ testing until the end.
 - [MVP-E13-S44 — Add interface-dispatch semantic benchmark task](MVP-E13-S44-add-interface-dispatch-semantic-benchmark-task.md)
 - [MVP-E13-S45 — Add generic-inheritance semantic benchmark task](MVP-E13-S45-add-generic-inheritance-semantic-benchmark-task.md)
 - [MVP-E13-S46 — Add virtual-override semantic benchmark task](MVP-E13-S46-add-virtual-override-semantic-benchmark-task.md)
+- [MVP-E13-S47 — Add extension-method semantic benchmark task](MVP-E13-S47-add-extension-method-semantic-benchmark-task.md)
 
 ## Complete when
 

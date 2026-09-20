@@ -42,6 +42,8 @@ public sealed class AgentBenchmarkScriptTests
             StringComparison.Ordinal);
         Assert.Contains("rename-virtual-format-overrides", result.Output,
             StringComparison.Ordinal);
+        Assert.Contains("rename-message-extension-format", result.Output,
+            StringComparison.Ordinal);
     }
 
     [Fact]
@@ -79,9 +81,9 @@ public sealed class AgentBenchmarkScriptTests
             .EnumerateArray()
             .ToArray();
 
-        Assert.Equal(8, tasks.Length);
+        Assert.Equal(9, tasks.Length);
         Assert.Equal(
-            ["refactor", "feature", "refactor", "refactor", "refactor", "refactor", "refactor", "refactor"],
+            ["refactor", "feature", "refactor", "refactor", "refactor", "refactor", "refactor", "refactor", "refactor"],
             tasks.Select(static task =>
                 task.GetProperty("kind").GetString()!).ToArray());
         var expectedChanges = new Dictionary<string, string[]>(
@@ -126,6 +128,8 @@ public sealed class AgentBenchmarkScriptTests
             ],
             ["rename-virtual-format-overrides"] =
             ["src/Models/Formatters.cs", "src/Consumers/FormatterPresenter.cs"],
+            ["rename-message-extension-format"] =
+            ["src/Models/Formatters.cs", "src/Consumers/FormatView.cs"],
         };
         Assert.All(
             tasks,
@@ -767,6 +771,56 @@ public sealed class AgentBenchmarkScriptTests
             Assert.Contains("semantic-oracle: rejected", changedBehavior.Output);
         }
         finally { Directory.Delete(root, recursive: true); }
+    }
+
+    [Fact]
+    public async Task Extension_method_oracle_rejects_decoys_and_accepts_exact_change()
+    {
+        var root = await MaterializeSemanticTaskAsync("semantic-extension-methods", "RenameExtensionFormat.cs", "ExtensionMethodVerifier.csproj");
+        try
+        {
+            var original = await RunValidatorAsync(root); Assert.NotEqual(0, original.ExitCode); Assert.Contains("semantic-oracle: rejected", original.Output);
+            var models = Path.Combine(root,"src/Models/Formatters.cs"); var view = Path.Combine(root,"src/Consumers/FormatView.cs");
+            var originalModels = await File.ReadAllTextAsync(models);
+            await File.WriteAllTextAsync(models, originalModels.Replace("public static string Format(this", "public static string Render(this", StringComparison.Ordinal));
+            await File.WriteAllTextAsync(view, (await File.ReadAllTextAsync(view)).Replace("message.Format(value)", "message.Render(value)", StringComparison.Ordinal));
+            var correctModels=await File.ReadAllTextAsync(models); var correctView=await File.ReadAllTextAsync(view);
+            var correct=await RunValidatorAsync(root); Assert.True(correct.ExitCode==0,correct.Output);
+            await File.WriteAllTextAsync(models, correctModels.Replace("public static class StaticFormatter { public static string Format", "public static class StaticFormatter { public static string Render", StringComparison.Ordinal));
+            await File.WriteAllTextAsync(view, correctView.Replace("StaticFormatter.Format(value)", "StaticFormatter.Render(value)", StringComparison.Ordinal));
+            var wrongTarget=await RunValidatorAsync(root); Assert.NotEqual(0,wrongTarget.ExitCode); Assert.Contains("semantic-oracle: rejected",wrongTarget.Output);
+            await File.WriteAllTextAsync(models, correctModels);
+            await File.WriteAllTextAsync(view, correctView);
+            await File.WriteAllTextAsync(models, correctModels.Replace("=> $\"extension:{value}\"; }", "=> $\"extension:{value}\"; private static string Format(Message message, string value) => Render(message, value); }", StringComparison.Ordinal));
+            var retained=await RunValidatorAsync(root); Assert.NotEqual(0,retained.ExitCode); Assert.Contains("semantic-oracle: rejected",retained.Output);
+            await File.WriteAllTextAsync(models, correctModels);
+            await File.WriteAllTextAsync(models, correctModels.Replace("=> $\"extension:{value}\"; }", "=> $\"extension:{value}\"; private static string Format(Message message, string value, object? ignored = null) => Render(message, value); }", StringComparison.Ordinal));
+            var optionalRetained=await RunValidatorAsync(root); Assert.NotEqual(0,optionalRetained.ExitCode); Assert.Contains("semantic-oracle: rejected",optionalRetained.Output);
+            await File.WriteAllTextAsync(models, correctModels);
+            await File.WriteAllTextAsync(models, correctModels + " public static class CompatibilityExtensions { public static string Format(this Message message, string value) => MessageExtensions.Render(message, value); }");
+            var compatibilityExtension=await RunValidatorAsync(root); Assert.NotEqual(0,compatibilityExtension.ExitCode); Assert.Contains("semantic-oracle: rejected",compatibilityExtension.Output);
+            await File.WriteAllTextAsync(models, correctModels);
+            await File.WriteAllTextAsync(models, correctModels.Replace("public sealed class Message;", "public sealed class Message { public string Render(string value) => $\"extension:{value}\"; }", StringComparison.Ordinal));
+            var shadowedExtension=await RunValidatorAsync(root); Assert.NotEqual(0,shadowedExtension.ExitCode); Assert.Contains("semantic-oracle: rejected",shadowedExtension.Output);
+            await File.WriteAllTextAsync(models, correctModels);
+            await File.WriteAllTextAsync(models, correctModels.Replace("public sealed class Message;", "public sealed class Message { public string Render(string value, object? ignored = null) => $\"extension:{value}\"; }", StringComparison.Ordinal));
+            var optionalShadowedExtension=await RunValidatorAsync(root); Assert.NotEqual(0,optionalShadowedExtension.ExitCode); Assert.Contains("semantic-oracle: rejected",optionalShadowedExtension.Output);
+            await File.WriteAllTextAsync(models, correctModels);
+            await File.WriteAllTextAsync(models, correctModels.Replace("public sealed class Message;", "public sealed class Message { public string Format(string value) => $\"extension:{value}\"; }", StringComparison.Ordinal));
+            await File.WriteAllTextAsync(view, correctView.Replace("message.Render(value)", "message.Format(value)", StringComparison.Ordinal));
+            var formatShadow=await RunValidatorAsync(root); Assert.NotEqual(0,formatShadow.ExitCode); Assert.Contains("semantic-oracle: rejected",formatShadow.Output);
+            await File.WriteAllTextAsync(models, correctModels);
+            await File.WriteAllTextAsync(view, correctView.Replace("message.Render(value)", "\"extension:\" + value", StringComparison.Ordinal));
+            var bypassedCall=await RunValidatorAsync(root); Assert.NotEqual(0,bypassedCall.ExitCode); Assert.Contains("semantic-oracle: rejected",bypassedCall.Output);
+            await File.WriteAllTextAsync(view, correctView);
+            await File.WriteAllTextAsync(models, correctModels.Replace("public static class MessageExtensions { public static string Render(this Message message, string value) => $\"extension:{value}\"; }", "public static class MessageExtensions { public static string Render(this Message message, string value) {\n#if NET8_0\nreturn $\"changed:{value}\";\n#else\nreturn $\"extension:{value}\";\n#endif\n} }", StringComparison.Ordinal));
+            var net8Behavior=await RunValidatorAsync(root); Assert.NotEqual(0,net8Behavior.ExitCode); Assert.Contains("semantic-oracle: rejected",net8Behavior.Output);
+            await File.WriteAllTextAsync(models, correctModels);
+            await File.WriteAllTextAsync(models, correctModels.Replace("extension:{value}", "changed:{value}", StringComparison.Ordinal));
+            var behavior=await RunValidatorAsync(root); Assert.NotEqual(0,behavior.ExitCode); Assert.Contains("semantic-oracle: rejected",behavior.Output);
+            await File.WriteAllTextAsync(view, correctView);
+        }
+        finally { Directory.Delete(root,recursive:true); }
     }
 
     [Fact]
