@@ -346,6 +346,25 @@ public sealed class ProjectDependencyGraphTests
     }
 
     [Fact]
+    public void Path_search_finds_a_twelve_edge_path_at_the_selected_depth()
+    {
+        var evidence = RowEvidence(CoverageLevel.Complete, EvidenceConfidence.Verified, ProjectGraphProvenance.EvaluatedProjectGraph);
+        var nodes = Enumerable.Range(0, 13)
+            .Select(index => Project($"P{index}.csproj", evidence))
+            .ToArray();
+        var graph = new ProjectDependencyGraph(
+            ResponseEvidence(),
+            nodes,
+            nodes.Zip(nodes.Skip(1), (source, target) => Edge(source, target, evidence)));
+
+        var search = ProjectDependencyPathFinder.FindShortestPaths(graph, nodes[0].Id, nodes[12].Id, 12, 1);
+
+        Assert.Equal(12, search.ShortestDepth);
+        Assert.Single(search.Paths);
+        Assert.Equal(12, search.Paths[0].Relationships.Count);
+    }
+
+    [Fact]
     public void Path_search_reports_a_complete_no_path_when_traversal_exhausts()
     {
         var evidence = RowEvidence(CoverageLevel.Complete, EvidenceConfidence.Verified, ProjectGraphProvenance.EvaluatedProjectGraph);
