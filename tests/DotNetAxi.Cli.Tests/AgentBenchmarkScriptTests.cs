@@ -46,6 +46,8 @@ public sealed class AgentBenchmarkScriptTests
             StringComparison.Ordinal);
         Assert.Contains("rename-partial-linked-format", result.Output,
             StringComparison.Ordinal);
+        Assert.Contains("rename-conditional-format", result.Output,
+            StringComparison.Ordinal);
     }
 
     [Fact]
@@ -83,9 +85,9 @@ public sealed class AgentBenchmarkScriptTests
             .EnumerateArray()
             .ToArray();
 
-        Assert.Equal(10, tasks.Length);
+        Assert.Equal(11, tasks.Length);
         Assert.Equal(
-            ["refactor", "feature", "refactor", "refactor", "refactor", "refactor", "refactor", "refactor", "refactor", "refactor"],
+            ["refactor", "feature", "refactor", "refactor", "refactor", "refactor", "refactor", "refactor", "refactor", "refactor", "refactor"],
             tasks.Select(static task =>
                 task.GetProperty("kind").GetString()!).ToArray());
         var expectedChanges = new Dictionary<string, string[]>(
@@ -138,6 +140,8 @@ public sealed class AgentBenchmarkScriptTests
                 "src/Primary/PrimaryView.cs",
                 "src/Secondary/SecondaryView.cs",
             ],
+            ["rename-conditional-format"] =
+            ["src/Models/ConditionalFormatter.cs", "src/Consumers/ConditionalView.cs"],
         };
         Assert.All(
             tasks,
@@ -973,6 +977,83 @@ public sealed class AgentBenchmarkScriptTests
         {
             Directory.Delete(root, recursive: true);
         }
+    }
+
+    [Fact]
+    public async Task Multi_target_conditional_oracle_rejects_bad_states_and_accepts_exact_change()
+    {
+        var root = await MaterializeSemanticTaskAsync(
+            "semantic-multitarget-conditional",
+            "RenameConditionalFormat.cs",
+            "MultiTargetConditionalVerifier.csproj");
+        try
+        {
+            var original = await RunValidatorAsync(root);
+            Assert.NotEqual(0, original.ExitCode);
+            Assert.Contains("semantic-oracle: rejected", original.Output);
+            var modelPath = Path.Combine(root, "src/Models/ConditionalFormatter.cs");
+            var viewPath = Path.Combine(root, "src/Consumers/ConditionalView.cs");
+            var originalModel = await File.ReadAllTextAsync(modelPath);
+            var originalView = await File.ReadAllTextAsync(viewPath);
+            await File.WriteAllTextAsync(modelPath, originalModel.Replace("Format(string", "Render(string", StringComparison.Ordinal));
+            await File.WriteAllTextAsync(viewPath, originalView.Replace("formatter.Format(value)", "formatter.Render(value)", StringComparison.Ordinal));
+            var correctModel = await File.ReadAllTextAsync(modelPath);
+            var correctView = await File.ReadAllTextAsync(viewPath);
+            var correct = await RunValidatorAsync(root);
+            Assert.True(correct.ExitCode == 0, correct.Output);
+
+            await File.WriteAllTextAsync(modelPath, correctModel.Replace("public string Format(int", "public string Render(int", StringComparison.Ordinal));
+            await File.WriteAllTextAsync(viewPath, correctView.Replace("formatter.Format(7)", "formatter.Render(7)", StringComparison.Ordinal));
+            var wrongTarget = await RunValidatorAsync(root);
+            Assert.NotEqual(0, wrongTarget.ExitCode);
+            Assert.Contains("semantic-oracle: rejected", wrongTarget.Output);
+            await File.WriteAllTextAsync(modelPath, correctModel);
+            await File.WriteAllTextAsync(viewPath, correctView);
+
+            await File.WriteAllTextAsync(modelPath, correctModel.Replace("#else\n    public string Render", "#else\n    public string Format", StringComparison.Ordinal));
+            await File.WriteAllTextAsync(viewPath,
+                "using SemanticMultiTargetConditional.Models;\nnamespace SemanticMultiTargetConditional.Consumers;\npublic sealed class ConditionalView\n{\n    public string Create(ConditionalFormatter formatter, string value)\n    {\n#if NET8_0\n        return $\"{formatter.Render(value)}|{formatter.Format(7)}\";\n#else\n        return $\"{formatter.Format(value)}|{formatter.Format(7)}\";\n#endif\n    }\n}\n");
+            var incompleteFramework = await RunValidatorAsync(root);
+            Assert.NotEqual(0, incompleteFramework.ExitCode);
+            Assert.Contains("semantic-oracle: rejected", incompleteFramework.Output);
+            await File.WriteAllTextAsync(modelPath, correctModel);
+            await File.WriteAllTextAsync(viewPath, correctView);
+
+            await File.WriteAllTextAsync(viewPath,
+                "using SemanticMultiTargetConditional.Models;\nnamespace SemanticMultiTargetConditional.Consumers;\npublic sealed class ConditionalView\n{\n    public string Create(ConditionalFormatter formatter, string value)\n    {\n#if NET8_0\n        return $\"legacy:{value}|{formatter.Format(7)}\";\n#else\n        return $\"modern:{value}|{formatter.Format(7)}\";\n#endif\n    }\n}\n");
+            var bypassedCallSite = await RunValidatorAsync(root);
+            Assert.NotEqual(0, bypassedCallSite.ExitCode);
+            Assert.Contains("semantic-oracle: rejected", bypassedCallSite.Output);
+            await File.WriteAllTextAsync(viewPath, correctView);
+
+            await File.WriteAllTextAsync(modelPath, correctModel.Replace("number:{value}", "changed:{value}", StringComparison.Ordinal));
+            var changedNumericBehavior = await RunValidatorAsync(root);
+            Assert.NotEqual(0, changedNumericBehavior.ExitCode);
+            Assert.Contains("semantic-oracle: rejected", changedNumericBehavior.Output);
+            await File.WriteAllTextAsync(modelPath, correctModel);
+
+            await File.WriteAllTextAsync(viewPath, correctView.Replace("formatter.Format(7)", "\"number:7\"", StringComparison.Ordinal));
+            var bypassedNumericCallSite = await RunValidatorAsync(root);
+            Assert.NotEqual(0, bypassedNumericCallSite.ExitCode);
+            Assert.Contains("semantic-oracle: rejected", bypassedNumericCallSite.Output);
+            await File.WriteAllTextAsync(viewPath, correctView);
+
+            await File.WriteAllTextAsync(modelPath, correctModel.Replace("#endif\n    public string Format(int", "#endif\n    public string Format(string value) => Render(value);\n    public string Format(int", StringComparison.Ordinal));
+            var retainedMember = await RunValidatorAsync(root);
+            Assert.NotEqual(0, retainedMember.ExitCode);
+            Assert.Contains("semantic-oracle: rejected", retainedMember.Output);
+            await File.WriteAllTextAsync(modelPath, correctModel);
+
+            await File.WriteAllTextAsync(modelPath, correctModel.Replace("modern:{value}", "changed:{value}", StringComparison.Ordinal));
+            var changedConditionalBehavior = await RunValidatorAsync(root);
+            Assert.NotEqual(0, changedConditionalBehavior.ExitCode);
+            Assert.Contains("semantic-oracle: rejected", changedConditionalBehavior.Output);
+            await File.WriteAllTextAsync(modelPath, correctModel.Replace("legacy:{value}", "changed:{value}", StringComparison.Ordinal));
+            var changedLegacyBehavior = await RunValidatorAsync(root);
+            Assert.NotEqual(0, changedLegacyBehavior.ExitCode);
+            Assert.Contains("semantic-oracle: rejected", changedLegacyBehavior.Output);
+        }
+        finally { Directory.Delete(root, recursive: true); }
     }
 
     [Fact]
