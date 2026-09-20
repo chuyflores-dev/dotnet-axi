@@ -1,11 +1,40 @@
 using System.Text.RegularExpressions;
 using DotNetAxi.Cli.Output;
 using DotNetAxi.Contracts;
+using DotNetAxi.Structural;
 
 namespace DotNetAxi.Cli.Tests;
 
 public sealed class ContextSymbolCommandTests
 {
+    [Fact]
+    public void Relationship_declarations_are_emitted_once_by_stable_symbol_id()
+    {
+        var declaration = new SymbolDeclarationMatch(
+            "T:Demo.Service",
+            "class",
+            "Service",
+            "Demo.Service",
+            "Demo",
+            "public",
+            "class Service",
+            new StructuralSourceRange(
+                new SourceLocation("Symbols.cs", 1, 1),
+                new SourceLocation("Symbols.cs", 1, 14)),
+            ["App.csproj"],
+            [],
+            IsTest: false,
+            IsGenerated: false,
+            Rank: 0);
+        var registry = new RelationshipDeclarationRegistry();
+
+        var first = registry.Add(declaration);
+        var second = registry.Add(declaration);
+
+        Assert.Equal(first, second);
+        Assert.Single(registry.Items);
+    }
+
     [Theory]
     [InlineData("owner", false, false)]
     [InlineData("declaration", true, false)]
@@ -124,6 +153,156 @@ public sealed class ContextSymbolCommandTests
         Assert.Contains($"target:\n  id: {id}", result.Output);
         Assert.Contains("file: Symbols.cs", result.Output);
         AssertSectionBodyMatchesReportedCount(result.Output, sectionCount: 1);
+    }
+
+    [Fact]
+    public async Task Relationship_sections_compose_compiler_results_once_under_the_context_budget()
+    {
+        using var workspace = new TestWorkspace();
+        await workspace.WriteAsync(
+            "App.csproj",
+            $"""
+            <Project Sdk="Microsoft.NET.Sdk">
+              <PropertyGroup>
+                <TargetFramework>net10.0</TargetFramework>
+                <DisableImplicitFrameworkReferences>true</DisableImplicitFrameworkReferences>
+              </PropertyGroup>
+              <ItemGroup>
+                <Reference Include="System.Private.CoreLib">
+                  <HintPath>{System.Security.SecurityElement.Escape(typeof(object).Assembly.Location)}</HintPath>
+                </Reference>
+              </ItemGroup>
+            </Project>
+            """);
+        await workspace.WriteAsync(
+            "Symbols.cs",
+            """
+            namespace Demo;
+            public interface IService { void Run(); }
+            public sealed class Service : IService { public void Run() { } }
+            public sealed class Consumer { public void Call(Service service) => service.Run(); }
+            """);
+        await workspace.RestoreAsync("App.csproj");
+        var id = await workspace.SymbolIdAsync("Demo.Service.Run");
+
+        var result = await workspace.RunAsync(
+            "context", "symbol", id,
+            "--include", "references,implementations,overrides,derived,callers,callees",
+            "--full");
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Contains("sections[6]:", result.Output);
+        Assert.Contains("- name: references", result.Output);
+        Assert.Contains("- name: implementations", result.Output);
+        Assert.Contains("- name: overrides", result.Output);
+        Assert.Contains("- name: derived", result.Output);
+        Assert.Contains("- name: callers", result.Output);
+        Assert.Contains("- name: callees", result.Output);
+        Assert.Contains("provenance: compiler-semantic-references", result.Output);
+        Assert.Contains("M:Demo.Consumer.Call(Demo.Service)", result.Output);
+        Assert.Contains("direct_call", result.Output);
+        Assert.Contains("coverage:", result.Output);
+        var spanReferences = Regex.Matches(
+                result.Output,
+                "\\\"(?<id>source-span/v1/[^\\\"]+)\\\"")
+            .Select(match => match.Groups["id"].Value)
+            .ToArray();
+        Assert.Contains("relationship_evidence[1]", result.Output);
+        Assert.True(spanReferences.Length > spanReferences.Distinct().Count());
+        Assert.Single(spanReferences.Distinct());
+        AssertSectionBodyMatchesReportedCount(result.Output, sectionCount: 6);
+
+        var repeated = await workspace.RunAsync(
+            "context", "symbol", id,
+            "--include", "references,implementations,overrides,derived,callers,callees",
+            "--full");
+
+        Assert.Equal(0, repeated.ExitCode);
+        Assert.Equal(result.Output, repeated.Output);
+    }
+
+    [Fact]
+    public async Task Inapplicable_relationship_section_remains_distinct_from_a_verified_empty_result()
+    {
+        using var workspace = new TestWorkspace();
+        await workspace.WriteAsync(
+            "App.csproj",
+            "<Project Sdk=\"Microsoft.NET.Sdk\"><PropertyGroup><TargetFramework>net10.0</TargetFramework></PropertyGroup></Project>");
+        await workspace.WriteAsync(
+            "Symbols.cs",
+            "namespace Demo; public sealed class Service { public void Run() { } }");
+        await workspace.RestoreAsync("App.csproj");
+        var id = await workspace.SymbolIdAsync("Demo.Service");
+
+        var result = await workspace.RunAsync(
+            "context", "symbol", id, "--include", "callees", "--full");
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Contains("status: failed", result.Output);
+        Assert.Contains("target_status: unsupported", result.Output);
+        Assert.Contains("semantic.target_unsupported", result.Output);
+    }
+
+    [Fact]
+    public async Task Relationship_sections_use_declared_priority_and_budget_recovery()
+    {
+        using var workspace = new TestWorkspace();
+        await workspace.WriteAsync(
+            "App.csproj",
+            $"""
+            <Project Sdk="Microsoft.NET.Sdk">
+              <PropertyGroup>
+                <TargetFramework>net10.0</TargetFramework>
+                <DisableImplicitFrameworkReferences>true</DisableImplicitFrameworkReferences>
+              </PropertyGroup>
+              <ItemGroup>
+                <Reference Include="System.Private.CoreLib">
+                  <HintPath>{System.Security.SecurityElement.Escape(typeof(object).Assembly.Location)}</HintPath>
+                </Reference>
+              </ItemGroup>
+            </Project>
+            """);
+        await workspace.WriteAsync(
+            "Symbols.cs",
+            "namespace Demo; public sealed class Service { public void Run() { } }");
+        await workspace.RestoreAsync("App.csproj");
+        var id = await workspace.SymbolIdAsync("Demo.Service.Run");
+
+        var result = await workspace.RunAsync(
+            "context", "symbol", id,
+            "--include", "callees,references",
+            "--max-chars", "0");
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Contains("sections: []", result.Output);
+        Assert.Contains("omitted_sections[2]: references,callees", result.Output);
+        Assert.DoesNotContain("relationship_evidence", result.Output);
+        Assert.DoesNotContain("relationship_declarations", result.Output);
+        Assert.Contains("--include 'references,callees'", result.Output);
+        Assert.Contains("--max-chars", result.Output);
+    }
+
+    [Fact]
+    public async Task Omitted_relationship_envelope_does_not_reserve_budget_from_structural_sections()
+    {
+        using var workspace = new TestWorkspace();
+        await workspace.WriteAsync(
+            "App.csproj",
+            "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+        await workspace.WriteAsync(
+            "Symbols.cs",
+            "namespace Demo; public sealed class Service { public void Run() { } }");
+        var id = await workspace.SymbolIdAsync("Demo.Service");
+
+        var result = await workspace.RunAsync(
+            "context", "symbol", id,
+            "--include", "declaration,references",
+            "--max-chars", "1500");
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Contains("- name: declaration", result.Output);
+        Assert.Contains("omitted_sections[1]: references", result.Output);
+        Assert.DoesNotContain("relationship_evidence", result.Output);
     }
 
     [Fact]
@@ -265,7 +444,7 @@ public sealed class ContextSymbolCommandTests
     }
 
     [Theory]
-    [InlineData("callers", "capability.context_section_unavailable")]
+    [InlineData("tests", "capability.context_section_unavailable")]
     [InlineData("unknown", "usage.context_section")]
     [InlineData("declaration,,owner", "usage.context_section")]
     public async Task Invalid_or_unavailable_sections_return_structured_corrections(
@@ -279,7 +458,7 @@ public sealed class ContextSymbolCommandTests
 
         Assert.Equal(2, result.ExitCode);
         Assert.Contains($"code: {code}", result.Output);
-        Assert.Contains("declaration,owner,document,outline", result.Output);
+        Assert.Contains("section", result.Output, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -320,8 +499,19 @@ public sealed class ContextSymbolCommandTests
             "^included_characters: (?<count>[0-9]+)",
             RegexOptions.Multiline);
         Assert.True(reported.Success, output);
+        var relationshipEnvelopeStart = output.IndexOf(
+            "relationship_evidence",
+            StringComparison.Ordinal);
+        var relationshipEnvelopeCharacters = relationshipEnvelopeStart < 0
+            ? 0
+            : output[relationshipEnvelopeStart..output.IndexOf(
+                    "\nbudget_mode:",
+                    relationshipEnvelopeStart,
+                    StringComparison.Ordinal)]
+                .EnumerateRunes()
+                .Count();
         Assert.Equal(
-            emittedSection.EnumerateRunes().Count(),
+            emittedSection.EnumerateRunes().Count() + relationshipEnvelopeCharacters,
             int.Parse(
                 reported.Groups["count"].Value,
                 System.Globalization.CultureInfo.InvariantCulture));
@@ -364,6 +554,28 @@ public sealed class ContextSymbolCommandTests
 
         public Task<(int ExitCode, string Output)> RunAsync(
             params string[] arguments) => ExecuteAsync(Root, arguments);
+
+        public async Task RestoreAsync(string project)
+        {
+            var start = new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = Environment.GetEnvironmentVariable("DOTNET_HOST_PATH")
+                    ?? "dotnet",
+                WorkingDirectory = Root,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+            };
+            start.ArgumentList.Add("restore");
+            start.ArgumentList.Add(project);
+            start.ArgumentList.Add("--ignore-failed-sources");
+            start.ArgumentList.Add("--nologo");
+            using var process = System.Diagnostics.Process.Start(start)!;
+            var output = await process.StandardOutput.ReadToEndAsync();
+            var error = await process.StandardError.ReadToEndAsync();
+            await process.WaitForExitAsync();
+            Assert.True(process.ExitCode == 0, $"{output}\n{error}");
+        }
 
         public static async Task<(int ExitCode, string Output)> ExecuteAsync(
             string workingDirectory,

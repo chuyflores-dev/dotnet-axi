@@ -445,7 +445,7 @@ public sealed partial class SymbolContextCorpusTests
             fixture.WorkspacePath,
             "context", "symbol", EntityId(variants.Output),
             "--project", "src/Core/Core.csproj",
-            "--include", "callers");
+            "--include", "tests");
         Assert.Equal(2, unsupported.ExitCode);
         Assert.Contains(
             "code: capability.context_section_unavailable",

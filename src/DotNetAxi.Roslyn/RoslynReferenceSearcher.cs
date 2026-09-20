@@ -286,6 +286,33 @@ public sealed class RoslynReferenceSearcher
                 session,
                 cancellationToken)
             .ConfigureAwait(false);
+        return await FindResolvedAsync(
+                target,
+                discovery,
+                selection,
+                traversal,
+                declarationScope,
+                scopeMode,
+                session,
+                resolution,
+                cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    internal async ValueTask<RoslynReferenceSearchResult> FindResolvedAsync(
+        string target,
+        WorkspaceDiscoveryResult discovery,
+        WorkspaceSelection selection,
+        WorkspaceTraversalRequest traversal,
+        SymbolDeclarationScope declarationScope,
+        ReferenceSearchScopeMode scopeMode,
+        SemanticQuerySession session,
+        SemanticTargetResolution resolution,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(declarationScope);
+        ArgumentNullException.ThrowIfNull(session);
+        ArgumentNullException.ThrowIfNull(resolution);
         if (!resolution.Resolved)
         {
             return TargetFailure(target, scopeMode, resolution);
