@@ -495,6 +495,12 @@ internal sealed class ProjectGraphCommandHandler :
                 graph.Runtime.MsBuildVersion));
         }
 
+        values.Add(new WorkspaceSnapshotValueInput(
+            WorkspaceSnapshotValueKind.ExplicitMsBuildProperty,
+            "evaluated-project-graph",
+            EvaluatedProjectGraphFingerprint.Create(graph),
+            graph.Selection.Path));
+
         var snapshot = new WorkspaceSnapshotCapturer().Capture(
             new WorkspaceSnapshotCapture(
                 files,

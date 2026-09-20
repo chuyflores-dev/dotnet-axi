@@ -245,7 +245,7 @@ public sealed class RoslynImpactAnalysis
             resolution.Target,
             resolution.CanonicalId,
             resolution.Status,
-            resolution.Snapshot,
+            ImpactSnapshot(resolution.Snapshot, graph),
             resolution.Declarations,
             [],
             candidateTotal: 0,
@@ -264,5 +264,32 @@ public sealed class RoslynImpactAnalysis
             callees,
             coverage,
             partialReasons);
+    }
+
+    private static string? ImpactSnapshot(
+        string? semanticSnapshot,
+        EvaluatedProjectGraph graph)
+    {
+        if (semanticSnapshot is null)
+        {
+            return null;
+        }
+
+        return new WorkspaceSnapshotCapturer().Capture(
+                new WorkspaceSnapshotCapture(
+                    [],
+                    [
+                        new WorkspaceSnapshotValueInput(
+                            WorkspaceSnapshotValueKind.ExplicitMsBuildProperty,
+                            "semantic-target",
+                            semanticSnapshot),
+                        new WorkspaceSnapshotValueInput(
+                            WorkspaceSnapshotValueKind.ExplicitMsBuildProperty,
+                            "evaluated-project-graph",
+                            EvaluatedProjectGraphFingerprint.Create(graph),
+                            graph.Selection.Path),
+                    ],
+                    new WorkspaceSnapshotEntryPointInput(graph.Selection)))
+            .Identity;
     }
 }

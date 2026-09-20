@@ -82,6 +82,58 @@ public sealed class ProjectGraphCommandTests
     }
 
     [Fact]
+    public async Task Projects_snapshot_changes_when_an_imported_props_file_changes_a_project_reference()
+    {
+        using var workspace = await TestWorkspace.CreateAsync();
+
+        var before = await workspace.RunAsync(
+            "graph", "projects", "--property", "Flavor=imported", "--framework", "net9.0", "--full");
+        await workspace.WriteAsync(
+            "Graph.props",
+            """
+            <Project>
+              <ItemGroup>
+                <ProjectReference Include="Imported/Imported.csproj" Condition="'$(Flavor)' == 'imported' and '$(TargetFramework)' == 'net9.0'" />
+              </ItemGroup>
+            </Project>
+            """);
+        await workspace.RestoreAsync("imported");
+        var after = await workspace.RunAsync(
+            "graph", "projects", "--property", "Flavor=imported", "--framework", "net9.0", "--full");
+
+        Assert.True(before.ExitCode == 0, before.Output);
+        Assert.True(after.ExitCode == 0, after.Output);
+        Assert.DoesNotContain("Imported/Imported.csproj", before.Output);
+        Assert.Contains("Imported/Imported.csproj", after.Output);
+        Assert.NotEqual(Snapshot(before.Output), Snapshot(after.Output));
+    }
+
+    [Fact]
+    public async Task Projects_snapshot_changes_when_an_import_changes_only_a_nonfirst_framework_variant()
+    {
+        using var workspace = await TestWorkspace.CreateAsync();
+
+        var before = await workspace.RunAsync(
+            "graph", "projects", "--project", "Variant/Variant.csproj", "--property", "Flavor=variant", "--full");
+        await workspace.WriteAsync(
+            "Variant/Variant.props",
+            """
+            <Project>
+              <PropertyGroup Condition="'$(Flavor)' == 'variant'">
+                <TargetFrameworks>net8.0;net9.0;net10.0</TargetFrameworks>
+              </PropertyGroup>
+            </Project>
+            """);
+        var after = await workspace.RunAsync(
+            "graph", "projects", "--project", "Variant/Variant.csproj", "--property", "Flavor=variant", "--full");
+
+        Assert.True(before.ExitCode == 0, before.Output);
+        Assert.True(after.ExitCode == 0, after.Output);
+        Assert.Contains("framework: net10.0", after.Output);
+        Assert.NotEqual(Snapshot(before.Output), Snapshot(after.Output));
+    }
+
+    [Fact]
     public async Task Dependencies_returns_only_the_requested_project_outgoing_edges()
     {
         using var workspace = await TestWorkspace.CreateAsync();
@@ -196,6 +248,38 @@ public sealed class ProjectGraphCommandTests
     }
 
     [Fact]
+    public async Task Impact_snapshot_and_affected_projects_change_with_an_imported_project_reference()
+    {
+        using var workspace = await TestWorkspace.CreateAsync();
+        await workspace.WriteAsync(
+            "Workspace.slnx",
+            "<Solution><Project Path=\"App.csproj\" /><Project Path=\"Library/Library.csproj\" /><Project Path=\"Imported/Imported.csproj\" /></Solution>");
+
+        var before = await workspace.RunAsync(
+            "graph", "impact", "Imported/Imported.csproj",
+            "--solution", "Workspace.slnx", "--property", "Flavor=imported", "--framework", "net9.0", "--full");
+        await workspace.WriteAsync(
+            "Graph.props",
+            """
+            <Project>
+              <ItemGroup>
+                <ProjectReference Include="Imported/Imported.csproj" Condition="'$(Flavor)' == 'imported' and '$(TargetFramework)' == 'net9.0'" />
+              </ItemGroup>
+            </Project>
+            """);
+        await workspace.RestoreAsync("imported");
+        var after = await workspace.RunAsync(
+            "graph", "impact", "Imported/Imported.csproj",
+            "--solution", "Workspace.slnx", "--property", "Flavor=imported", "--framework", "net9.0", "--full");
+
+        Assert.True(before.ExitCode == 0, before.Output);
+        Assert.True(after.ExitCode == 0, after.Output);
+        Assert.Contains("important_paths:\n  count: 0", before.Output);
+        Assert.Contains("important_paths:\n  count: 1", after.Output);
+        Assert.NotEqual(Snapshot(before.Output), Snapshot(after.Output));
+    }
+
+    [Fact]
     public void Path_retrieval_command_escapes_quoted_endpoints()
     {
         var request = ProjectPathCommandRequest.Create(
@@ -267,6 +351,7 @@ public sealed class ProjectGraphCommandTests
                       <PropertyGroup>
                         <TargetFrameworks>net8.0;net9.0</TargetFrameworks>
                       </PropertyGroup>
+                      <Import Project="Graph.props" />
                       <ItemGroup>
                         <ProjectReference Include="Library/Library.csproj" Condition="'$(Flavor)' == 'conditional' and '$(TargetFramework)' == 'net9.0'" />
                         <PackageReference Include="xunit" Version="2.9.3" />
@@ -281,13 +366,32 @@ public sealed class ProjectGraphCommandTests
                     </Project>
                     """);
                 await workspace.WriteAsync(
+                    "Graph.props",
+                    "<Project />");
+                await workspace.WriteAsync(
+                    "Imported/Imported.csproj",
+                    """
+                    <Project Sdk="Microsoft.NET.Sdk">
+                      <PropertyGroup><TargetFramework>net9.0</TargetFramework></PropertyGroup>
+                    </Project>
+                    """);
+                await workspace.WriteAsync(
+                    "Variant/Variant.csproj",
+                    """
+                    <Project Sdk="Microsoft.NET.Sdk">
+                      <PropertyGroup><TargetFrameworks>net8.0;net9.0</TargetFrameworks></PropertyGroup>
+                      <Import Project="Variant.props" />
+                    </Project>
+                    """);
+                await workspace.WriteAsync("Variant/Variant.props", "<Project />");
+                await workspace.WriteAsync(
                     "Unused/Unused.csproj",
                     """
                     <Project Sdk="Microsoft.NET.Sdk">
                       <PropertyGroup><TargetFramework>net10.0</TargetFramework></PropertyGroup>
                     </Project>
                     """);
-                await workspace.RestoreAsync();
+                await workspace.RestoreAsync("conditional");
                 return workspace;
             }
             catch
@@ -301,7 +405,7 @@ public sealed class ProjectGraphCommandTests
             params string[] arguments)
             => await ProjectGraphCommandTests.RunAsync(Root, arguments);
 
-        private async Task RestoreAsync()
+        public async Task RestoreAsync(string flavor)
         {
             var start = new System.Diagnostics.ProcessStartInfo
             {
@@ -313,7 +417,7 @@ public sealed class ProjectGraphCommandTests
             };
             start.ArgumentList.Add("restore");
             start.ArgumentList.Add("App.csproj");
-            start.ArgumentList.Add("-p:Flavor=conditional");
+            start.ArgumentList.Add("-p:Flavor=" + flavor);
             start.ArgumentList.Add("--ignore-failed-sources");
             start.ArgumentList.Add("--nologo");
             start.ArgumentList.Add("--verbosity");
@@ -329,7 +433,7 @@ public sealed class ProjectGraphCommandTests
             }
         }
 
-        private async Task WriteAsync(string relativePath, string contents)
+        public async Task WriteAsync(string relativePath, string contents)
         {
             var path = Path.Combine(
                 Root,
@@ -372,6 +476,11 @@ public sealed class ProjectGraphCommandTests
         Assert.True(string.IsNullOrEmpty(error), error);
         return (process.ExitCode, output);
     }
+
+    private static string Snapshot(string output) => output
+        .Split('\n')
+        .Single(line => line.StartsWith("snapshot: ", StringComparison.Ordinal))
+        ["snapshot: ".Length..];
 
     private static async Task AddAssetsAsync(
         string workspacePath,
