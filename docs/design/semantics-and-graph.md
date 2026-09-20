@@ -214,6 +214,28 @@ and variant coverage are reported alongside partial results. Code-entity and
 mixed-edge path traversal remain deferred until their relationship composition
 has accepted authority.
 
+`graph impact <entity>` is an executing inspection that produces bounded static
+change evidence. For a code entity, it resolves the exact semantic target once
+and shares that operation's evaluated project graph and compiler contexts while
+collecting supported references, implementations (including their inheritance
+and override paths), callers, and callees. Affected projects are the reverse
+closure of the target-owner projects through evaluated `project-reference`
+relationships; affected documents are deduplicated relationship and target
+locations. For a project target, only the evaluated reverse project closure,
+its paths, and candidate tests apply; code-relationship and public-surface
+sections are explicitly inapplicable.
+
+Impact reports the target declaration's public/protected accessibility rather
+than inferring API reachability. Candidate tests are heuristic rows only: an
+affected project is selected when evaluated package evidence contains a known
+test framework or runner, and its package evidence and selection reason remain
+visible. `--max-depth` bounds reverse project expansion; a hit depth bound is
+reported and does not mean no further projects exist. `--limit` bounds each
+presented collection while retaining known totals and an `--full` retrieval
+route. Partial semantic or project evaluation remains partial with its reasons;
+no relationship, project, document, or candidate-test empty result is promoted
+to a runtime or repository-wide absence claim.
+
 This is not a universal graph engine. Document, namespace, type, member, test,
 diagnostic, and code-relationship materialization remains on-demand and is
 introduced only by the operation that has its authority and bounded evidence.
