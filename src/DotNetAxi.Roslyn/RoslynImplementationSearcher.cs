@@ -114,6 +114,7 @@ public sealed class RoslynImplementationSearchResult
         string target,
         string? targetId,
         SemanticTargetResolutionStatus targetStatus,
+        bool targetIsType,
         string? snapshot,
         ImplementationSearchScopeMode scopeMode,
         IEnumerable<RoslynImplementationMatch>? matches,
@@ -128,6 +129,7 @@ public sealed class RoslynImplementationSearchResult
         Target = target;
         TargetId = targetId;
         TargetStatus = targetStatus;
+        TargetIsType = targetIsType;
         Snapshot = snapshot;
         ScopeMode = scopeMode;
         Matches = Array.AsReadOnly(matches?.ToArray() ?? []);
@@ -150,6 +152,8 @@ public sealed class RoslynImplementationSearchResult
     public string? TargetId { get; }
 
     public SemanticTargetResolutionStatus TargetStatus { get; }
+
+    internal bool TargetIsType { get; }
 
     public string? Snapshot { get; }
 
@@ -413,6 +417,7 @@ public sealed class RoslynImplementationSearcher
             target,
             resolution.CanonicalId,
             SemanticTargetResolutionStatus.Resolved,
+            IsTypeTarget(resolution),
             Snapshot(
                 resolution.Snapshot!,
                 graph,
@@ -438,6 +443,7 @@ public sealed class RoslynImplementationSearcher
             target,
             targetId: null,
             resolution.Status,
+            targetIsType: false,
             resolution.Snapshot,
             scopeMode,
             matches: null,
@@ -455,6 +461,16 @@ public sealed class RoslynImplementationSearcher
             resolution.ErrorCode,
             resolution.Correction,
             resolution.PartialReasons);
+
+    private static bool IsTypeTarget(SemanticTargetResolution resolution)
+    {
+        var resolvedVariants = resolution.Variants
+            .Where(static variant =>
+                variant.Status is SemanticTargetVariantStatus.Resolved)
+            .ToArray();
+        return resolvedVariants.Length > 0
+            && resolvedVariants.All(static variant => variant.Symbol is INamedTypeSymbol);
+    }
 
     private static IReadOnlyList<VariantPlan> BuildPlans(
         ProjectCoverageReport report,

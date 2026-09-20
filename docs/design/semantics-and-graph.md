@@ -61,7 +61,7 @@ framework and reports other supported frameworks as remaining; `--complete`
 analyzes every supported evaluated framework. Projects outside that reverse
 closure are not reference candidates and are not loaded.
 
-`search derived` accepts one class or interface target and uses the same
+`search derived` accepts one type target and uses the same
 evaluated reverse-dependency scope and default/`--complete` framework rules.
 Each result identifies the exact derived compiler type, its owner project and
 framework variant, and an ordered inheritance path from the selected target to
@@ -81,10 +81,11 @@ and coverage reporting as the other compiler relationship commands.
 Each row preserves the exact call location, containing compiler symbol, target
 identity, project and framework variant, relationship, semantic resolution,
 and confidence. Ordinary and constructor invocations are `direct_call` with
-verified confidence. Calls through a virtual or interface target are
-`possible_dispatch` with possible confidence; delegate method-group references
-are `delegate` with possible confidence. Dynamic, reflection, and other
-runtime-only dispatch are outside static coverage. It uses the same
+verified confidence. Calls through an interface, abstract method, virtual
+method, or unsealed override are `possible_dispatch` with possible confidence;
+delegate method-group references are `delegate` with possible confidence.
+`nameof` and other non-invocation symbol references are excluded. Dynamic,
+reflection, and other runtime-only dispatch are outside static coverage. It uses the same
 reverse-dependency scope, default/`--complete` expansion, and explicit
 project/framework coverage as `search references`.
 

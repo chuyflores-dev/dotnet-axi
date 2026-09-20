@@ -888,6 +888,11 @@ public sealed class RoslynCallerSearcher
         var operation = model.GetOperation(node, cancellationToken)
             ?? node.AncestorsAndSelf().Select(candidate => model.GetOperation(candidate, cancellationToken))
                 .FirstOrDefault(static candidate => candidate is not null);
+        if (IsNameOfOperation(operation))
+        {
+            return null;
+        }
+
         var relationship = operation switch
         {
             IInvocationOperation => IsDispatchTarget(target) ? "possible_dispatch" : "direct_call",
@@ -917,7 +922,32 @@ public sealed class RoslynCallerSearcher
 
     private static bool IsDispatchTarget(ISymbol target) =>
         target.ContainingType?.TypeKind is TypeKind.Interface
-        || target is IMethodSymbol { IsVirtual: true };
+        || target is IMethodSymbol
+        {
+            IsAbstract: true,
+        }
+        || target is IMethodSymbol
+        {
+            IsVirtual: true,
+        }
+        || target is IMethodSymbol
+        {
+            IsOverride: true,
+            IsSealed: false,
+        };
+
+    private static bool IsNameOfOperation(IOperation? operation)
+    {
+        for (var current = operation; current is not null; current = current.Parent)
+        {
+            if (current is INameOfOperation)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
 
     private static string CallerId(
         string identity,
